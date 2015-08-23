@@ -12,7 +12,7 @@ class ExecutionEngine {
   virtual const Tensor& forward() = 0;
   virtual const Tensor& incremental_forward() = 0;  // if you want to add nodes and evaluate just the new parts
   virtual const Tensor& incremental_forward(VariableIndex i) = 0;  // if you want to add nodes and evaluate just the new parts
-  virtual const Tensor& get_value(VariableIndex i) = 0;  
+  virtual const Tensor& get_value(VariableIndex i) = 0;
   virtual void backward() = 0;
  protected:
   explicit ExecutionEngine(const ComputationGraph& cg) : cg(cg) {}
@@ -26,7 +26,7 @@ class SimpleExecutionEngine : public ExecutionEngine {
   const Tensor& forward() override;
   const Tensor& incremental_forward() override;  // if you want to add nodes and evaluate just the new parts
   const Tensor& incremental_forward(VariableIndex i) override;  // if you want to add nodes and evaluate just the new parts
-  const Tensor& get_value(VariableIndex i) override; 
+  const Tensor& get_value(VariableIndex i) override;
   void backward() override;
  private:
   std::vector<Tensor> nfxs;

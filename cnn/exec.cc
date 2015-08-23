@@ -54,7 +54,7 @@ const Tensor& SimpleExecutionEngine::incremental_forward(VariableIndex node_max_
       abort();
     }
     void* aux_mem = nullptr;
-    size_t aux_size = node->aux_storage_size(); 
+    size_t aux_size = node->aux_storage_size();
     if (aux_size) {
       aux_mem = fxs->allocate(aux_size);
       if (!aux_mem) {
