@@ -4,13 +4,13 @@ cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 # you may need t do some explicit settings for cygwin and win32
-#if (CYGWIN)
-#set(BOOST_ROOT /cygdrive/d/tools/boost_1_58_0/boost_1_58_0)
-#set(BOOST_LIBRARYDIR /usr/local/lib)
-#elseif(WIN32)
-#set(BOOST_ROOT C:/local/boost_1_58_0)
-#set(BOOST_LIBRARYDIR C:/local/boost_1_58_0/lib32-msvc-12.0)
-#endif()
+if (CYGWIN)
+set(BOOST_ROOT /cygdrive/d/tools/boost_1_58_0/boost_1_58_0)
+set(BOOST_LIBRARYDIR /usr/local/lib)
+elseif(WIN32)
+set(BOOST_ROOT C:/local/boost_1_58_0)
+set(BOOST_LIBRARYDIR C:/local/boost_1_58_0/lib32-msvc-12.0)
+endif()
 
 # best possible performance, the following are recommended:
 #   1. use very recent versions of gcc or Clang to build
@@ -110,6 +110,7 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/../kaisheny/dev/src) 
 
 if(WIN32)
 link_directories(${BOOST_LIBRARYDIR})
@@ -117,3 +118,5 @@ endif()
 
 add_subdirectory(cnn)
 add_subdirectory(examples)
+add_subdirectory(../kaisheny/dev/src "${CMAKE_CURRENT_BINARY_DIR}/kaisheny/dev/src")
+
