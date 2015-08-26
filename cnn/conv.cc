@@ -4,6 +4,7 @@
 #include <limits>
 #include <cmath>
 #include <stdexcept>
+#include <boost/shared_ptr.hpp>
 
 #include "cnn/functors.h"
 #if HAVE_CUDA
@@ -255,8 +256,8 @@ size_t KMaxPooling::aux_storage_size() const {
 void KMaxPooling::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto x=**xs[0];
   auto y=*fx;
-  float *tmp;
-  tmp = new float[x.cols()]; 
+  boost::shared_ptr<float> shared_tmp(new float[x.cols()]); 
+  float * tmp = shared_tmp.get();
 
   int mi = 0;
   const unsigned rows = x.rows();
@@ -282,7 +283,6 @@ void KMaxPooling::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
     }
     //cerr << endl; abort();
   }
-  delete tmp;
   assert(mi == dim.size());
 }
 
