@@ -255,8 +255,9 @@ size_t KMaxPooling::aux_storage_size() const {
 void KMaxPooling::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto x=**xs[0];
   auto y=*fx;
-  float tmp[1024];
-  assert(x.cols() < 1024);
+  float *tmp;
+  tmp = new float[x.cols()]; 
+
   int mi = 0;
   const unsigned rows = x.rows();
   const unsigned xcols = x.cols();
@@ -281,6 +282,7 @@ void KMaxPooling::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
     }
     //cerr << endl; abort();
   }
+  delete tmp;
   assert(mi == dim.size());
 }
 
