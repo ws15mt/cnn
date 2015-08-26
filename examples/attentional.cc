@@ -91,7 +91,7 @@ int main(int argc, char** argv) {
     }
     notify(vm);
     
-    if (vm.count("help") || vm.count("train") != 1 || (vm.count("devel") != 1 && (vm.count("test") != 1 && vm.count("kbest") != 1 && vm.count("testcorpus") != 1))) 
+    if (vm.count("help") || (vm.count("train") != 1 && (vm.count("readsrcdict") == 0 || vm.count("readtgtdict") == 0)) || (vm.count("devel") != 1 && (vm.count("test") != 1 && vm.count("kbest") != 1 && vm.count("testcorpus") != 1))) 
     {
         cout << opts << "\n";
         return 1;
