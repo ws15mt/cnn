@@ -34,9 +34,9 @@ namespace cnn {
 inline std::pair<int,int> SizeToBlockThreadPair(int n) {
   assert(n);
   int logn;
-  asm("\tbsr %1, %0\n"
-      : "=r"(logn)
-      : "r" (n-1));
+///  asm("\tbsr %1, %0\n"
+///      : "=r"(logn)
+///      : "r" (n-1));
   logn = logn > 9 ? 9 : (logn < 4 ? 4 : logn);
   ++logn;
   int threads = 1 << logn;

@@ -10,6 +10,10 @@ set(BOOST_LIBRARYDIR /usr/local/lib)
 elseif(WIN32)
 set(BOOST_ROOT C:/local/boost_1_58_0)
 set(BOOST_LIBRARYDIR C:/local/boost_1_58_0/lib32-msvc-12.0)
+set(CUDNN_INCLUDE_DIRS c:/tools/cuda/include)
+set(CUDNN_ROOT c:/toosl/cuda)
+set(CUDA_cublas_LIBRARY c:/tools/cuda/lib/x64)
+set(BACKEND cuda)
 endif()
 
 # best possible performance, the following are recommended:

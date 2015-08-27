@@ -23,6 +23,9 @@ In `src`, you need to first use [`cmake`](http://www.cmake.org/) to generate the
     cd build
     cmake .. -DEIGEN3_INCLUDE_DIR=/path/to/eigen
 
+For CUDA-enabled backend, use the following to build
+    cmake .. -BACKEND=cuda
+
 Then to compile, run
 
     make -j 2
