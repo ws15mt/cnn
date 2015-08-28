@@ -27,10 +27,12 @@ namespace cnn {
 template <class Builder>
 struct CxtEncDecModel{
     explicit CxtEncDecModel(Model& model,
-        unsigned vocab_size_src, unsigned vocab_size_tgt, unsigned layers,
+        unsigned vocab_size_src, unsigned layers,
         unsigned hidden_dim, unsigned hidden_replicates); 
 
     ~CxtEncDecModel();
+
+    void reset(ComputationGraph & cg);
 
     Expression build_graph(const std::vector<int> &source, const std::vector<int>& target,
         ComputationGraph& cg);
@@ -43,7 +45,6 @@ struct CxtEncDecModel{
     std::vector<int> sample(const std::vector<int> &source, ComputationGraph& cg, Dict &tdict);
 
     LookupParameters* p_cs;
-    LookupParameters* p_ct;
     std::vector<Parameters*> p_h0;
     Parameters* p_bias; 
     Parameters* p_R;  // for affine transformation after decoder
@@ -52,7 +53,7 @@ struct CxtEncDecModel{
     Builder decoder;  // for decoder
     Builder encoder_fwd, encoder_bwd; /// for encoder
     Builder context; // for contexter
-    int vocab_size_tgt;
+    int vocab_size;
 
     std::vector<float> *auxiliary_vector(); // memory management
 
@@ -67,17 +68,15 @@ struct CxtEncDecModel{
 
 template <class Builder>
 CxtEncDecModel<Builder>::CxtEncDecModel(cnn::Model& model,
-    unsigned vocab_size_src, unsigned _vocab_size_tgt, unsigned layers, unsigned hidden_dim, unsigned hidden_replicates)
+    unsigned vocab_size_src, unsigned layers, unsigned hidden_dim, unsigned hidden_replicates)
     : layers(layers), decoder(layers, hidden_dim, hidden_dim, &model),
     encoder_fwd(layers, hidden_dim, hidden_dim, &model),
     encoder_bwd(layers, hidden_dim, hidden_dim, &model),
-    context(1, 2 * hidden_dim, hidden_dim, &model),
-    vocab_size_tgt(_vocab_size_tgt)
+    context(1, 2 * hidden_dim, hidden_dim, &model), vocab_size(vocab_size_src)
 {
     p_cs = model.add_lookup_parameters(long(vocab_size_src), {long(hidden_dim)}); 
-    p_ct = model.add_lookup_parameters(vocab_size_tgt, {long(hidden_dim)}); 
-    p_R = model.add_parameters({long(vocab_size_tgt), long(hidden_dim)});
-    p_bias = model.add_parameters({ long(vocab_size_tgt) });
+    p_R = model.add_parameters({long(vocab_size), long(hidden_dim)});
+    p_bias = model.add_parameters({ long(vocab_size) });
     p_bias_cxt = model.add_parameters({ long(hidden_dim * hidden_replicates) });
     p_bias_cxt->reset_to_zero();
 
@@ -93,6 +92,14 @@ CxtEncDecModel<Builder>::CxtEncDecModel(cnn::Model& model,
 template <class Builder>
 CxtEncDecModel<Builder>::~CxtEncDecModel()
 {
+}
+
+template<class Builder>
+void CxtEncDecModel<Builder>::reset(ComputationGraph & cg)
+{
+    i_h0.clear(); /// clear context history
+    context.new_graph(cg);
+    context.start_new_sequence();
 }
 
 template <class Builder>
@@ -125,9 +132,6 @@ Expression CxtEncDecModel<Builder>::build_graph(const std::vector<int> &source, 
 
     Expression q_m = concatenate(to);
 
-    context.new_graph(cg);
-
-    context.start_new_sequence();
     context.add_input(q_m);
     cg.incremental_forward();
 
@@ -166,7 +170,7 @@ Expression CxtEncDecModel<Builder>::build_graph(const std::vector<int> &source, 
 
     const unsigned oslen = osent.size() - 1;
     for (unsigned t = 0; t < oslen; ++t) {
-        Expression i_x_t = lookup(cg, p_ct, osent[t]);
+        Expression i_x_t = lookup(cg, p_cs, osent[t]);
         Expression i_y_t = decoder.add_input(i_x_t);
         Expression i_r_t = i_bias + i_R * i_y_t;
         Expression i_ydist = log_softmax(i_r_t);
