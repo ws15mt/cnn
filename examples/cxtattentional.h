@@ -49,10 +49,8 @@ struct CxtAttentionalModel{
 
     LookupParameters* p_cs;
     std::vector<Parameters*> p_h0;
-    Parameters* p_bias; 
+    Parameters* p_bias;
     Parameters* p_R;
-    Parameters* p_P;
-    Parameters* p_Q;
     Parameters* p_Ua;  // for alignment
     Parameters* p_ba;  
     Parameters* p_Wa;
@@ -72,6 +70,8 @@ struct CxtAttentionalModel{
     Expression src;
     Expression i_sm0;  // the first input to decoder, even before observed
     Expression i_uax; 
+    Expression i_R;
+    Expression i_bias;
 
     std::vector<Expression> i_h0;  // for target even history
     Expression i_src_idx;
@@ -88,10 +88,8 @@ CxtAttentionalModel<Builder>::CxtAttentionalModel(cnn::Model& model,
     encoder_bwd(layers, hidden_dim, hidden_dim, &model),
     context(1, 2 * hidden_dim, hidden_dim, &model), vocab_size(vocab_size_src)
 {
-    p_cs = model.add_lookup_parameters(long(vocab_size_src), {long(hidden_dim)}); 
-    p_R = model.add_parameters({ long(vocab_size), long(hidden_dim) });
-    p_P = model.add_parameters({ long(hidden_dim), long(hidden_dim) });
-    p_Q = model.add_parameters({ long(hidden_dim), long(hidden_dim * hidden_replicates) });
+    p_cs = model.add_lookup_parameters(long(vocab_size_src), { long(hidden_dim) });
+    p_R = model.add_parameters({long(vocab_size), long(hidden_dim) });
     p_bias = model.add_parameters({ long(vocab_size) });
     p_bias_cxt = model.add_parameters({ long(hidden_dim * hidden_replicates) });
     p_bias_cxt->reset_to_zero();
@@ -126,6 +124,9 @@ void CxtAttentionalModel<Builder>::reset(ComputationGraph & cg)
     }
     i_h0.push_back(concatenate(sm));
     
+    i_bias = parameter(cg, p_bias);
+    i_R = parameter(cg, p_R);
+
     context.new_graph(cg);
     context.start_new_sequence();
 }
@@ -196,8 +197,10 @@ Expression CxtAttentionalModel<Builder>::build_graph(const std::vector<int> &sou
     const unsigned oslen = osent.size() - 1;
     for (unsigned t = 0; t < oslen; ++t) {
         Expression i_y_t = add_input(osent[t], cg);
-        Expression i_ydist = log_softmax(i_y_t);
+        Expression i_r_t = i_bias + i_R * i_y_t;
+        Expression i_ydist = log_softmax(i_r_t);
         errs.push_back(pick(i_ydist, osent[t + 1]));
+        cg.incremental_forward();
     }
 
     Expression i_nerr = sum(errs);
@@ -209,11 +212,7 @@ template<class Builder>
 Expression CxtAttentionalModel<Builder>::add_input(int trg_tok, ComputationGraph &cg)
 {
     Expression i_r_t;
-    Expression i_bias = parameter(cg, p_bias);
-    Expression i_P = parameter(cg, p_P);
-    Expression i_Q = parameter(cg, p_Q);
     Expression i_va = parameter(cg, p_va);
-    Expression i_R = parameter(cg, p_R);
     Expression i_Wa = parameter(cg, p_Wa);
 
     slen = i_h0.size();
@@ -238,12 +237,7 @@ Expression CxtAttentionalModel<Builder>::add_input(int trg_tok, ComputationGraph
 
     Expression i_y_t = decoder.add_input(input);
 
-    // Bahdanau does a max-out thing here; I do a tanh. Tomaatos tomateos. 
-    Expression i_tildet_t = tanh(affine_transform({ i_y_t, i_Q, i_c_t, i_P, i_x_t }));
-
-    i_r_t = affine_transform({ i_bias, i_R, i_tildet_t });
-
-    return i_r_t;
+    return i_y_t;
 }
 
 template <class Builder>
