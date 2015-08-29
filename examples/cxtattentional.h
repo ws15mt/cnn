@@ -38,10 +38,10 @@ struct CxtAttentionalModel{
     Expression build_graph(const std::vector<int> &source, const std::vector<int>& target,
         ComputationGraph& cg);
     
+    void start_new_instance(const std::vector<int> &source, ComputationGraph& cg);
     Expression add_input(int trg_tok, ComputationGraph &cg);
 
-    std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, 
-            int beam_width, Dict &tdict);
+    std::vector<int> decoder_greedy_search(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict &tdict);
 
     std::vector<int> beam_decode(const std::vector<int> &source, ComputationGraph& cg, int beam_width, Dict &tdict);
     
@@ -134,62 +134,7 @@ void CxtAttentionalModel<Builder>::reset(ComputationGraph & cg)
 template <class Builder>
 Expression CxtAttentionalModel<Builder>::build_graph(const std::vector<int> &source, const std::vector<int>& osent, ComputationGraph &cg)
 {
-    std::vector<Expression> source_embeddings;
-
-    encoder_fwd.new_graph(cg);
-    encoder_fwd.start_new_sequence();
-    encoder_bwd.new_graph(cg);
-    encoder_bwd.start_new_sequence();
-    for (int t = 0; t < source.size(); ++t) {
-        Expression i_x_t = lookup(cg, p_cs, source[t]);
-        encoder_fwd.add_input(i_x_t);
-    }
-    for (int t = source.size() - 1; t >= 0; --t) {
-        Expression i_x_t = lookup(cg, p_cs, source[t]);
-        encoder_bwd.add_input(i_x_t);
-    }
-
-    cg.incremental_forward();
-
-    /// for contet
-    vector<Expression> to;
-    /// get the top output
-    to.push_back(encoder_fwd.final_h()[layers - 1]);
-    to.push_back(encoder_bwd.final_h()[layers - 1]);
-
-    Expression q_m = concatenate(to);
-
-    context.add_input(q_m);
-    cg.incremental_forward();
-
-    // now for the target sentence
-    Expression i_bias_cxt = parameter(cg, p_bias_cxt);
-
-    vector<Expression> oein1, oein2;
-    vector<Expression> d_m;
-    size_t i = 0;
-    for (const auto & p : context.final_s())
-    {
-        Expression subvec = p + pickrange(i_bias_cxt, i * HIDDEN_DIM, (i + 1)*HIDDEN_DIM);
-        for (int i = 0; i < LAYERS; i++)
-        {
-            oein1.push_back(subvec);
-            oein2.push_back(tanh(subvec));
-        }
-
-        i++;
-    }
-    for (int i = 0; i < LAYERS; ++i) d_m.push_back(oein1[i]);
-    for (int i = 0; i < LAYERS; ++i) d_m.push_back(oein2[i]);
-
-    decoder.new_graph(cg);
-    decoder.start_new_sequence(d_m);
-
-    // context history
-    i_h0.push_back(concatenate(context.final_s()));
-    history = concatenate_cols(i_h0);
-    Expression i_Ua = parameter(cg, p_Ua);
-    i_uax = i_Ua * history;
+    start_new_instance(source, cg);
 
     // decoder
     vector<Expression> errs;
@@ -249,11 +194,72 @@ std::vector<float>* CxtAttentionalModel<Builder>::auxiliary_vector()
     return aux_vecs[num_aux_vecs++];
 }
 
+/// greedy search
+template <class Builder>
+void CxtAttentionalModel<Builder>::start_new_instance(const std::vector<int> &source, ComputationGraph& cg)
+{
+    std::vector<Expression> source_embeddings;
+
+    encoder_fwd.new_graph(cg);
+    encoder_fwd.start_new_sequence();
+    encoder_bwd.new_graph(cg);
+    encoder_bwd.start_new_sequence();
+    for (int t = 0; t < source.size(); ++t) {
+        Expression i_x_t = lookup(cg, p_cs, source[t]);
+        encoder_fwd.add_input(i_x_t);
+    }
+    for (int t = source.size() - 1; t >= 0; --t) {
+        Expression i_x_t = lookup(cg, p_cs, source[t]);
+        encoder_bwd.add_input(i_x_t);
+    }
+
+    cg.incremental_forward();
+
+    /// for contet
+    vector<Expression> to;
+    /// get the top output
+    to.push_back(encoder_fwd.final_h()[layers - 1]);
+    to.push_back(encoder_bwd.final_h()[layers - 1]);
+
+    Expression q_m = concatenate(to);
+
+    context.add_input(q_m);
+    cg.incremental_forward();
+
+    // now for the target sentence
+    Expression i_bias_cxt = parameter(cg, p_bias_cxt);
+
+    vector<Expression> oein1, oein2;
+    vector<Expression> d_m;
+    size_t i = 0;
+    for (const auto & p : context.final_s())
+    {
+        Expression subvec = p + pickrange(i_bias_cxt, i * HIDDEN_DIM, (i + 1)*HIDDEN_DIM);
+        for (int i = 0; i < LAYERS; i++)
+        {
+            oein1.push_back(subvec);
+            oein2.push_back(tanh(subvec));
+        }
+
+        i++;
+    }
+    for (int i = 0; i < LAYERS; ++i) d_m.push_back(oein1[i]);
+    for (int i = 0; i < LAYERS; ++i) d_m.push_back(oein2[i]);
+
+    // context history
+    i_h0.push_back(concatenate(context.final_s()));
+    history = concatenate_cols(i_h0);
+    Expression i_Ua = parameter(cg, p_Ua);
+    i_uax = i_Ua * history;
+
+    decoder.new_graph(cg);
+    decoder.start_new_sequence(d_m);
+}
+
 template <class Builder>
 std::vector<int>
-CxtAttentionalModel<Builder>::decode(const std::vector<int> &source, ComputationGraph& cg, int beam_width, cnn::Dict &tdict)
+CxtAttentionalModel<Builder>::decoder_greedy_search(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict &tdict)
 {
-    assert(beam_width == 1); // beam search not implemented 
     const int sos_sym = tdict.Convert("<s>");
     const int eos_sym = tdict.Convert("</s>");
 
@@ -263,9 +269,11 @@ CxtAttentionalModel<Builder>::decode(const std::vector<int> &source, Computation
     std::cerr << tdict.Convert(target.back());
     int t = 0;
     start_new_instance(source, cg);
+
     while (target.back() != eos_sym) 
     {
-        Expression i_scores = add_input(target.back(), t, cg);
+        Expression i_y_t = add_input(target.back(), cg);
+        Expression i_scores = i_bias + i_R * i_y_t;
         Expression ydist = softmax(i_scores); // compiler warning, but see below
 
         // find the argmax next word (greedy)
