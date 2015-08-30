@@ -7,9 +7,10 @@ set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 if (CYGWIN)
 set(BOOST_ROOT /cygdrive/d/tools/boost_1_58_0/boost_1_58_0)
 set(BOOST_LIBRARYDIR /usr/local/lib)
-elseif(WIN32)
+else()
+REM only support x64, because some program requires larger memory than win32 supports
 set(BOOST_ROOT C:/local/boost_1_58_0)
-set(BOOST_LIBRARYDIR C:/local/boost_1_58_0/lib32-msvc-12.0)
+set(BOOST_LIBRARYDIR C:/local/boost_1_58_0/lib64-msvc-12.0)
 endif()
 
 # best possible performance, the following are recommended:
@@ -18,8 +19,8 @@ endif()
 #   3. try compiler options like -march=native or other architecture
 #      flags (the compiler does not always make the best configuration
 #      decisions without help)
-if (WIN32)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -funroll-loops -Wall -std=c++11 -Ofast -g -DEIGEN_FAST_MATH")
+if (WIN32 OR WIN64)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -funroll-loops -Wall -std=c++11 -Ofast -g -DEIGEN_FAST_MATH -march=native")
 else()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -funroll-loops -Wall -std=c++11 -Ofast -g -DEIGEN_FAST_MATH -Wno-unused-local-typedefs -march=native")
 endif()
@@ -54,7 +55,7 @@ if(DEFINED ENV{BOOST_ROOT})
   set(Boost_NO_SYSTEM_PATHS ON)
 endif()
 
-if (CYGWIN OR WIN32)
+if (CYGWIN OR WIN32 OR WIN64)
 set(Boost_REALPATH OFF)
 else()
 set(Boost_REALPATH ON)
@@ -110,13 +111,13 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories(${CMAKE_CURRENT_BINARY_DIR}/../kaisheny/dev/src) 
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/../quartzin/src/cnn)
 
-if(WIN32)
+if(WIN32 OR WIN64)
 link_directories(${BOOST_LIBRARYDIR})
 endif()
 
 add_subdirectory(cnn)
 add_subdirectory(examples)
-add_subdirectory(../kaisheny/dev/src "${CMAKE_CURRENT_BINARY_DIR}/kaisheny/dev/src")
+add_subdirectory(../quartzin/src/cnn "${CMAKE_CURRENT_BINARY_DIR}/quartzin/src")
 
