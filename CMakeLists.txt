@@ -8,7 +8,7 @@ if (CYGWIN)
 set(BOOST_ROOT /cygdrive/d/tools/boost_1_58_0/boost_1_58_0)
 set(BOOST_LIBRARYDIR /usr/local/lib)
 else()
-REM only support x64, because some program requires larger memory than win32 supports
+# only support x64, because some program requires larger memory than win32 supports
 set(BOOST_ROOT C:/local/boost_1_58_0)
 set(BOOST_LIBRARYDIR C:/local/boost_1_58_0/lib64-msvc-12.0)
 endif()
