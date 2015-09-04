@@ -135,7 +135,7 @@ sgd.update(1.0);
 
 Note that this very simple example that doesn't cover things like memory initialization, reading/writing models, recurrent/LSTM networks, or adding biases to functions. The best way to get an idea of how to use cnn for real is to look in the `example` directory, particularly starting with the simplest `xor` example.
 
-# Others
+#### Others
 
 Kaisheng Yao is mainly working on Windows machine. So this setup on this homepage should work on Windows. If you have any questions, please send email to 
 
