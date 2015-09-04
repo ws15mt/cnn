@@ -35,23 +35,47 @@ void CheckGrad(Model& m, ComputationGraph& g) {
     Parameters& p = *pp;
     size_t ts = p.dim.size();
     for (size_t i = 0; i < ts; ++i) {
-      float old = p.values.v[i];
-      p.values.v[i] = old - alpha;
+        float old, newval;
+#if HAVE_CUDA
+        cudaMemcpy(&old, &p.values.v[i], sizeof(float), cudaMemcpyDeviceToHost);
+#else
+      old = p.values.v[i];
+#endif
+
+      newval = old - alpha;
+#if HAVE_CUDA
+      cudaMemcpy(&p.values.v[i], &newval, sizeof(float), cudaMemcpyHostToDevice);
+#else
+      p.values.v[i] = newval;
+#endif
       float E_left = as_scalar(g.forward());
 
-      p.values.v[i] = old + alpha;
+      newval = old + alpha;
+#if HAVE_CUDA
+      cudaMemcpy(&p.values.v[i] , &newval, sizeof(float), cudaMemcpyHostToDevice);
+#else
+      p.values.v[i] = newval;
+#endif
       float E_right = as_scalar(g.forward());
-      float g = (E_right - E_left) / (2 * alpha);
-      float threshold = (float)pow(10.0,
-          max((float)0.0, ceil(log10(min(fabs(g), fabs(p.g.v[i]))))) - (int)GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL);
-      float diff = fabs(g - p.g.v[i]);
+      float g = (E_right - E_left) / (2*alpha);
+
+      float threshold;
+      float grd;
+#if HAVE_CUDA
+      cudaMemcpy(&grd, &p.g.v[i], sizeof(float), cudaMemcpyDeviceToHost);
+#else
+      grd = p.g.v[i];
+#endif
+      threshold = (float)pow(10.0,
+          max((float)0.0, ceil(log10(min(fabs(g), fabs(grd))))) - (int)GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL);
+      float diff = fabs(g - grd);
       bool wrong = (std::isnan(diff) || diff > threshold);
         
       if (wrong)
       {
           flag = true; cerr << "***[" << diff << "] ";
+          cerr << grd << ' ' << g << endl;
       }
-      cerr << p.g.v[i] << ' ' << g << endl;
     }
   }
 

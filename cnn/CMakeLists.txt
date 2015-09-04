@@ -88,7 +88,12 @@ file(GLOB TEST_SRCS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tests/*.cc)
 #endforeach(test_src)
 
 # actual target:
+if(WITH_CUDA_BACKEND)
+add_library(cnn STATIC ${cnn_library_SRCS} ${cnn_library_HDRS} ${LIBS})
+else()
 add_library(cnn ${cnn_library_SRCS} ${cnn_library_HDRS} ${LIBS})
+endif(WITH_CUDA_BACKEND)
+
 #add_library(cnn SHARED ${cnn_library_SRCS} ${cnn_library_HDRS} ${LIBS})
 if(WITH_CUDA_BACKEND)
   set(CUDA_SEPARABLE_COMPILATION ON)
