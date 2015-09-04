@@ -74,7 +74,9 @@ Build using
 
     cmake .. -G"Visual Studio 12 Win64" -DBACKEND=cuda -DEIGEN3_INCLUDE_DIR=/path/to/eigen -DCUDAROOT=/path/to/cuda
 
-e.g., cmake .. -G"Visual Studio 12 Win64" -DCUDAROOT=d:\tools\cuda -DEIGEN3_INCLUDE_DIR=d:\tools\eigen\eigen-eigen-a64c945a8fb7 -DBACKEND=cuda
+e.g., 
+
+    cmake .. -G"Visual Studio 12 Win64" -DCUDAROOT=d:\tools\cuda -DEIGEN3_INCLUDE_DIR=d:\tools\eigen\eigen-eigen-a64c945a8fb7 -DBACKEND=cuda
 
 Only release mode is supported for CUDA. Other modes such as Debug and RelWithDebug have compilation errors. 
 
