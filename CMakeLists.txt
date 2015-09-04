@@ -45,8 +45,8 @@ endif()
 if (CYGWIN OR UNIX OR LINUX)
 find_package(Boost COMPONENTS program_options serialization REQUIRED)
 endif()
-include_directories(${Boost_INCLUDE_DIR})
-set(LIBS ${LIBS} ${Boost_LIBRARIES})
+include_directories(${BOOST_ROOT})
+set(LIBS ${LIBS} ${BOOST_LIBRARYDIR})
 if (WIN32 OR WIN64)
 find_package(Boost COMPONENTS program_options serialization REQUIRED)
 endif()
@@ -104,9 +104,7 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake ${CMAKE_CURRENT_BINARY
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 #include_directories(${CMAKE_CURRENT_BINARY_DIR}/../quartzin/src/cnn)
 
-if(WIN32 OR WIN64)
 link_directories(${BOOST_LIBRARYDIR})
-endif()
 
 
 add_subdirectory(cnn)
