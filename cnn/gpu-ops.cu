@@ -2,12 +2,54 @@
 #include "cnn/gpu-ops.h"
 #include "cnn/gpu-kernels.h"
 #include "cnn/functors.h"
+#include <thrust/version.h>
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+#include <thrust/execution_policy.h>
 
 namespace cnn {
 namespace gpu {
 
 // this wraps kernel dispatches for various operations (preventing us from
 // having to compile a version of nodes.cc with NVCC)
+
+struct scale_functor
+{
+    const float a;
+
+    scale_functor(float _a) : a(_a) {}
+
+    __host__ __device__
+        float operator()(const float& x) const
+    {
+        return a * x;
+    }
+};
+
+struct saxpy_functor
+{
+    const float a;
+
+    saxpy_functor(float _a) : a(_a) {}
+
+    __host__ __device__
+        float operator()(const float& x, const float& y) const
+    {
+        return a * x + y;
+    }
+};
+
+void saxpy_fast(float A, thrust::device_vector<float>& X, thrust::device_vector<float>& Y)
+{
+    // Y <- A * X + Y
+    thrust::transform(X.begin(), X.end(), Y.begin(), Y.begin(), saxpy_functor(A));
+}
+
+void set_to_value_of(int n, float* x0, float val) {
+    thrust::device_ptr<float> dev_ptr = thrust::device_pointer_cast(x0);
+    thrust::fill(thrust::device, dev_ptr, dev_ptr + n, val);
+}
+
 
 void vpairwise_rank_loss(int n, float margin, const float* xgood, const float* xbad, float* y) {
   auto tb = SizeToBlockThreadPair(n);
@@ -33,9 +75,29 @@ void vcwise_product_backward(int n, const float* dEdy, const float* x_other, flo
   accBinaryExprKernel<<<tb.first, tb.second>>>(n, dEdy, x_other, dEdx, FProduct());
 }
 
+void vcwise_quotient(int n, const float* x0, const float* x1, float* y) {
+    auto tb = SizeToBlockThreadPair(n);
+    binaryExprKernel << <tb.first, tb.second >> >(n, x0, x1, y, FQuotient());
+}
+
+void vcwise_quotient_backward(int n, const float* dEdy, const float* x_other, float* dEdx) {
+    auto tb = SizeToBlockThreadPair(n);
+    accBinaryExprKernel << <tb.first, tb.second >> >(n, dEdy, x_other, dEdx, FQuotient());
+}
+
 void vconstant_minusx(int n, float c, const float* x, float* y) {
   auto tb = SizeToBlockThreadPair(n);
   unaryExprKernel<<<tb.first, tb.second>>>(n, x, y, FConstantMinus(c));
+}
+
+void vexp(int n, const float* x, float* y) {
+    auto tb = SizeToBlockThreadPair(n);
+    unaryExprKernel << <tb.first, tb.second >> >(n, x, y, FExp());
+}
+
+void vlog(int n, const float* x, float* y) {
+    auto tb = SizeToBlockThreadPair(n);
+    unaryExprKernel << <tb.first, tb.second >> >(n, x, y, FLog());
 }
 
 void vnegate(int n, const float* x, float* y) {
@@ -211,6 +273,22 @@ void softmax_backward(int n, const float* fx, const float* dEdf, float* dEdx) {
   cudaMemcpy(&ods, gpu_ods, sizeof(float), cudaMemcpyDeviceToHost);
   cudaFree(gpu_ods);
   accBinaryExprKernel<<<tb.first, tb.second>>>(n, fx, dEdf, dEdx, FSoftmaxBackward(-ods));
+}
+
+void logsoftmax_backward(int n, const float* fx, const float* dEdf, float* dEdx) 
+{
+    /*
+    float off_diag_sum = -(*fx).binaryExpr(*dEdf, FWeightedError()).sum();
+    *dEdxi += (*fx).binaryExpr(*dEdf, FLogSoftmaxBackward(off_diag_sum));
+    */
+    thrust::device_ptr<float> dp = thrust::device_pointer_cast((float*)fx);
+    thrust::device_ptr<float> de = thrust::device_pointer_cast((float*)dEdf);
+    thrust::device_ptr<float> dr = thrust::device_pointer_cast(dEdx);
+    thrust::device_vector<float> dtemp(n);
+    thrust::transform(dp, dp + n, de, dtemp.begin(), FWeightedError());
+    float off_diag_sum  = - thrust::reduce(dtemp.begin(), dtemp.end());
+    thrust::transform(dp, dp + n, de, dtemp.begin(), FLogSoftmaxBackward(off_diag_sum)); 
+    thrust::transform(dtemp.begin(), dtemp.end(), dr, dr, thrust::plus<float>());
 }
 
 // adapted from NVIDIA example

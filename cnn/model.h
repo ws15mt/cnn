@@ -122,8 +122,8 @@ class Model {
  private:
   friend class boost::serialization::access;
   template<class Archive>
-  void save(Archive& ar, const unsigned int) const {
-    int np = params.size();
+  void save(Archive& ar, const unsigned int version) const {
+      int np = params.size();
     int nlp = lookup_params.size();
     ar & np;
     ar & nlp;
@@ -133,7 +133,7 @@ class Model {
       ar & *lookup_params[i];
   }
   template<class Archive>
-  void load(Archive& ar, const unsigned int) {
+  void load(Archive& ar, const unsigned int version) {
     int np, nlp;
     ar & np;
     ar & nlp;

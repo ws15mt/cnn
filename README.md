@@ -7,9 +7,6 @@ You need the [development version of the Eigen library](https://bitbucket.org/ei
 
     Assertion failed: (false && "heap allocation is forbidden (EIGEN_NO_MALLOC is defined)"), function check_that_malloc_is_allowed, file /Users/cdyer/software/eigen-eigen-10219c95fe65/Eigen/src/Core/util/Memory.h, line 188.
 
-For windows, you need to have prebuild Boost library downloaded from 
-http://boost.teeks99.com/
-
 #### Building
 
 First you need to fetch the dependent libraries
@@ -22,9 +19,6 @@ In `src`, you need to first use [`cmake`](http://www.cmake.org/) to generate the
     mkdir build
     cd build
     cmake .. -DEIGEN3_INCLUDE_DIR=/path/to/eigen
-
-For CUDA-enabled backend, use the following to build
-    cmake .. -BACKEND=cuda
 
 Then to compile, run
 
@@ -49,6 +43,37 @@ both `Eigen` and `cnn`.
     cd build
     cmake .. -DEIGEN3_INCLUDE_DIR=../eigen
     make -j 2
+
+#### Building on Windows
+
+For windows, you need to have prebuild Boost library downloaded from 
+http://boost.teeks99.com/
+
+##### Using Eigen as the backend
+   
+This would be the same procedure as above, except that we build a x64 system. The following builds a x64 system for Visual Studio 2013. 
+
+    cmake .. -G"Visual Studio 12 Win64" -DEIGEN3_INCLUDE_DIR=/path/to/eigen
+
+For other versions of Visual Studio, substitute 12 with corresponding version number, such as 11 for Visual Studio 2012. 
+
+To build a win32 system, no need to include -G"Visual Studio 12 Win64". 
+
+##### CUDA-enabled backend on Windows
+
+On windows need to first create a symbolic link to CUDA, e.g., 
+
+    mklink /D d:\tools\cuda "c:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.0"
+    
+Make sure that CMakeLists.txt have the right cuda directories -DCUDAROOT=/path/to/cuda, and in this case is d:\tools\cuda
+
+Build using
+
+    cmake .. -G"Visual Studio 12 Win64" -DBACKEND=cuda -DEIGEN3_INCLUDE_DIR=/path/to/eigen -DCUDAROOT=/path/to/cuda
+
+e.g., cmake .. -G"Visual Studio 12 Win64" -DCUDAROOT=d:\tools\cuda -DEIGEN3_INCLUDE_DIR=d:\tools\eigen\eigen-eigen-a64c945a8fb7 -DBACKEND=cuda
+
+Only release mode is supported for CUDA. Other modes such as Debug and RelWithDebug have compilation errors. 
 
 #### Debugging
 
