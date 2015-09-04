@@ -102,7 +102,7 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories(${CMAKE_CURRENT_BINARY_DIR}/../quartzin/src/cnn)
+#include_directories(${CMAKE_CURRENT_BINARY_DIR}/../quartzin/src/cnn)
 
 if(WIN32 OR WIN64)
 link_directories(${BOOST_LIBRARYDIR})
@@ -111,5 +111,5 @@ endif()
 
 add_subdirectory(cnn)
 add_subdirectory(examples)
-add_subdirectory(../quartzin/src/cnn "${CMAKE_CURRENT_BINARY_DIR}/kaisheny/dev/src")
+#add_subdirectory(../quartzin/src/cnn "${CMAKE_CURRENT_BINARY_DIR}/kaisheny/dev/src")
 
