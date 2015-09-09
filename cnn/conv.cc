@@ -10,6 +10,10 @@
 #if HAVE_CUDA
 #include "cnn/cuda.h"
 #include "cnn/gpu-ops.h"
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h> 
+#include <thrust/transform.h> 
+#include <thrust/functional.h>
 #endif
 
 using namespace std;
@@ -31,10 +35,16 @@ Dim AddVectorToAllColumns::dim_forward(const vector<Dim>& xs) const {
 }
 
 void AddVectorToAllColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+    cerr << "addvectoallcol::forward start" << endl;
+#if HAVE_CUDA
+    gpu::addVectorToAllColumns(xs[0]->d[0] * xs[0]->d[1], xs[0]->v, xs[1]->d[0], xs[1]->v, fx.v);
+#else
   auto y = *fx;
   auto x = **xs[0];
   auto b = **xs[1];
   y = x.colwise() + b.col(0);
+#endif
+  cerr << "addvectoallcol::forward end" << endl;
 }
 
 void AddVectorToAllColumns::backward(const vector<const Tensor*>& xs,
@@ -66,6 +76,10 @@ Dim FoldRows::dim_forward(const vector<Dim>& xs) const {
 }
 
 void FoldRows::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+cerr << "foldrows :start" << endl;
+#if HAVE_CUDA
+  gpu::foldRows(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, nrows, xs[0]->d.rows() / nrows, fx.v);
+#else
   auto x = **xs[0];
   auto y = *fx;
   int orows = y.rows();
@@ -77,6 +91,8 @@ void FoldRows::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
         y.row(i) = x.row(i * nrows);
     }
   }
+#endif
+  cerr << "foldrows :end " << endl;
 }
 
 void FoldRows::backward(const vector<const Tensor*>& xs,
@@ -114,21 +130,20 @@ Dim Conv1DNarrow::dim_forward(const vector<Dim>& xs) const {
 }
 
 void Conv1DNarrow::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  // TODO this is a bad implementation- rewrite to use unsupported Eigen tensor library
-  auto x = **xs[0];  // input
-  auto f = **xs[1];  // filter
-  auto y = *fx;
-  const unsigned rows = x.rows();
-  const unsigned ycols = dim.cols();
-  const unsigned fcols = f.cols();
-  for (unsigned i = 0; i < rows; ++i) {
-    for (unsigned j = 0; j < ycols; ++j) {
-      float t = 0;
-      for (unsigned k = 0; k < fcols; ++k)
-        t += f(i, k) * x(i, j + k);
-      y(i, j) = t;
-    }
-  }
+    auto x = **xs[0];  // input
+      auto f = **xs[1];  // filter
+      auto y = *fx;
+      const unsigned rows = x.rows();
+      const unsigned ycols = dim.cols();
+      const unsigned fcols = f.cols();
+      for (unsigned i = 0; i < rows; ++i) {
+        for (unsigned j = 0; j < ycols; ++j) {
+          float t = 0;
+          for (unsigned k = 0; k < fcols; ++k)
+            t += f(i, k) * x(i, j + k);
+          y(i, j) = t;
+        }
+      }
 }
 
 void Conv1DNarrow::backward(const vector<const Tensor*>& xs,
@@ -183,20 +198,32 @@ Dim Conv1DWide::dim_forward(const vector<Dim>& xs) const {
 }
 
 void Conv1DWide::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  TensorTools::Zero(fx);
-  auto x = **xs[0];  // input
-  auto f = **xs[1];  // filter
-  auto y = *fx;
-  const unsigned rows = x.rows();
-  const unsigned xcols = x.cols();
-  const unsigned fcols = f.cols();
-  for (unsigned i = 0; i < rows; ++i) {
-    for (unsigned j = 0; j < xcols; ++j) {
-      const float xij = x(i, j);
-      for (unsigned k = 0; k < fcols; ++k)
-        y(i, j + k) += f(i, k) * xij;
+    cerr << "conv1dwide forward" << endl;
+    TensorTools::Zero(fx);
+    auto x = **xs[0];  // input
+    auto f = **xs[1];  // filter
+    auto y = *fx;
+
+#if HAVE_CUDA
+    const unsigned rows = xs[0]->d.rows();
+    const unsigned xcols = xs[0]->d.cols();
+    const unsigned fcols = f.cols();
+
+    gpu::conv1dwide(rows, xcols, xs[0]->v, rows, fcols, xs[1]->v, fx.v); 
+    cerr << "conv_1d_wide done" << endl;
+#else
+    const unsigned rows = x.rows();
+    const unsigned xcols = x.cols();
+    const unsigned fcols = f.cols();
+
+    for (unsigned i = 0; i < rows; ++i) {
+        for (unsigned j = 0; j < xcols; ++j) {
+            const float xij = x(i, j);
+            for (unsigned k = 0; k < fcols; ++k)
+                y(i, j + k) += f(i, k) * xij;
+        }
     }
-  }
+#endif
 }
 
 void Conv1DWide::backward(const vector<const Tensor*>& xs,
@@ -254,12 +281,16 @@ size_t KMaxPooling::aux_storage_size() const {
 }
 
 void KMaxPooling::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  auto x=**xs[0];
+  cerr << "kmaxpooling start " << endl;
+  int mi = 0;
+#if HAVE_CUDA
+  gpu::kMaxPooling(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, k, fx.v, static_cast<int*>(aux_mem));
+#else
+  auto x = **xs[0];
   auto y=*fx;
   boost::shared_ptr<float> shared_tmp(new float[x.cols()]); 
   float * tmp = shared_tmp.get();
 
-  int mi = 0;
   const unsigned rows = x.rows();
   const unsigned xcols = x.cols();
   int* maxmap = static_cast<int*>(aux_mem);
@@ -284,6 +315,8 @@ void KMaxPooling::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
     //cerr << endl; abort();
   }
   assert(mi == dim.size());
+#endif
+  cerr << "kmaxpooling end " << endl;
 }
 
 void KMaxPooling::backward(const vector<const Tensor*>& xs,

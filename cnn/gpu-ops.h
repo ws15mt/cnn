@@ -6,6 +6,15 @@ namespace gpu {
 
     void set_to_value_of(int n, float* x0, float val);
 
+/// for convlution networks
+    void conv1dwide(const int n, const int m, const float* xs, const int l, const int k, const float *fx, float *fy);
+
+    /// add bias
+    void addVectorToAllColumns(const int n, const float * xs, const int m, const float* fx, float *fy);
+
+    void foldRows(const int n, const int m, const float *xs, const int stride, const int orows, float *fy);
+    void kMaxPooling(const int n, const int m, const float *xs, const int k, float *fy, int* aux_mem);
+
     void vpairwise_rank_loss(int n, float margin, const float* xgood, const float* xbad, float* y);
 void vpairwise_rank_loss_backward(int n, bool d_wrt_correct, const float* fx, const float* dEdf, float* dEdx);
 void vcwise_product(int n, const float* x0, const float* x1, float* y);

@@ -320,6 +320,30 @@ struct FBinaryLogLossBackward {
   }
 };
 
+struct scale_functor
+{
+    const float a;
+
+    scale_functor(float _a) : a(_a) {}
+
+    CNN_DEVICE_FUNC inline float operator()(const float& x) const
+    {
+        return a * x;
+    }
+};
+
+struct saxpy_functor
+{
+    const float a;
+
+    saxpy_functor(float _a) : a(_a) {}
+
+    CNN_DEVICE_FUNC inline float operator()(const float& x, const float& y) const
+    {
+        return a * x + y;
+    }
+};
+
 } // namespace cnn
 
 #endif
