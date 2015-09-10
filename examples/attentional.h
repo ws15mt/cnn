@@ -42,7 +42,7 @@ struct AttentionalModel {
         ComputationGraph& cg, Expression *alignment = 0, bool usePastHitory = false, bool usePastMemory = false);
 
     vector<Expression> BuildGraphWithoutNormalization(const std::vector<int> &source,
-        const std::vector<int>& target, ComputationGraph& cg, Expression *alignment, bool usePastHistory = false, bool usePastMemory = false);
+        const std::vector<int>& target, ComputationGraph& cg, Expression *alignment = nullptr, bool usePastHistory = false, bool usePastMemory = false);
 
     void display(const std::vector<int> &source, const std::vector<int>& target,
             ComputationGraph& cg, const Expression& alignment, Dict &sd, Dict &td);
