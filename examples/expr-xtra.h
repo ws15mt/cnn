@@ -65,3 +65,31 @@ Expression leq(const Expression &expr, float value, Expression &one, float epsil
     return min(one, rectify((value + epsilon) - expr) / epsilon);
     //return rectify(1 - rectify((value + epsilon) - expr));
 }
+
+/// do forward and backward embedding
+template<class Builder>
+Expression bidirectional(const int & slen, const vector<int>& source, ComputationGraph& cg, LookupParameters* p_cs,
+    Builder & encoder_fwd, Builder& encoder_bwd)
+{
+
+    std::vector<Expression> source_embeddings;
+
+    std::vector<Expression> src_fwd(slen);
+    std::vector<Expression> src_bwd(slen);
+
+    for (int t = 0; t < source.size(); ++t) {
+        Expression i_x_t = lookup(cg, p_cs, source[t]);
+        src_fwd[t] = encoder_fwd.add_input(i_x_t);
+    }
+    for (int t = source.size() - 1; t >= 0; --t) {
+        Expression i_x_t = lookup(cg, p_cs, source[t]);
+        src_bwd[t] = encoder_bwd.add_input(i_x_t);
+    }
+
+    for (unsigned i = 0; i < slen - 1; ++i)
+        source_embeddings.push_back(concatenate(std::vector<Expression>({ src_fwd[i], src_bwd[i + 1] })));
+    source_embeddings.push_back(concatenate(std::vector<Expression>({ src_fwd[slen - 1], src_fwd[slen - 1] })));
+    Expression src = concatenate_cols(source_embeddings);
+
+    return src;
+}

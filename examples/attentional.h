@@ -177,28 +177,11 @@ void AttentionalModel<Builder>::start_new_instance(const std::vector<int> &sourc
 	        source_embeddings.push_back(lookup(cg, p_cs, source[s]));
 	    src = concatenate_cols(source_embeddings); 
     } else {
-	    std::vector<Expression> source_embeddings;
-	    // run a RNN backward and forward over the source sentence
-	    // and stack the top-level hidden states from each model as 
-	    // the representation at each position
-	    std::vector<Expression> src_fwd(slen);
 	    builder_src_fwd.new_graph(cg);
 	    builder_src_fwd.start_new_sequence();
-	    for (unsigned i = 0; i < slen; ++i) 
-	        src_fwd[i] = builder_src_fwd.add_input(lookup(cg, p_cs, source[i]));
-
-	    std::vector<Expression> src_bwd(slen);
 	    builder_src_bwd.new_graph(cg);
 	    builder_src_bwd.start_new_sequence();
-	    for (int i = slen; i > 0; --i) {
-	        // offset by one position to the right, to catch </s> and generally
-	        // not duplicate the w_t already captured in src_fwd[t]
-	        src_bwd[i-1] = builder_src_bwd.add_input(lookup(cg, p_cs, source[i]));
-	    }
-
-	    for (unsigned i = 0; i < slen; ++i) 
-	        source_embeddings.push_back(concatenate(std::vector<Expression>({src_fwd[i], src_bwd[i]})));
-	    src = concatenate_cols(source_embeddings); 
+        src = bidirectional(slen, source, cg, p_cs, builder_src_fwd, builder_src_bwd); 
     }
 
     // now for the target sentence
