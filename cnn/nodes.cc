@@ -5,11 +5,19 @@
 
 #include "cnn/functors.h"
 #if HAVE_CUDA
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+
 #include "cnn/cuda.h"
 #include "cnn/gpu-ops.h"
+#pragma comment(lib,"cublas.lib")
+/// need to include library C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.0\lib\x64 that has cublas.lib to project
+using namespace cnn::gpu;
 #endif
 
+
 using namespace std;
+
 
 // notes on implementing differentiable components
 // 1) fx can be understood as a pointer to the (preallocated) location for the result
@@ -32,6 +40,8 @@ using namespace std;
 //
 
 namespace cnn {
+
+#define NOT_IMPLEMENTED {cerr << "not implemented" << endl; abort(); }
 
 size_t Min::aux_storage_size() const {
   return dim.size() * sizeof(float);
@@ -367,7 +377,7 @@ void Sum::backward(const vector<const Tensor*>& xs,
                      Tensor& dEdxi) const {
 
 #if HAVE_CUDA
-  CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), kSCALAR_ONE, dEdf.v, 1, dEdxi.v, 1));
+    CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), kSCALAR_ONE, dEdf.v, 1, dEdxi.v, 1));
 #else
   *dEdxi += *dEdf;
 #endif
@@ -415,7 +425,7 @@ void Tanh::backward(const vector<const Tensor*>& xs,
                       unsigned i,
                       Tensor& dEdxi) const {
 #if HAVE_CUDA
-  gpu::vtanh_backward(fx.d.size(), fx.v, dEdf.v, dEdxi.v);
+    gpu::vtanh_backward(fx.d.size(), fx.v, dEdf.v, dEdxi.v);
 #else
   *dEdxi += (*fx).binaryExpr(*dEdf, FTanhBackward());
 #endif
@@ -436,8 +446,12 @@ void Square::backward(const vector<const Tensor*>& xs,
 };
 
 void Exp::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  auto x = **xs[0];
-  *fx = x.array().exp();
+#if HAVE_CUDA
+    gpu::vexp(xs[0]->d.size(), xs[0]->v, fx.v); 
+#else
+    auto x = **xs[0];
+    *fx = x.array().exp();
+#endif
 }
 
 void Exp::backward(const vector<const Tensor*>& xs,
@@ -445,21 +459,34 @@ void Exp::backward(const vector<const Tensor*>& xs,
                      const Tensor& dEdf,
                      unsigned i,
                      Tensor& dEdxi) const {
-  *dEdxi += (*dEdf).cwiseProduct(*fx);
+#if HAVE_CUDA
+    gpu::vcwise_product_backward(xs[0]->d.size(), fx.v, dEdf.v, dEdxi.v);
+#else
+    *dEdxi += (*dEdf).cwiseProduct(*fx);
+#endif
 }
 
 void Log::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  auto x = **xs[0];
-  *fx = x.array().log();
+#if HAVE_CUDA
+    gpu::vlog(xs[0]->d.size(), xs[0]->v, fx.v);
+#else
+    auto x = **xs[0];
+    *fx = x.array().log();
+#endif
 }
 
 void Log::backward(const vector<const Tensor*>& xs,
                      const Tensor& fx,
                      const Tensor& dEdf,
                      unsigned i,
-                     Tensor& dEdxi) const {
-  auto x = **xs[0];
-  *dEdxi += (*dEdf).cwiseQuotient(x);
+                     Tensor& dEdxi) const 
+{
+#if HAVE_CUDA
+    gpu::vcwise_quotient_backward(xs[0]->d.size(), fx.v, dEdf.v, dEdxi.v);
+#else
+    auto x = **xs[0];
+    *dEdxi += (*dEdf).cwiseQuotient(x);
+#endif
 }
 
 void Concatenate::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
@@ -498,7 +525,11 @@ void Concatenate::backward(const vector<const Tensor*>& xs,
 #endif
 }
 
+#ifdef HAVE_CUDA
+#define MAX_CONCAT_COLS_ARGS 512
+#else
 #define MAX_CONCAT_COLS_ARGS 8192
+#endif
 size_t ConcatenateColumns::aux_storage_size() const {
   return MAX_CONCAT_COLS_ARGS * sizeof(unsigned);
 }
@@ -506,16 +537,19 @@ size_t ConcatenateColumns::aux_storage_size() const {
 void ConcatenateColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   unsigned c = 0;
   assert(xs.size() < MAX_CONCAT_COLS_ARGS);
+  unsigned* pp = static_cast<unsigned*>(aux_mem);
   for (unsigned i = 0; i < xs.size(); ++i) {
-    static_cast<unsigned*>(aux_mem)[i] = c;
 #if HAVE_CUDA
+    CUDA_CHECK(cudaMemcpy(pp+i, &c, sizeof(unsigned), cudaMemcpyHostToDevice));
     assert(xs[i]->d.cols() == 1);
     // CUBLAS matricies are column-major, so just copy the memory
     auto & xi = *xs[i];
     const unsigned rows = xi.d.rows();
     CUDA_CHECK(cudaMemcpyAsync(&fx.v[i*rows], &xi.v[0], sizeof(float) * rows, cudaMemcpyDeviceToDevice));
+    c += xs[i]->d.cols();
 #else
-    auto xi = **xs[i];
+      static_cast<unsigned*>(aux_mem)[i] = c;
+      auto xi = **xs[i];
     int d = xi.cols();
     (*fx).middleCols(c, d) = xi;
     c += d;
@@ -529,7 +563,7 @@ void ConcatenateColumns::backward(const vector<const Tensor*>& xs,
                                     unsigned i,
                                     Tensor& dEdxi) const {
 #if HAVE_CUDA
-  const unsigned rows = dEdxi.d.rows();
+    const unsigned rows = dEdxi.d.rows();
   const unsigned begin = i*rows;
   CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows, kSCALAR_ONE, &dEdf.v[begin], 1, dEdxi.v, 1));
 #else
@@ -698,7 +732,7 @@ void Softmax::backward(const vector<const Tensor*>& xs,
                             unsigned i,
                             Tensor& dEdxi) const {
 #if HAVE_CUDA
-  gpu::softmax_backward(fx.d.size(), fx.v, dEdf.v, dEdxi.v);
+    gpu::softmax_backward(fx.d.size(), fx.v, dEdf.v, dEdxi.v);
 #else
   float off_diag_sum = -(*fx).cwiseProduct(*dEdf).sum();
   *dEdxi += (*fx).binaryExpr(*dEdf, FSoftmaxBackward(off_diag_sum));
@@ -746,8 +780,13 @@ void PickNegLogSoftmax::backward(const vector<const Tensor*>& xs,
 void LogSoftmax::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 1);
   if (xs[0]->d.cols() == 1) {
+#if HAVE_CUDA
+      gpu::softmax(xs[0]->d.size(), xs[0]->v, fx.v);
+      gpu::vlog(xs[0]->d.size(), fx.v, fx.v);
+#else
     auto x = **xs[0];
     *fx = x.unaryExpr(FLogSoftmaxNormalize(logsumexp(x)));
+#endif
   } else {
     cerr << "LogSoftmaxForward not implemented for multiple columns\n";
     abort();
@@ -760,8 +799,12 @@ void LogSoftmax::backward(const vector<const Tensor*>& xs,
                           unsigned i,
                           Tensor& dEdxi) const {
   if (xs[0]->d.cols() == 1) {
+#if HAVE_CUDA
+      gpu::logsoftmax_backward(xs[0]->d.size(), fx.v, dEdf.v, dEdxi.v);
+#else
     float off_diag_sum = -(*fx).binaryExpr(*dEdf, FWeightedError()).sum();
     *dEdxi += (*fx).binaryExpr(*dEdf, FLogSoftmaxBackward(off_diag_sum));
+#endif
   } else {
     cerr << "LogSoftmaxBackward not implemented for multiple columns\n";
     abort();
@@ -812,8 +855,12 @@ void RestrictedLogSoftmax::backward(const vector<const Tensor*>& xs,
 // y = (x_1)_{*pval}
 void PickElement::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 1);
+#if HAVE_CUDA
+  CUDA_CHECK(cudaMemcpyAsync(&fx.v[0], &xs[0]->v[*pval], sizeof(float), cudaMemcpyDeviceToDevice));
+#else
   auto x = **xs[0];
   fx.v[0] = x(*pval);
+#endif
 }
 
 // derivative is 0 in all dimensions except 1 for the selected element
@@ -823,7 +870,11 @@ void PickElement::backward(const vector<const Tensor*>& xs,
                     unsigned i,
                     Tensor& dEdxi) const {
   assert(i == 0);
+#if HAVE_CUDA
+  CUBLAS_CHECK(cublasSaxpy(cublas_handle, 1, kSCALAR_ONE, dEdf.v, 1, &dEdxi.v[*pval], 1));
+#else
   (*dEdxi)(*pval) += dEdf.v[0];
+#endif
 }
 
 // x_1 is a vector

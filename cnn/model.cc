@@ -8,6 +8,7 @@
 
 #define CNN_ALIGN 256
 #if HAVE_CUDA
+#include <thrust/version.h>
 #include "cnn/gpu-ops.h"
 #include "cnn/cuda.h"
 #endif
@@ -30,7 +31,11 @@ size_t Parameters::size() const { return dim.size(); }
 
 void Parameters::reset_to_zero()
 {
+#if HAVE_CUDA
+    gpu::set_to_value_of(values.d.size(), values.v, 0.0);
+#else
     (*values) *= 0.0;
+#endif
 }
 
 void Parameters::scale_parameters(float a) {

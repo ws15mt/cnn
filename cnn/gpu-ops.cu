@@ -2,12 +2,30 @@
 #include "cnn/gpu-ops.h"
 #include "cnn/gpu-kernels.h"
 #include "cnn/functors.h"
+#include <thrust/version.h>
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+#include <thrust/device_ptr.h>
+#include <thrust/execution_policy.h>
+#include <thrust/sort.h>
 
 namespace cnn {
 namespace gpu {
 
 // this wraps kernel dispatches for various operations (preventing us from
 // having to compile a version of nodes.cc with NVCC)
+
+void saxpy_fast(float A, thrust::device_vector<float>& X, thrust::device_vector<float>& Y)
+{
+    // Y <- A * X + Y
+    thrust::transform(X.begin(), X.end(), Y.begin(), Y.begin(), saxpy_functor(A));
+}
+
+void set_to_value_of(int n, float* x0, float val) {
+    thrust::device_ptr<float> dev_ptr = thrust::device_pointer_cast(x0);
+    thrust::fill(thrust::device, dev_ptr, dev_ptr + n, val);
+}
+
 
 void vpairwise_rank_loss(int n, float margin, const float* xgood, const float* xbad, float* y) {
   auto tb = SizeToBlockThreadPair(n);
@@ -33,9 +51,29 @@ void vcwise_product_backward(int n, const float* dEdy, const float* x_other, flo
   accBinaryExprKernel<<<tb.first, tb.second>>>(n, dEdy, x_other, dEdx, FProduct());
 }
 
+void vcwise_quotient(int n, const float* x0, const float* x1, float* y) {
+    auto tb = SizeToBlockThreadPair(n);
+    binaryExprKernel << <tb.first, tb.second >> >(n, x0, x1, y, FQuotient());
+}
+
+void vcwise_quotient_backward(int n, const float* dEdy, const float* x_other, float* dEdx) {
+    auto tb = SizeToBlockThreadPair(n);
+    accBinaryExprKernel << <tb.first, tb.second >> >(n, dEdy, x_other, dEdx, FQuotient());
+}
+
 void vconstant_minusx(int n, float c, const float* x, float* y) {
   auto tb = SizeToBlockThreadPair(n);
   unaryExprKernel<<<tb.first, tb.second>>>(n, x, y, FConstantMinus(c));
+}
+
+void vexp(int n, const float* x, float* y) {
+    auto tb = SizeToBlockThreadPair(n);
+    unaryExprKernel << <tb.first, tb.second >> >(n, x, y, FExp());
+}
+
+void vlog(int n, const float* x, float* y) {
+    auto tb = SizeToBlockThreadPair(n);
+    unaryExprKernel << <tb.first, tb.second >> >(n, x, y, FLog());
 }
 
 void vnegate(int n, const float* x, float* y) {
@@ -213,6 +251,22 @@ void softmax_backward(int n, const float* fx, const float* dEdf, float* dEdx) {
   accBinaryExprKernel<<<tb.first, tb.second>>>(n, fx, dEdf, dEdx, FSoftmaxBackward(-ods));
 }
 
+void logsoftmax_backward(int n, const float* fx, const float* dEdf, float* dEdx) 
+{
+    /*
+    float off_diag_sum = -(*fx).binaryExpr(*dEdf, FWeightedError()).sum();
+    *dEdxi += (*fx).binaryExpr(*dEdf, FLogSoftmaxBackward(off_diag_sum));
+    */
+    thrust::device_ptr<float> dp = thrust::device_pointer_cast((float*)fx);
+    thrust::device_ptr<float> de = thrust::device_pointer_cast((float*)dEdf);
+    thrust::device_ptr<float> dr = thrust::device_pointer_cast(dEdx);
+    thrust::device_vector<float> dtemp(n);
+    thrust::transform(dp, dp + n, de, dtemp.begin(), FWeightedError());
+    float off_diag_sum  = - thrust::reduce(dtemp.begin(), dtemp.end());
+    thrust::transform(dp, dp + n, de, dtemp.begin(), FLogSoftmaxBackward(off_diag_sum)); 
+    thrust::transform(dtemp.begin(), dtemp.end(), dr, dr, thrust::plus<float>());
+}
+
 // adapted from NVIDIA example
 __global__ void ker_pnlsoftmax(int n, int elem_idx, const float *x0, float* res, float* logz) {
   __shared__ float buf[256];
@@ -264,6 +318,149 @@ void pnlsoftmax_backward(int n, int elem_idx, const float* x0, const float* dEdf
   accUnaryExprKernel<<<tb.first, tb.second>>>(n, x0, dEdx, FPtrNegLogSoftmaxBackward(logz, dEdf));
   fixup_pnl<<<1,1>>>(dEdf, dEdx, elem_idx);
 }
+
+
+void conv1dwide(const int n, const int m, const float* xs, const int k, const float *fx, float *fy)
+{
+
+    thrust::device_vector<float> dv((m + k) * n, 0.0);
+    thrust::device_ptr<float> vp = dv.data();
+    thrust::device_ptr<float> fp((float*)fx);
+    thrust::device_ptr<float> xp((float*)xs);
+    thrust::device_ptr<float> yp(fy);
+
+    for (size_t tk = 0; tk < k; tk++)
+    {
+        for (size_t j = 0; j < m; j++)
+            thrust::transform(xp + j * n, xp + (j + 1) * n, fp + tk * n, vp + tk * n + j * n, thrust::multiplies<float>());
+    }
+    thrust::copy(vp, vp + (m + k) * n, thrust::device_pointer_cast(fy));
+}
+
+void conv1dwide_backward(const int i, const int n, const int m, const float* xs, const int k, const float *fx, const float* dEdf, float *dEdx)
+{
+    thrust::device_vector<float> dv(m  * n, 0.0);
+    thrust::device_ptr<float> vp = dv.data();
+    thrust::device_ptr<float> fp((float*)fx);
+    thrust::device_ptr<float> xp((float*)xs);
+    thrust::device_ptr<float> d((float*)dEdf);
+    thrust::device_ptr<float> yp(dEdx);
+
+    for (size_t tk = 0; tk < k; tk++)
+    {
+        if (i == 0) { // derivative wrt input x
+            for (size_t j = 0; j < m; j++)
+                thrust::transform(d + j * n + tk*n, d + (j + 1) * n + tk*n, fp + tk * n, dv.data() + j * n, thrust::multiplies<float>());
+        }
+        else { // derivative wrt filter f
+            for (size_t j = 0; j < m; j++)
+                thrust::transform(d + j * n + tk*n, d + (j + 1) * n + tk*n, xp + j * n, dv.data() + tk * n, thrust::multiplies<float>());
+        }
+    }
+    if (i == 0)
+        thrust::transform(dv.data(), dv.data() + m * n, yp, yp, thrust::plus<float>());
+    else 
+        thrust::transform(dv.data(), dv.data() + k * n, yp, yp, thrust::plus<float>());
+}
+
+void addVectorToAllColumns(const int n, const float * xs, const int m, const float* fx, float *fy)
+{
+    thrust::device_ptr<float> fp((float*)fx);
+    thrust::device_ptr<float> xp((float*)xs);
+    thrust::device_ptr<float> yp(fy);
+    for (size_t j = 0; j < n/m; j++)
+        thrust::transform(xp + j * m, xp + (j + 1) * m, fp, yp + j * m, thrust::plus<float>());
+}
+
+/**
+stride : the jump step
+*/
+void foldRows(const int n, const int m, const float *xs, const int stride, const int orows, float *fy)
+{
+    thrust::device_ptr<float> xp((float*)xs), pp;
+    thrust::device_ptr<float> yp(fy);
+    thrust::host_vector<float> vo(orows * m);
+
+    pp = xp;
+    for (size_t j = 0; j < m; j++)
+    {
+        for (size_t r = 0; r < orows; r++)
+        {
+            vo[j * orows + r] = thrust::reduce(pp, pp + stride);
+            pp += stride;
+        }
+    }
+}
+
+void foldRows_backward(const int orows, const float* dEdf, const int n, const int m, float *fy)
+{
+    thrust::device_ptr<float> dp((float*)dEdf);
+    thrust::device_ptr<float> yp(fy);
+
+    for (int i = 0; i < orows; ++i)
+    {
+        int stride = n / orows;
+        for (int j = 0; j < m; j++)
+        { // loop over columns
+            for (int k = 0; k < stride; k++)
+            {
+                *(yp + i * stride + k + j * n) += *(dp + i + j * n);
+            }
+        }
+    }
+}
+
+void kMaxPooling(const int n, const int m, const float *xs, const int k, float *fy, int* aux_mem)
+{
+    thrust::device_ptr<float> xp((float*)xs), pp;
+    thrust::device_ptr<float> yp(fy);
+    thrust::device_vector<float> vo(m);
+    thrust::device_vector<float> vp(k);
+
+    pp = xp;
+
+    int* maxmap = static_cast<int*>(aux_mem);
+    size_t mi = 0;
+    for (unsigned i = 0; i < n; ++i) {
+        for (size_t j = 0; j < m; j++)
+            vo[j] = (*(pp + i + j * n));
+        thrust::sort(thrust::device, vo.data(), vo.data() + m);
+
+        size_t mk = 0;
+        for (int j = 0; j < m; j++)
+        {
+            if (mk == k)
+                break;
+            if (*(pp + i + j * n) >= vo[m - k])
+            {
+                *(yp + i + mk * n) = *(pp + i + j*n);
+                cudaMemcpy(&maxmap[mi], &j, sizeof(int), cudaMemcpyHostToDevice); 
+                mi++;
+                mk++;
+            }
+        }
+    }
+}
+
+void kMaxPooling_backward(const int n, const int m, const float *xs, const int k, const float * dEdf, float *dEdxi, const int* aux_mem)
+{
+    const int* maxmap = aux_mem;
+    int mk = 0;
+    thrust::device_ptr<float> xp((float*)xs);
+    thrust::device_ptr<float> dp((float*)dEdf);
+    thrust::device_ptr<float> yp(dEdxi);
+
+    for (unsigned i = 0; i < n; ++i) {
+        for (unsigned j = 0; j < k; ++j) {
+            const int oj = maxmap[mk++];
+            if (oj < k && oj >= 0){
+                *(yp + i + oj * n) = *(dp + i + j * n) + *(yp + i + oj * n);
+            }
+        }
+    }
+    
+}
+
 
 } // namespace gpu
 } // namespace cnn

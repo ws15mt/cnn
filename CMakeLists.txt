@@ -4,13 +4,12 @@ cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 # you may need t do some explicit settings for cygwin and win32
-if (CYGWIN)
-set(BOOST_ROOT /cygdrive/d/tools/boost_1_58_0/boost_1_58_0)
-set(BOOST_LIBRARYDIR /usr/local/lib)
-else()
-# only support x64, because some program requires larger memory than win32 supports
+if(WIN64 OR WIN32)
 set(BOOST_ROOT C:/local/boost_1_58_0)
 set(BOOST_LIBRARYDIR C:/local/boost_1_58_0/lib64-msvc-12.0)
+else()
+set(BOOST_ROOT /cygdrive/d/tools/boost_1_58_0/boost_1_58_0)
+set(BOOST_LIBRARYDIR /usr/local/lib)
 endif()
 
 # best possible performance, the following are recommended:
@@ -24,31 +23,13 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -funroll-loops -Wall -std=c++11 -Ofast -
 else()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -funroll-loops -Wall -std=c++11 -Ofast -g -DEIGEN_FAST_MATH -Wno-unused-local-typedefs -march=native")
 endif()
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
 
 enable_testing()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}
                     ${PROJECT_SOURCE_DIR}/external/easyloggingpp/src)
-
-function(find_cudnn)
-  set(CUDNN_ROOT "" CACHE PATH "CUDNN root path")
-  find_path(CUDNN_INCLUDE_DIRS cudnn.h
-    PATHS ${CUDNN_ROOT}
-          ${CUDNN_ROOT}/include
-    DOC "CUDNN include path")
-  find_library(CUDNN_LIBRARIES NAMES libcudnn.so
-    PATHS ${CUDNN_ROOT}
-          ${CUDNN_ROOT}/lib
-          ${CUDNN_ROOT}/lib64
-    DOC "CUDNN library path")
-  if(CUDNN_INCLUDE_DIRS AND CUDNN_LIBRARIES)
-    set(CUDNN_FOUND TRUE PARENT_SCOPE)
-    message(STATUS "Found CUDNN (include: ${CUDNN_INCLUDE_DIRS}, library: ${CUDNN_LIBRARIES})")
-    mark_as_advanced(CUDNN_INCLUDE_DIRS CUDNN_LIBRARIES)
-  else()
-    MESSAGE(FATAL_ERROR "Failed to find CUDNN in path: ${CUDNN_ROOT} (Did you set CUDNN_ROOT properly?)")
-  endif()
-endfunction()
 
 # look for Boost
 if(DEFINED ENV{BOOST_ROOT})
@@ -64,9 +45,9 @@ endif()
 if (CYGWIN OR UNIX OR LINUX)
 find_package(Boost COMPONENTS program_options serialization REQUIRED)
 endif()
-include_directories(${Boost_INCLUDE_DIR})
-set(LIBS ${LIBS} ${Boost_LIBRARIES})
-if (WIN32)
+include_directories(${BOOST_ROOT})
+set(LIBS ${LIBS} ${BOOST_LIBRARYDIR})
+if (WIN32 OR WIN64)
 find_package(Boost COMPONENTS program_options serialization REQUIRED)
 endif()
 
@@ -95,29 +76,38 @@ else()
   message(SEND_ERROR "BACKEND must be eigen or cuda")
 endif()
 
-if (WITH_CUDA_BACKEND)
+
+if(WITH_CUDA_BACKEND)
+  if(CUDAROOT)
+  message("CUDA root : ${CUDAROOT}")
+  else()
+  message("Need to define CUDA root by runing -DCUDAROOT")
+  endif()
+
+  set(CUDA_INCLUDE_DIRS ${CUDA_ROOT}/include)
+  set(CUDA_LIBRARIES ${CUDA_ROOT}/lib/x64)
   find_package(CUDA REQUIRED)
+
   set(CUDA_TOOLKIT_ROOT_DIR ${CUDA_ROOT})
   include_directories(SYSTEM ${CUDA_INCLUDE_DIRS})
   add_definitions(-DHAVE_CUDA)
   set(LIBS ${LIBS} ${CUDA_LIBRARIES})
-  #find_cudnn()
-  #include_directories(SYSTEM ${CUDNN_INCLUDE_DIRS})
+  link_directories(${CUDA_LIBRARIES})
 endif()
 
 # look for Eigen
 find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
+
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/../quartzin/src/cnn)
 
-if(WIN32 OR WIN64)
 link_directories(${BOOST_LIBRARYDIR})
-endif()
+
 
 add_subdirectory(cnn)
 add_subdirectory(examples)
-add_subdirectory(../quartzin/src/cnn "${CMAKE_CURRENT_BINARY_DIR}/quartzin/src")
+add_subdirectory(../quartzin/src/cnn "${CMAKE_CURRENT_BINARY_DIR}/kaisheny/dev/src")
 

@@ -147,7 +147,7 @@ struct Node {
   Dim dim;  // will be .size() = 0 initially filled in by forward() -- TODO fix this
 
  protected:
-  Node() : args() {}
+     Node() : args() { aux_mem = nullptr; }
   explicit Node(const std::initializer_list<VariableIndex>& a) : args(a) {}
   template <typename T>
   explicit Node(const T&c) : args(c.begin(), c.end()) {}
