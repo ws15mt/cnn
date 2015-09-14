@@ -19,9 +19,11 @@
 namespace cnn {
 
 class Dict {
+    std::string s_unk; 
  typedef std::unordered_map<std::string, int> Map;
  public:
   Dict() : frozen(false) {
+      s_unk = "<unk>";
   }
 
   inline unsigned size() const { return words_.size(); }
@@ -32,12 +34,20 @@ class Dict {
 
   void Freeze() { frozen = true; }
 
-  inline int Convert(const std::string& word) {
+  inline int Convert(const std::string& word, bool backofftounk = false)
+  {
     auto i = d_.find(word);
     if (i == d_.end()) {
       if (frozen) {
-        std::cerr << "Unknown word encountered: " << word << std::endl;
-        throw std::runtime_error("Unknown word encountered in frozen dictionary: " + word);
+          if (backofftounk && d_.find(s_unk) != d_.end())
+          {
+              return d_[s_unk];
+          }
+          else
+          {
+              std::cerr << "Unknown word encountered: " << word << std::endl;
+              throw std::runtime_error("Unknown word encountered in frozen dictionary: " + word);
+          }
       }
       words_.push_back(word);
       return d_[word] = words_.size() - 1;
