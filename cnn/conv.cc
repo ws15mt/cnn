@@ -35,7 +35,6 @@ Dim AddVectorToAllColumns::dim_forward(const vector<Dim>& xs) const {
 }
 
 void AddVectorToAllColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-    cerr << "addvectoallcol::forward start" << endl;
 #if HAVE_CUDA
     gpu::addVectorToAllColumns(xs[0]->d[0] * xs[0]->d[1], xs[0]->v, xs[1]->d[0], xs[1]->v, fx.v);
 #else
@@ -44,7 +43,6 @@ void AddVectorToAllColumns::forward(const vector<const Tensor*>& xs, Tensor& fx)
   auto b = **xs[1];
   y = x.colwise() + b.col(0);
 #endif
-  cerr << "addvectoallcol::forward end" << endl;
 }
 
 void AddVectorToAllColumns::backward(const vector<const Tensor*>& xs,
@@ -53,11 +51,15 @@ void AddVectorToAllColumns::backward(const vector<const Tensor*>& xs,
                         unsigned i,
                         Tensor& dEdxi) const {
   assert(i < 2);
+#if HAVE_CUDA
+  gpu::addVectorToAllColumns_backward(i, dEdf.d.rows(), dEdf.d.cols(), dEdf.v, dEdxi.v);
+#else
   if (i == 0) { // x
     (*dEdxi) += (*dEdf);
   } else { // bias
     (*dEdxi).col(0) += (*dEdf).rowwise().sum();
   }
+#endif
 }
 
 string FoldRows::as_string(const vector<string>& arg_names) const {
@@ -76,7 +78,6 @@ Dim FoldRows::dim_forward(const vector<Dim>& xs) const {
 }
 
 void FoldRows::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-cerr << "foldrows :start" << endl;
 #if HAVE_CUDA
   gpu::foldRows(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, nrows, xs[0]->d.rows() / nrows, fx.v);
 #else
@@ -92,7 +93,6 @@ cerr << "foldrows :start" << endl;
     }
   }
 #endif
-  cerr << "foldrows :end " << endl;
 }
 
 void FoldRows::backward(const vector<const Tensor*>& xs,
@@ -104,9 +104,7 @@ void FoldRows::backward(const vector<const Tensor*>& xs,
   auto d = *dEdf;
   auto di = *dEdxi;
 #if HAVE_CUDA
-  cerr << "do foldrows backward" << endl;
   gpu::foldRows_backward(orows, dEdf.v, dEdxi.d.rows(), dEdxi.d.cols(), dEdxi.v);
-  cerr << "done foldrows backward" << endl;
 #else
   for (int i = 0; i < orows; ++i)
     for (unsigned j = 0; j < nrows; ++j)
@@ -204,7 +202,6 @@ Dim Conv1DWide::dim_forward(const vector<Dim>& xs) const {
 }
 
 void Conv1DWide::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-    cerr << "conv1dwide forward" << endl;
     TensorTools::Zero(fx);
     auto x = **xs[0];  // input
     auto f = **xs[1];  // filter
@@ -222,7 +219,6 @@ void Conv1DWide::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
     const unsigned fcols = f.cols();
 
     gpu::conv1dwide(rows, xcols, xs[0]->v, fcols, xs[1]->v, fx.v); 
-    cerr << "conv_1d_wide done" << endl;
 #else
     const unsigned rows = x.rows();
     const unsigned xcols = x.cols();
@@ -255,12 +251,10 @@ void Conv1DWide::backward(const vector<const Tensor*>& xs,
   }
 
 #if HAVE_CUDA
-  cerr << "do conv1d_wide backward" << endl;
   const unsigned rows = xs[0]->d.rows();
   const unsigned xcols = xs[0]->d.cols();
   const unsigned fcols = f.cols();
   gpu::conv1dwide_backward(i, rows, xcols, xs[0]->v, fcols, xs[1]->v, dEdf.v, dEdxi.v);
-  cerr << "done conv1d_wide backward" << endl;
 #else
   const unsigned rows = xs[0]->d.rows();
   const unsigned xcols = xs[0]->d.cols();
@@ -312,7 +306,6 @@ size_t KMaxPooling::aux_storage_size() const {
 }
 
 void KMaxPooling::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  cerr << "kmaxpooling start " << endl;
   int mi = 0;
 #if HAVE_CUDA
   gpu::kMaxPooling(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, k, fx.v, static_cast<int*>(aux_mem));
@@ -347,7 +340,6 @@ void KMaxPooling::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   }
   assert(mi == dim.size());
 #endif
-  cerr << "kmaxpooling end " << endl;
 }
 
 void KMaxPooling::backward(const vector<const Tensor*>& xs,
@@ -360,9 +352,7 @@ void KMaxPooling::backward(const vector<const Tensor*>& xs,
   const unsigned cols = dim.cols();
   const int* maxmap = static_cast<const int*>(aux_mem);
 #if HAVE_CUDA
-  cerr << "do kmaxpooling" << endl;
   gpu::kMaxPooling_backward(rows, cols, xs[0]->v, dEdf.d.cols(), dEdf.v, dEdxi.v, maxmap);
-  cerr << "done kmaxpooling" << endl;
 #else
   for (unsigned i = 0; i < rows; ++i) {
     int mi = 0;

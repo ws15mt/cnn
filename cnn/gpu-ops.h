@@ -5,6 +5,9 @@ namespace cnn {
 namespace gpu {
 
     void set_to_value_of(int n, float* x0, float val);
+    void set_to_value_of(int n, float* x0, float *val);
+
+    void add_to(int n, const float* x, float *y);
 
 /// for convlution networks
     void conv1dwide(const int n, const int m, const float* xs, const int k, const float *fx, float *fy);
@@ -12,6 +15,7 @@ namespace gpu {
 
     /// add bias
     void addVectorToAllColumns(const int n, const float * xs, const int m, const float* fx, float *fy);
+    void addVectorToAllColumns_backward(const int i, const int r, const int c, const float* dEdf, float *dEdxi);
 
     void foldRows(const int n, const int m, const float *xs, const int stride, const int orows, float *fy);
     void foldRows_backward(const int orows, const float* dEdf, const int n, const int m, float *fy);

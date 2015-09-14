@@ -15,17 +15,30 @@ namespace gpu {
 // this wraps kernel dispatches for various operations (preventing us from
 // having to compile a version of nodes.cc with NVCC)
 
-void saxpy_fast(float A, thrust::device_vector<float>& X, thrust::device_vector<float>& Y)
-{
-    // Y <- A * X + Y
-    thrust::transform(X.begin(), X.end(), Y.begin(), Y.begin(), saxpy_functor(A));
-}
+    void saxpy_fast(float A, thrust::device_vector<float>& X, thrust::device_vector<float>& Y)
+    {
+        // Y <- A * X + Y
+        thrust::transform(X.begin(), X.end(), Y.begin(), Y.begin(), saxpy_functor(A));
+    }
 
-void set_to_value_of(int n, float* x0, float val) {
+    void add_to(int n, const float* x, float *y)
+    {
+        thrust::device_ptr<float> src_ptr = thrust::device_pointer_cast((float*)x);
+        thrust::device_ptr<float> tgt_ptr = thrust::device_pointer_cast(y);
+        // Y <- A * X + Y
+        thrust::transform(src_ptr, src_ptr + n, tgt_ptr, tgt_ptr, thrust::plus<float>()); 
+    }
+
+    void set_to_value_of(int n, float* x0, float val) {
+        thrust::device_ptr<float> dev_ptr = thrust::device_pointer_cast(x0);
+        thrust::fill(thrust::device, dev_ptr, dev_ptr + n, val);
+    }
+
+void set_to_value_of(int n, float* x0, float *val) {
     thrust::device_ptr<float> dev_ptr = thrust::device_pointer_cast(x0);
-    thrust::fill(thrust::device, dev_ptr, dev_ptr + n, val);
+    thrust::device_ptr<float> src_dev_ptr = thrust::device_pointer_cast(val);
+    thrust::copy(src_dev_ptr, src_dev_ptr + n, dev_ptr);
 }
-
 
 void vpairwise_rank_loss(int n, float margin, const float* xgood, const float* xbad, float* y) {
   auto tb = SizeToBlockThreadPair(n);
@@ -368,8 +381,26 @@ void addVectorToAllColumns(const int n, const float * xs, const int m, const flo
     thrust::device_ptr<float> fp((float*)fx);
     thrust::device_ptr<float> xp((float*)xs);
     thrust::device_ptr<float> yp(fy);
-    for (size_t j = 0; j < n/m; j++)
+    for (size_t j = 0; j < n / m; j++)
         thrust::transform(xp + j * m, xp + (j + 1) * m, fp, yp + j * m, thrust::plus<float>());
+}
+
+void addVectorToAllColumns_backward(const int i, const int r, const int c, const float* dEdf, float *dEdxi)
+{
+    thrust::device_ptr<const float> dp(dEdf);
+    thrust::device_ptr<float> dx(dEdxi);
+
+    if (i == 0)
+    {
+        // x
+        thrust::transform(dp, dp + r * c, dx, dx, thrust::plus<float>());
+    }
+    else
+    {
+        // bias
+        for (int k = 0; k < c; k++)
+            thrust::transform(dp + k * r, dp + (k + 1)*r, dx, dx, thrust::plus<float>());
+    }
 }
 
 /**
@@ -446,19 +477,21 @@ void kMaxPooling_backward(const int n, const int m, const float *xs, const int k
 {
     const int* maxmap = aux_mem;
     int mk = 0;
-    thrust::device_ptr<float> xp((float*)xs);
-    thrust::device_ptr<float> dp((float*)dEdf);
+    int oj;
+    thrust::device_ptr<const float> xp(xs);
+    thrust::device_ptr<const float> dp(dEdf);
     thrust::device_ptr<float> yp(dEdxi);
+    thrust::host_vector<int> hv(n, 0);
+    cudaMemcpy(hv.data(), maxmap, sizeof(int)*n, cudaMemcpyDeviceToHost);
 
     for (unsigned i = 0; i < n; ++i) {
         for (unsigned j = 0; j < k; ++j) {
-            const int oj = maxmap[mk++];
+            oj = hv[mk++];
             if (oj < k && oj >= 0){
-                *(yp + i + oj * n) = *(dp + i + j * n) + *(yp + i + oj * n);
+                thrust::transform(dp + i + j * n, dp + i + j * n + 1, yp + i + oj * n, yp + i + oj * n, thrust::plus<float>());
             }
         }
     }
-    
 }
 
 

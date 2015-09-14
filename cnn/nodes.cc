@@ -170,7 +170,11 @@ void Transpose::backward(const vector<const Tensor*>& xs,
 void Reshape::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   // just point to the input memory and change dimensions
   // dimensions are handled by forward_dim
+#if HAVE_CUDA
+    gpu::set_to_value_of(xs[0]->d.rows() * xs[0]->d.cols(), fx.v, xs[0]->v);
+#else
   fx.v = xs[0]->v;
+#endif
 }
 
 void Reshape::backward(const vector<const Tensor*>& xs,
@@ -179,7 +183,11 @@ void Reshape::backward(const vector<const Tensor*>& xs,
                             unsigned i,
                             Tensor& dEdxi) const {
   const Tensor reshaped(dEdxi.d, dEdf.v);
+#if HAVE_CUDA
+  gpu::add_to(reshaped.d.cols() * reshaped.d.rows(), reshaped.v, dEdxi.v);
+#else
   *dEdxi += *reshaped;
+#endif
 }
 
 void SumColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
