@@ -371,4 +371,5 @@ void KMaxPooling::backward(const vector<const Tensor*>& xs,
 #endif
 }
 
+
 } // namespace cnn

@@ -41,6 +41,9 @@ struct AttentionalModel {
     Expression BuildGraph(const std::vector<int> &source, const std::vector<int>& target,
         ComputationGraph& cg, Expression *alignment = 0, bool usePastHitory = false, bool usePastMemory = false);
 
+    Expression BuildGraph(const std::vector<int> &source, const std::vector<int>& target,
+        ComputationGraph& cg, vector<Expression> & decoderInit);
+
     vector<Expression> BuildGraphWithoutNormalization(const std::vector<int> &source,
         const std::vector<int>& target, ComputationGraph& cg, Expression *alignment = nullptr, bool usePastHistory = false, bool usePastMemory = false);
 
@@ -77,7 +80,8 @@ struct AttentionalModel {
     // statefull functions for incrementally creating computation graph, one
     // target word at a time
     void start_new_instance(const std::vector<int> &src, ComputationGraph &cg);
-    Expression add_input(int tgt_tok, int t, ComputationGraph &cg, RNNPointer *prev_state=0);
+    void start_new_instance(const std::vector<int> &source, ComputationGraph &cg, vector<Expression>& decoderInit);
+    Expression add_input(int tgt_tok, int t, ComputationGraph &cg, RNNPointer *prev_state = 0);
     std::vector<float> *auxiliary_vector(); // memory management
 
     // state variables used in the above two methods
@@ -212,6 +216,50 @@ void AttentionalModel<Builder>::start_new_instance(const std::vector<int> &sourc
 }
 
 template <class Builder>
+void AttentionalModel<Builder>::start_new_instance(const std::vector<int> &source, ComputationGraph &cg, vector<Expression>& decoderInit)
+{
+    //slen = source.size() - 1; 
+    slen = source.size();
+    if (!rnn_src_embeddings) {
+        std::vector<Expression> source_embeddings;
+        for (unsigned s = 0; s < slen; ++s)
+            source_embeddings.push_back(lookup(cg, p_cs, source[s]));
+        src = concatenate_cols(source_embeddings);
+    }
+    else {
+        builder_src_fwd.new_graph(cg);
+        builder_src_fwd.start_new_sequence();
+        builder_src_bwd.new_graph(cg);
+        builder_src_bwd.start_new_sequence();
+        src = bidirectional(slen, source, cg, p_cs, builder_src_fwd, builder_src_bwd);
+    }
+
+    // now for the target sentence
+    builder.new_graph(cg);
+    builder.start_new_sequence(decoderInit);
+    cg.incremental_forward();
+    i_R = parameter(cg, p_R); // hidden -> word rep parameter
+    i_P = parameter(cg, p_P); // direct from hidden to output
+    i_Q = parameter(cg, p_Q); // direct from input to output
+    i_bias = parameter(cg, p_bias);  // word bias
+    i_Wa = parameter(cg, p_Wa);
+    i_Ua = parameter(cg, p_Ua);
+    i_va = parameter(cg, p_va);
+    i_uax = i_Ua * src;
+
+#ifdef ALIGNMENT
+    if (giza_extensions) {
+        i_Ta = parameter(cg, p_Ta);
+        i_src_idx = arange(cg, 0, slen, true, auxiliary_vector());
+        i_src_len = repeat(cg, slen, log(1.0 + slen), auxiliary_vector());
+    }
+
+    aligns.clear();
+    aligns.push_back(repeat(cg, slen, 0.0f, auxiliary_vector()));
+#endif
+}
+
+template <class Builder>
 std::vector<float>* AttentionalModel<Builder>::auxiliary_vector()
 {
     while (num_aux_vecs >= aux_vecs.size())
@@ -226,7 +274,7 @@ Expression AttentionalModel<Builder>::add_input(int trg_tok, int t, ComputationG
     Expression i_r_t;
     try{
         // alignment input -- FIXME: just done for top layer
-        auto i_h_tm1 = (t == 0) ? i_h0.back() : builder.final_h().back();
+        auto i_h_tm1 = (t == 0 && i_h0.size() > 0) ? i_h0.back() : builder.final_h().back();
         //WTF(i_h_tm1);
         //Expression i_e_t = tanh(i_src_M * i_h_tm1); 
         Expression i_wah = i_Wa * i_h_tm1;
@@ -336,6 +384,36 @@ Expression AttentionalModel<Builder>::BuildGraph(const std::vector<int> &source,
     }
     //std::cout << "source sentence length: " << source.size() << " target: " << target.size() << std::endl;
     start_new_instance(source, cg);
+
+    std::vector<Expression> errs;
+    const unsigned tlen = target.size() - 1;
+    for (unsigned t = 0; t < tlen; ++t) {
+        Expression i_r_t = add_input(target[t], t, cg);
+        //WTF(i_r_t);
+        Expression i_err = pickneglogsoftmax(i_r_t, target[t + 1]);
+        errs.push_back(i_err);
+    }
+
+#ifdef ALIGNMENT
+    // save the alignment for later
+    if (alignment != 0) {
+        // pop off the last alignment column
+        *alignment = concatenate_cols(aligns);
+    }
+#endif
+    Expression i_nerr = sum(errs);
+
+    return i_nerr;
+}
+
+/// build graph with decoder initial state comming from other Expression
+template <class Builder>
+Expression AttentionalModel<Builder>::BuildGraph(const std::vector<int> &source,
+    const std::vector<int>& target, ComputationGraph& cg, vector<Expression>& decoderInit)
+{
+
+    //std::cout << "source sentence length: " << source.size() << " target: " << target.size() << std::endl;
+    start_new_instance(source, cg, decoderInit);
 
     std::vector<Expression> errs;
     const unsigned tlen = target.size() - 1;
