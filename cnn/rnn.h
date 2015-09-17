@@ -18,10 +18,14 @@ inline void swap(RNNPointer& i1, RNNPointer& i2) {
 
 // interface for constructing an RNN, LSTM, GRU, etc.
 struct RNNBuilder {
-  RNNBuilder() : cur(-1) {}
+    RNNBuilder() : cur(-1), nutt(1) {}
   virtual ~RNNBuilder();
+  size_t nutt;
 
   RNNPointer state() const { return cur; }
+
+  /// set the number of sentneces per minibatch
+  void setNutt(size_t msz){ nutt = msz; }
 
   // call this to reset the builder when you are working with a newly
   // created ComputationGraph object
