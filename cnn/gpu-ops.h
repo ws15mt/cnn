@@ -30,6 +30,8 @@ void vcwise_product_backward(int n, const float* dEdy, const float* x_other, flo
 void vcwise_quotient(int n, const float* x0, const float* x1, float* y);
 void vcwise_quotient_backward(int n, const float* dEdy, const float* x_other, float* dEdx);
 void vconstant_minusx(int n, float c, const float* x, float* y);
+void vconstant_multiplyx(int n, float c, const float* x, float* y);
+void vconstant_multiplyx_backward(int n, float c, const float* x, float* y);
 void vnegate(int n, const float* x, float* y);
 void vnegate_backward(int n, const float* dEdf, float* dEdx);
 void vrelu(int n, const float* x, float* y);

@@ -106,6 +106,14 @@ struct FQuotient {
   }
 };
 
+struct FConstantMultiply{
+    FConstantMultiply(float c) : c(c) {}
+    CNN_DEVICE_FUNC inline float operator()(const float &x) const {
+        return c * x;
+    }
+    float c;
+};
+
 struct FConstantPlus {
   FConstantPlus(float c) : c(c) {}
   CNN_DEVICE_FUNC inline float operator()(const float &x) const {

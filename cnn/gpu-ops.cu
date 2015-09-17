@@ -75,8 +75,18 @@ void vcwise_quotient_backward(int n, const float* dEdy, const float* x_other, fl
 }
 
 void vconstant_minusx(int n, float c, const float* x, float* y) {
-  auto tb = SizeToBlockThreadPair(n);
-  unaryExprKernel<<<tb.first, tb.second>>>(n, x, y, FConstantMinus(c));
+    auto tb = SizeToBlockThreadPair(n);
+    unaryExprKernel << <tb.first, tb.second >> >(n, x, y, FConstantMinus(c));
+}
+
+void vconstant_multiplyx(int n, float c, const float* x, float* y) {
+    auto tb = SizeToBlockThreadPair(n);
+    unaryExprKernel << <tb.first, tb.second >> >(n, x, y, FConstantMultiply(c));
+}
+
+void vconstant_multiplyx_backward(int n, float c, const float* x, float* y) {
+    auto tb = SizeToBlockThreadPair(n);
+    accUnaryExprKernel << <tb.first, tb.second >> >(n, x, y, FConstantMultiply(c));
 }
 
 void vexp(int n, const float* x, float* y) {

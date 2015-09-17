@@ -117,16 +117,25 @@ void TraceOfProduct::backward(const vector<const Tensor*>& xs,
 }
 
 void ConstScalarMultiply::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  *fx = (**xs[0]) * alpha;
+#if HAVE_CUDA
+    gpu::vconstant_multiplyx(fx.d.size(), alpha, xs[0]->v, fx.v);
+#else
+    *fx = (**xs[0]) * alpha;
+#endif
 }
 
 void ConstScalarMultiply::backward(const vector<const Tensor*>& xs,
                                    const Tensor& fx,
                                    const Tensor& dEdf,
                                    unsigned i,
-                                   Tensor& dEdxi) const {
-  assert(i == 0);
-  *dEdxi += *dEdf * alpha;
+                                   Tensor& dEdxi) const 
+{
+#if HAVE_CUDA
+    gpu::vconstant_multiplyx_backward(fx.d.size(), alpha, xs[0]->v, fx.v);
+#else
+    assert(i == 0);
+    *dEdxi += *dEdf * alpha;
+#endif
 }
 
 void DotProduct::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
