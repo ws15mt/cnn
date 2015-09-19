@@ -7,6 +7,8 @@
 
 #include "cnn/nodes.h"
 
+//#define DBG_MODEL 1
+
 using namespace std;
 using namespace cnn::expr;
 
@@ -39,6 +41,13 @@ LSTMBuilder::LSTMBuilder(unsigned layers,
     layer_input_dim = hidden_dim;  // output (hidden) from 1st layer is input to next
 
     vector<Parameters*> ps = {p_x2i, p_h2i, p_c2i, p_bi, p_x2o, p_h2o, p_c2o, p_bo, p_x2c, p_h2c, p_bc};
+
+#ifdef DBG_MODEL
+    for (auto p : ps)
+    {
+        p->reset_to_zero();
+    }
+#endif
     params.push_back(ps);
   }  // layers
 }
@@ -66,8 +75,6 @@ void LSTMBuilder::new_graph_impl(ComputationGraph& cg){
 
     vector<Expression> vars = {i_x2i, i_h2i, i_c2i, i_bi, i_x2o, i_h2o, i_c2o, i_bo, i_x2c, i_h2c, i_bc};
     param_vars.push_back(vars);
-
-
   }
 }
 
@@ -88,9 +95,27 @@ void LSTMBuilder::start_new_sequence_impl(const vector<Expression>& hinit) {
   } else {
     has_initial_state = false;
   }
+
+  set_data_in_parallel(data_in_parallel());
 }
 
-Expression LSTMBuilder::add_input_impl(int prev, const Expression& x) {
+void LSTMBuilder::set_data_in_parallel(int n)
+{
+    RNNBuilder::set_data_in_parallel(n);
+
+    biases.clear();
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        Expression bimb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BI]));
+        Expression bcmb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BC]));
+        Expression bomb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BO]));
+        vector<Expression> b = { bimb, bcmb, bomb };
+        biases.push_back(b);
+    }
+}
+
+Expression LSTMBuilder::add_input_impl(int prev, const Expression& x) 
+{
   h.push_back(vector<Expression>(layers));
   c.push_back(vector<Expression>(layers));
   vector<Expression>& ht = h.back();
@@ -114,26 +139,26 @@ Expression LSTMBuilder::add_input_impl(int prev, const Expression& x) {
     }
     // input
     Expression i_ait;
-    Expression bias = concatenate_cols(vector<Expression>(nutt, vars[BI]));
+    Expression bimb = biases[i][0]; 
     if (has_prev_state)
 //      i_ait = vars[BI] + vars[X2I] * in + vars[H2I]*i_h_tm1 + vars[C2I] * i_c_tm1;
-      i_ait = affine_transform({bias, vars[X2I], in, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1});
+      i_ait = affine_transform({bimb, vars[X2I], in, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1});
     else
 //      i_ait = vars[BI] + vars[X2I] * in;
-      i_ait = affine_transform({bias, vars[X2I], in});
+      i_ait = affine_transform({ bimb, vars[X2I], in });
     Expression i_it = logistic(i_ait);
     // forget
     Expression i_ft = 1.f - i_it;
 
-    Expression biasbc = concatenate_cols(vector<Expression>(nutt, vars[BC]));
     // write memory cell
     Expression i_awt;
+    Expression bcmb = biases[i][1]; 
     if (has_prev_state)
 //      i_awt = vars[BC] + vars[X2C] * in + vars[H2C]*i_h_tm1;
-      i_awt = affine_transform({biasbc, vars[X2C], in, vars[H2C], i_h_tm1});
+      i_awt = affine_transform({ bcmb, vars[X2C], in, vars[H2C], i_h_tm1 });
     else
 //      i_awt = vars[BC] + vars[X2C] * in;
-      i_awt = affine_transform({ biasbc, vars[X2C], in });
+      i_awt = affine_transform({ bcmb, vars[X2C], in });
     Expression i_wt = tanh(i_awt);
     // output
     if (has_prev_state) {
@@ -144,14 +169,13 @@ Expression LSTMBuilder::add_input_impl(int prev, const Expression& x) {
       ct[i] = cwise_multiply(i_it,i_wt);
     }
 
-    Expression biasbo = concatenate_cols(vector<Expression>(nutt, vars[BO]));
     Expression i_aot;
+    Expression bomb = biases[i][2]; 
     if (has_prev_state)
 //      i_aot = vars[BO] + vars[X2O] * in + vars[H2O] * i_h_tm1 + vars[C2O] * ct[i];
-      i_aot = affine_transform({biasbo, vars[X2O], in, vars[H2O], i_h_tm1, vars[C2O], ct[i]});
+      i_aot = affine_transform({ bomb, vars[X2O], in, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
     else
-//      i_aot = vars[BO] + vars[X2O] * in;
-      i_aot = affine_transform({ biasbo, vars[X2O], in });
+      i_aot = affine_transform({ bomb, vars[X2O], in });
     Expression i_ot = logistic(i_aot);
     Expression ph_t = tanh(ct[i]);
     in = ht[i] = cwise_multiply(i_ot,ph_t);
