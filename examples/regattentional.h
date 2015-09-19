@@ -168,17 +168,31 @@ void RegAttentionalModel<Builder>::start_new_instance(FCorpus& source, FCorpus& 
     slen = mbsize;
     size_t nutt = source.size();
 
-    src_fwd.resize(slen);
-    FCorpusPointers fp;
-    fp.push_back(&source);
-    fp.push_back(&target);
+    vector<size_t> randstt(nutt, 0);
 
-    vector<vector<Expression>> src_tgt = pack_obs(fp, mbsize, cg); 
-    cg.incremental_forward();
+    for (size_t u = 0; u < nutt; u++)
+    {
+        size_t nsamples = source[u].size();
+        int kk = nsamples - mbsize;
+        kk = (kk >= 0) ? kk : 0;
+        size_t rk = (int)rand();
+        randstt[u] = kk == 0 ? 0 : rk % kk;
+    }
+
+    src_fwd.resize(slen);
+    FCorpusPointers fpsrc;
+    fpsrc.push_back(&source);
+    vector<vector<Expression>> src_tgt = pack_obs_uttfirst(fpsrc, mbsize, cg, randstt);
+    src = concatenate_cols(src_tgt[0]);
+    
+    src_tgt = pack_obs(fpsrc, mbsize, cg, randstt);
     src_fwd = src_tgt[0];
-    src = concatenate_cols(src_fwd);
-    cg.incremental_forward();
-    vy = src_tgt[1];
+
+    FCorpusPointers fptgt;
+    fptgt.push_back(&target);
+    vector<vector<Expression>> tgt = pack_obs(fptgt, mbsize, cg, randstt);
+    vy = tgt[0];
+
 
     // now for the target sentence
     builder.new_graph(cg);

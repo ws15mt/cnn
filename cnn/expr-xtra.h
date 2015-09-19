@@ -51,4 +51,9 @@ this truncates both source and target
 @mbsize : number of samples
 @nutt : number of sentences to process in parallel
 */
-vector<vector<Expression>> pack_obs(FCorpusPointers raw, size_t mbsize, ComputationGraph& cg);
+vector<vector<Expression>> pack_obs(FCorpusPointers raw, size_t mbsize, ComputationGraph& cg, const vector<size_t>& rand_stt);
+
+/// utterance first ordering of data
+/// [s00 s01 s02 s10 s11 s12] where s1 is the second speaker, and s0 is the firest speaker
+vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, size_t mbsize, ComputationGraph& cg, const vector<size_t>& rand_stt);
+
