@@ -14,11 +14,6 @@
 using namespace cnn;
 using namespace std;
 
-typedef vector<cnn::real> FVector;
-typedef vector<FVector>   FMatrix;
-typedef vector<FMatrix>   FCorpus;
-typedef vector<FCorpus*>  FCorpusPointers;
-
 Expression arange(ComputationGraph &cg, unsigned begin, unsigned end, bool log_transform, std::vector<float> *aux_mem);
 
 Expression repeat(ComputationGraph &cg, unsigned num, float value, std::vector<float> *aux_mem);
@@ -44,16 +39,4 @@ Expression bidirectional(int slen, const vector<int>& source, ComputationGraph& 
 template<class Builder>
 Expression bidirectional(int slen, const vector<vector<cnn::real>>& source, ComputationGraph& cg, Builder & encoder_fwd, Builder& encoder_bwd,
     std::vector<Expression>& src_fwd, std::vector<Expression>& src_bwd);
-
-/**
-usually packs a matrix with real value element
-this truncates both source and target 
-@mbsize : number of samples
-@nutt : number of sentences to process in parallel
-*/
-vector<vector<Expression>> pack_obs(FCorpusPointers raw, size_t mbsize, ComputationGraph& cg, const vector<size_t>& rand_stt);
-
-/// utterance first ordering of data
-/// [s00 s01 s02 s10 s11 s12] where s1 is the second speaker, and s0 is the firest speaker
-vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, size_t mbsize, ComputationGraph& cg, const vector<size_t>& rand_stt);
 

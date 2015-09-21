@@ -12,7 +12,7 @@
 #include "cnn/dict.h"
 #include "cnn/expr.h"
 #include "cnn/expr-xtra.h"
-
+#include "cnn/data-util.h"
 #include <algorithm>
 #include <queue>
 #include <iostream>

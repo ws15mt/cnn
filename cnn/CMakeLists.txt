@@ -23,6 +23,7 @@ set(cnn_library_SRCS
     saxe-init.cc
     shadow-params.cc
     tensor.cc
+    data-util.cc
     training.cc
     dglstm.cc
     treelstm.cc
@@ -56,6 +57,7 @@ set(cnn_library_HDRS
     saxe-init.h
     shadow-params.h
     tensor.h
+    data-util.h
     timing.h
     training.h
     dglstm.h
