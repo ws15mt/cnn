@@ -106,3 +106,32 @@ vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, size_t mbsize,
 
     return ret;
 }
+
+/** 
+extract from a dialogue corpus, a set of dialogues with the same number of turns
+@corp : dialogue corpus
+@nbr_dialogues : expected number of dialogues to extract
+@stt_dialogue_id : starting dialogue id
+
+return a vector of dialogues in selected, also the starting dialogue id is increased by one.
+Notice that a dialogue might be used in multiple times
+*/
+void get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected)
+{
+    if (stt_dialgoue_id >= corp.size())
+        return ;
+
+    size_t d_turns = corp[stt_dialgoue_id].size();
+    selected.push_back(corp[stt_dialgoue_id]);
+    for (size_t iss = stt_dialgoue_id+1; iss < corp.size(); iss++)
+    {
+        if (corp[iss].size() == d_turns && used[iss] == false){
+            selected.push_back(corp[iss]);
+            used[iss] = true;
+            if (selected.size() == nbr_dialogues)
+                break;
+        }
+    }
+
+    stt_dialgoue_id++;
+}

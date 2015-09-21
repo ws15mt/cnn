@@ -19,6 +19,11 @@ typedef vector<FVector>   FMatrix;
 typedef vector<FMatrix>   FCorpus;
 typedef vector<FCorpus*>  FCorpusPointers;
 
+typedef vector<int> Sentence;
+typedef pair<Sentence, Sentence> SentencePair;
+typedef vector<SentencePair> Dialogue;
+typedef vector<Dialogue> Corpus;
+
 /**
 usually packs a matrix with real value element
 this truncates both source and target 
@@ -31,3 +36,4 @@ vector<vector<Expression>> pack_obs(FCorpusPointers raw, size_t mbsize, Computat
 /// [s00 s01 s02 s10 s11 s12] where s1 is the second speaker, and s0 is the firest speaker
 vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, size_t mbsize, ComputationGraph& cg, const vector<size_t>& rand_stt);
 
+void get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected);
