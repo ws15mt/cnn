@@ -81,7 +81,7 @@ Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, Com
         vector<Expression> vm;
         for (size_t k = 0; k < nutt; k++)
         {
-            if (source[k].size() >= t)
+            if (source[k].size() > t)
                 vm.push_back(lookup(cg, p_cs, source[k][t]));
             else
                 vm.push_back(input(cg, { (long)feat_dim }, &zero));
@@ -93,7 +93,7 @@ Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, Com
         vector<Expression> vm;
         for (size_t k = 0; k < nutt; k++)
         {
-            if (source[k].size() >= t)
+            if (source[k].size() > t)
                 vm.push_back(lookup(cg, p_cs, source[k][t]));
             else
                 vm.push_back(input(cg, { (long)feat_dim }, &zero));

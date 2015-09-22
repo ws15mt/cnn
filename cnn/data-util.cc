@@ -127,13 +127,17 @@ Notice that a dialogue might be used in multiple times
 selected [ turn 0 : <query_00, answer_00> <query_10, answer_10>]
          [ turn 1 : <query_01, answer_01> <query_11, answer_11>]
 */
-void get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected)
+int get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected)
 {
+    int nutt = 0;
     if (stt_dialgoue_id >= corp.size())
-        return ;
+        return nutt;
 
-    while (used[stt_dialgoue_id])
+    while (stt_dialgoue_id < corp.size() && used[stt_dialgoue_id])
         stt_dialgoue_id++;
+
+    if (stt_dialgoue_id >= corp.size())
+        return nutt;
 
     size_t d_turns = corp[stt_dialgoue_id].size();
     Dialogue first_turn;
@@ -147,6 +151,7 @@ void get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_di
         i_turn++;
     }
     used[stt_dialgoue_id] = true;
+    nutt++;
 
     for (size_t iss = stt_dialgoue_id+1; iss < corp.size(); iss++)
     {
@@ -159,12 +164,15 @@ void get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_di
             }
 
             used[iss] = true;
+            nutt++;
             if (selected[0].size() == nbr_dialogues)
                 break;
         }
     }
 
     stt_dialgoue_id++;
+
+    return nutt;
 }
 
 int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td) 

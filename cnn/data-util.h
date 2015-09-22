@@ -36,7 +36,7 @@ vector<vector<Expression>> pack_obs(FCorpusPointers raw, size_t mbsize, Computat
 /// [s00 s01 s02 s10 s11 s12] where s1 is the second speaker, and s0 is the firest speaker
 vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, size_t mbsize, ComputationGraph& cg, const vector<size_t>& rand_stt);
 
-void get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected);
+int get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected);
 
 int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td);
 
