@@ -124,6 +124,24 @@ void DGLSTMBuilder::start_new_sequence_impl(const vector<Expression>& hinit) {
   } else {
     has_initial_state = false;
   }
+
+  set_data_in_parallel(data_in_parallel());
+}
+
+void DGLSTMBuilder::set_data_in_parallel(int n)
+{
+    RNNBuilder::set_data_in_parallel(n);
+
+    biases.clear();
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        Expression bimb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BI]));
+        Expression bcmb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BC]));
+        Expression bomb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BO]));
+        Expression bkmb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BK]));
+        vector<Expression> b = { bimb, bcmb, bomb, bkmb};
+        biases.push_back(b);
+    }
 }
 
 Expression DGLSTMBuilder::add_input_impl(int prev, const Expression& x) {
@@ -136,11 +154,14 @@ Expression DGLSTMBuilder::add_input_impl(int prev, const Expression& x) {
   Expression in = x;
   Expression in_stb;
 
+  int nutt = data_in_parallel();
+
   for (unsigned i = 0; i < layers; ++i) {
     const vector<Expression>& vars = param_vars[i];
     Expression i_stabilizer = exp(vars[STAB]);
     vector<Expression> v_stab = vector<Expression>(input_dims[i], i_stabilizer);
-    in_stb = cwise_multiply(concatenate(v_stab), in); 
+    Expression i_v_stab = concatenate_cols(vector<Expression>(nutt, concatenate(v_stab)));
+    in_stb = cwise_multiply(i_v_stab, in); 
     Expression i_h_tm1, i_c_tm1;
 
     bool has_prev_state = (prev >= 0 || has_initial_state);
@@ -157,20 +178,24 @@ Expression DGLSTMBuilder::add_input_impl(int prev, const Expression& x) {
     }
     // input
     Expression i_ait;
+    Expression bimb = biases[i][0];
     if (has_prev_state)
-        i_ait = affine_transform({ vars[BI], vars[X2I], in_stb, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
+        i_ait = affine_transform({ bimb, vars[X2I], in_stb, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
     else
-        i_ait = affine_transform({vars[BI], vars[X2I], in_stb});
+        i_ait = affine_transform({ bimb, vars[X2I], in_stb });
     Expression i_it = logistic(i_ait);
+
     // forget
     Expression i_ft = 1.f - i_it;
     // write memory cell
+    Expression bcmb = biases[i][1];
     Expression i_awt;
     if (has_prev_state)
-        i_awt = affine_transform({ vars[BC], vars[X2C], in_stb, vars[H2C], i_h_tm1 });
+        i_awt = affine_transform({ bcmb, vars[X2C], in_stb, vars[H2C], i_h_tm1 });
     else
-        i_awt = affine_transform({vars[BC], vars[X2C], in_stb});
+        i_awt = affine_transform({ bcmb, vars[X2C], in_stb });
     Expression i_wt = tanh(i_awt);
+
     // output
     Expression i_before_add_with_lower_linearly;
     if (has_prev_state) {
@@ -183,19 +208,21 @@ Expression DGLSTMBuilder::add_input_impl(int prev, const Expression& x) {
 
     /// add lower layer memory cell
     Expression i_k_t; 
-    Expression i_k_lowerc = ((i > 0) ? cwise_multiply(vars[C2K], lower_layer_c) + vars[BK] : vars[BK]);
+    Expression bkmb = biases[i][3];
+    Expression i_k_lowerc = ((i > 0) ? cwise_multiply(vars[C2K], lower_layer_c) + bkmb : bkmb);
     if (has_prev_state)
-        i_k_t = logistic(i_k_lowerc +vars[X2K] * in_stb + cwise_multiply(vars[Q2K], i_c_tm1));
+        i_k_t = logistic(i_k_lowerc +vars[X2K] * in_stb + cwise_multiply(concatenate_cols(vector<Expression>(nutt, vars[Q2K])), i_c_tm1));
     else
         i_k_t = logistic(i_k_lowerc + vars[X2K] * in_stb);
     ct[i] = i_before_add_with_lower_linearly + cwise_multiply(i_k_t, (i == 0) ? vars[X2K0] * lower_layer_c : lower_layer_c);
 
 
     Expression i_aot;
+    Expression bomb = biases[i][2];
     if (has_prev_state)
-      i_aot = affine_transform({vars[BO], vars[X2O], in_stb, vars[H2O], i_h_tm1, vars[C2O], ct[i]});
+        i_aot = affine_transform({bomb, vars[X2O], in_stb, vars[H2O], i_h_tm1, vars[C2O], ct[i]});
     else
-      i_aot = affine_transform({vars[BO], vars[X2O], in_stb});
+        i_aot = affine_transform({ bomb, vars[X2O], in_stb });
     Expression i_ot = logistic(i_aot);
     Expression ph_t = tanh(ct[i]);
     in = ht[i] = cwise_multiply(i_ot,ph_t);

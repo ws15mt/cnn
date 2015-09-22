@@ -8,6 +8,14 @@
 #include "cnn/dict.h"
 #include "cnn/expr.h"
 #include "cnn/data-util.h"
+#include <iostream>
+#include <fstream>
+#include <sstream>
+
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
+#include <boost/program_options/parsers.hpp>
+#include <boost/program_options/variables_map.hpp>
 
 using namespace cnn;
 using namespace std;
@@ -115,23 +123,155 @@ extract from a dialogue corpus, a set of dialogues with the same number of turns
 
 return a vector of dialogues in selected, also the starting dialogue id is increased by one.
 Notice that a dialogue might be used in multiple times
+
+selected [ turn 0 : <query_00, answer_00> <query_10, answer_10>]
+         [ turn 1 : <query_01, answer_01> <query_11, answer_11>]
 */
 void get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected)
 {
     if (stt_dialgoue_id >= corp.size())
         return ;
 
+    while (used[stt_dialgoue_id])
+        stt_dialgoue_id++;
+
     size_t d_turns = corp[stt_dialgoue_id].size();
-    selected.push_back(corp[stt_dialgoue_id]);
+    Dialogue first_turn;
+    size_t i_turn = 0;
+
+    selected.clear();
+    selected.resize(d_turns);
+    for (auto p : corp[stt_dialgoue_id])
+    {
+        selected[i_turn].push_back(corp[stt_dialgoue_id][i_turn]);
+        i_turn++;
+    }
+    used[stt_dialgoue_id] = true;
+
     for (size_t iss = stt_dialgoue_id+1; iss < corp.size(); iss++)
     {
         if (corp[iss].size() == d_turns && used[iss] == false){
-            selected.push_back(corp[iss]);
+            i_turn = 0;
+            for (auto p : corp[iss])
+            {
+                selected[i_turn].push_back(corp[iss][i_turn]);
+                i_turn++;
+            }
+
             used[iss] = true;
-            if (selected.size() == nbr_dialogues)
+            if (selected[0].size() == nbr_dialogues)
                 break;
         }
     }
 
     stt_dialgoue_id++;
+}
+
+int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td) 
+{
+    std::istringstream in(line);
+    std::string word;
+    std::string sep = "|||";
+    Dict* d = sd;
+    std::vector<int>* v = s;
+    std::string diagid, turnid;
+
+    if (line.length() == 0)
+        return -1;
+
+    in >> diagid;
+    in >> word;
+    if (word != sep)
+    {
+        cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
+        cerr << "expecting diagid" << endl;
+        abort();
+    }
+
+    in >> turnid;
+    in >> word;
+    if (word != sep)
+    {
+        cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
+        cerr << "expecting turn id" << endl;
+        abort();
+    }
+
+    while (in) {
+        in >> word;
+        if (!in) break;
+        if (word == sep) { d = td; v = t; continue; }
+        v->push_back(d->Convert(word));
+    }
+    int res;
+    stringstream(diagid) >> res;
+    return res;
+}
+
+Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS)
+{
+    ifstream in(filename);
+    assert(in);
+    Corpus corpus;
+    Dialogue diag;
+    int prv_diagid = -1;
+    string line;
+    int lc = 0, stoks = 0, ttoks = 0;
+    min_diag_id = 99999;
+    while (getline(in, line)) {
+        ++lc;
+        Sentence source, target;
+        int diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd);
+        if (diagid == -1)
+            break;
+        if (diagid < min_diag_id)
+            min_diag_id = diagid;
+        if (diagid != prv_diagid)
+        {
+            if (diag.size() > 0)
+                corpus.push_back(diag);
+            diag.clear();
+            prv_diagid = diagid;
+        }
+        diag.push_back(SentencePair(source, target));
+        stoks += source.size();
+        ttoks += target.size();
+
+        if ((source.front() != kSRC_SOS && source.back() != kSRC_EOS)) {
+            cerr << "Sentence in " << filename << ":" << lc << " didn't start or end with <s>, </s>\n";
+            abort();
+        }
+    }
+
+    if (diag.size() > 0)
+        corpus.push_back(diag);
+    cerr << lc << " lines, " << stoks << " & " << ttoks << " tokens (s & t), " << sd.size() << " & " << sd.size() << " types\n";
+    return corpus;
+}
+
+/// shuffle the data from 
+/// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
+/// to 
+/// [v_spk1_time0 v_spk1_tim1 | v_spk2_time0 v_spk2_time1]
+Expression shuffle_data(Expression src, size_t nutt, size_t feat_dim, size_t slen)
+{
+    Expression i_src = reshape(src, {(long) (nutt * slen * feat_dim)});
+
+    int stride = nutt * feat_dim;
+    vector<Expression> i_all_spk;
+    for (size_t k = 0; k < nutt; k++)
+    {
+        vector<Expression> i_each_spk;
+        for (size_t t = 0; t < slen; t++)
+        {
+            long stt = k * feat_dim;
+            long stp = (k + 1)*feat_dim;
+            stt += (t * stride);
+            stp += (t * stride);
+            Expression i_pick = pickrange(i_src, stt, stp);
+            i_each_spk.push_back(i_pick);
+        }
+        i_all_spk.push_back(concatenate_cols(i_each_spk));
+    }
+    return concatenate_cols(i_all_spk);
 }
