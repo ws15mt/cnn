@@ -1,5 +1,6 @@
 #pragma once
 
+#include <map>
 #include "cnn/nodes.h"
 #include "cnn/cnn.h"
 #include "cnn/training.h"
@@ -24,6 +25,9 @@ typedef pair<Sentence, Sentence> SentencePair;
 typedef vector<SentencePair> Dialogue;
 typedef vector<Dialogue> Corpus;
 
+/// save the number of turns to dialogue id list
+typedef map<int, vector<int>> NumTurn2DialogId;
+
 /**
 usually packs a matrix with real value element
 this truncates both source and target 
@@ -36,11 +40,15 @@ vector<vector<Expression>> pack_obs(FCorpusPointers raw, size_t mbsize, Computat
 /// [s00 s01 s02 s10 s11 s12] where s1 is the second speaker, and s0 is the firest speaker
 vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, size_t mbsize, ComputationGraph& cg, const vector<size_t>& rand_stt);
 
-int get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected);
+/// return the index of the selected dialogues
+vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected);
+vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, vector<Dialogue>& selected, NumTurn2DialogId& info);
 
 int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td);
 
-Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS);
+Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength = 10000);
+
+NumTurn2DialogId get_numturn2dialid(Corpus corp);
 
 /// shuffle the data from 
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]

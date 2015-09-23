@@ -11,6 +11,8 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <algorithm>
+#include <vector>
 
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
@@ -127,17 +129,19 @@ Notice that a dialogue might be used in multiple times
 selected [ turn 0 : <query_00, answer_00> <query_10, answer_10>]
          [ turn 1 : <query_01, answer_01> <query_11, answer_11>]
 */
-int get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected)
+vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected)
 {
     int nutt = 0;
+    vector<int> v_sel_idx;
+
     if (stt_dialgoue_id >= corp.size())
-        return nutt;
+        return v_sel_idx;
 
     while (stt_dialgoue_id < corp.size() && used[stt_dialgoue_id])
         stt_dialgoue_id++;
 
     if (stt_dialgoue_id >= corp.size())
-        return nutt;
+        return v_sel_idx;
 
     size_t d_turns = corp[stt_dialgoue_id].size();
     Dialogue first_turn;
@@ -151,9 +155,10 @@ int get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dia
         i_turn++;
     }
     used[stt_dialgoue_id] = true;
+    v_sel_idx.push_back(stt_dialgoue_id);
     nutt++;
 
-    for (size_t iss = stt_dialgoue_id+1; iss < corp.size(); iss++)
+    for (size_t iss = stt_dialgoue_id + 1; iss < corp.size(); iss++)
     {
         if (corp[iss].size() == d_turns && used[iss] == false){
             i_turn = 0;
@@ -164,6 +169,7 @@ int get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dia
             }
 
             used[iss] = true;
+            v_sel_idx.push_back(iss);
             nutt++;
             if (selected[0].size() == nbr_dialogues)
                 break;
@@ -172,10 +178,71 @@ int get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dia
 
     stt_dialgoue_id++;
 
-    return nutt;
+    return v_sel_idx;
 }
 
-int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td) 
+vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, vector<Dialogue>& selected, NumTurn2DialogId& info)
+{
+    /// ciruculum style training, start from short conversations
+    /// start from short conversation with as few as one dialogue turn
+    int nutt = 0;
+    vector<int> v_sel_idx;
+    int nbr_turn = -1;
+    bool need_shuffle = false; 
+
+    for (auto p : info)
+    {
+        if (p.first < min_nbr_turns) continue;
+        for (auto k: p.second)
+        {
+            if (used[k] == false)
+            {
+                nbr_turn = p.first;
+                if (nbr_turn != min_nbr_turns)
+                {
+                    need_shuffle = true;
+                }
+                break;
+            }
+        }
+        if (nbr_turn != -1)
+            break;
+    }
+    if (nbr_turn == -1)
+        return v_sel_idx;
+
+    selected.clear();
+    selected.resize(nbr_turn);
+    vector<int> vd = info[nbr_turn];
+
+    if (need_shuffle)
+    {
+        random_shuffle(vd.begin(), vd.end());
+        info[nbr_turn] = vd;
+    }
+
+    size_t nd = 0;
+    for (auto k : vd)
+    {
+        if (used[k] == false && nd < nbr_dialogues)
+        {
+            size_t iturn = 0;
+            for (auto p : corp[k])
+            {
+                selected[iturn].push_back(corp[k][iturn]);
+                iturn++;
+            }
+            used[k] = true;
+            v_sel_idx.push_back(k);
+            nd++;
+        }
+    }
+
+    min_nbr_turns = nbr_turn;
+    return v_sel_idx; 
+}
+
+int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td)
 {
     std::istringstream in(line);
     std::string word;
@@ -216,7 +283,7 @@ int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dic
     return res;
 }
 
-Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS)
+Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength)
 {
     ifstream in(filename);
     assert(in);
@@ -241,6 +308,16 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int 
             diag.clear();
             prv_diagid = diagid;
         }
+        if (source.size() > maxSentLength)
+        {
+            source.resize(maxSentLength - 1);
+            source.push_back(kSRC_EOS);
+        }
+        if (target.size() > maxSentLength)
+        {
+            target.resize(maxSentLength - 1);
+            target.push_back(kSRC_EOS);
+        }
         diag.push_back(SentencePair(source, target));
         stoks += source.size();
         ttoks += target.size();
@@ -256,6 +333,20 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int 
     cerr << lc << " lines, " << stoks << " & " << ttoks << " tokens (s & t), " << sd.size() << " & " << sd.size() << " types\n";
     return corpus;
 }
+
+NumTurn2DialogId get_numturn2dialid(Corpus corp)
+{
+    NumTurn2DialogId info;
+
+    int id = 0;
+    for (auto p : corp)
+    {
+        size_t d_turns = p.size();
+        info[d_turns].push_back(id++);
+    }
+    return info; 
+}
+
 
 /// shuffle the data from 
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
