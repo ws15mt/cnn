@@ -374,3 +374,18 @@ Expression shuffle_data(Expression src, size_t nutt, size_t feat_dim, size_t sle
     }
     return concatenate_cols(i_all_spk);
 }
+
+/// convert human input string into id string according to a dictionary of word to id
+void convertHumanQuery(const std::string& line, std::vector<int>& t, Dict& td)
+{
+    std::istringstream in(line);
+    std::string word;
+    t.clear();
+
+    while (in) {
+        in >> word;
+        if (!in) break;
+        t.push_back(td.Convert(word, true));
+    }
+}
+
