@@ -140,7 +140,8 @@ void DGLSTMBuilder::set_data_in_parallel(int n)
         Expression bomb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BO]));
         Expression bkmb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BK]));
         Expression mc2kmb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[C2K]));
-        vector<Expression> b = { bimb, bcmb, bomb, bkmb, mc2kmb};
+        Expression mq2kmb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[Q2K]));
+        vector<Expression> b = { bimb, bcmb, bomb, bkmb, mc2kmb, mq2kmb};
         biases.push_back(b);
     }
 }
@@ -218,7 +219,10 @@ Expression DGLSTMBuilder::add_input_impl(int prev, const Expression& x) {
     }
 
     if (has_prev_state)
-        i_k_t = logistic(i_k_lowerc +vars[X2K] * in_stb + cwise_multiply(concatenate_cols(vector<Expression>(nutt, vars[Q2K])), i_c_tm1));
+    {
+        Expression q2kmb = biases[i][5];
+        i_k_t = logistic(i_k_lowerc + vars[X2K] * in_stb + cwise_multiply(q2kmb, i_c_tm1));
+    }
     else
         i_k_t = logistic(i_k_lowerc + vars[X2K] * in_stb);
     ct[i] = i_before_add_with_lower_linearly + cwise_multiply(i_k_t, (i == 0) ? vars[X2K0] * lower_layer_c : lower_layer_c);
