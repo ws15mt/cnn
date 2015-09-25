@@ -11,7 +11,9 @@
 #include "cnn/dglstm.h"
 #include "cnn/dict.h"
 #include "cnn/expr.h"
-#include "expr-xtra.h"
+#include "cnn/expr-xtra.h"
+#include "cnn/data-util.h"
+#include "dialogue.h"
 
 #include <algorithm>
 #include <queue>
@@ -25,61 +27,32 @@
 namespace cnn {
 
 template <class Builder>
-struct CxtEncDecModel{
-    explicit CxtEncDecModel(Model& model,
-        unsigned vocab_size_src, unsigned layers,
-        unsigned hidden_dim, unsigned hidden_replicates); 
+class CxtEncDecModel : public DialogueBuilder<Builder>{
+public:
+    CxtEncDecModel(cnn::Model& model, int vocab_size_src, int layers, int hidden_dim, int hidden_replicates);
 
-    ~CxtEncDecModel();
+public:
 
-    void reset(ComputationGraph & cg);
+    Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg);
+    Expression build_graph(const std::vector<int> &source, const std::vector<int>& osent, ComputationGraph &cg);
 
-    Expression build_graph(const std::vector<int> &source, const std::vector<int>& target,
-        ComputationGraph& cg);
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg);
 
-    std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, 
+    std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg,
             int beam_width, Dict &tdict);
 
     std::vector<int> beam_decode(const std::vector<int> &source, ComputationGraph& cg, int beam_width, Dict &tdict);
     
     std::vector<int> sample(const std::vector<int> &source, ComputationGraph& cg, Dict &tdict);
 
-    LookupParameters* p_cs;
+protected:
     std::vector<Parameters*> p_h0;
-    Parameters* p_bias; 
-    Parameters* p_R;  // for affine transformation after decoder
-    Parameters* p_bias_cxt;
-    size_t layers; 
-    Builder decoder;  // for decoder
-    Builder encoder_fwd, encoder_bwd; /// for encoder
-    Builder context; // for contexter
-    int vocab_size;
-
-    std::vector<float> *auxiliary_vector(); // memory management
-
-    // state variables used in the above two methods
-    Expression src;
-    Expression i_sm0;  // the first input to decoder, even before observed
-    std::vector<Expression> i_h0;  // for context history
-    Expression i_src_idx;
-    Expression i_src_len;
-    unsigned slen;
 };
 
 template <class Builder>
-CxtEncDecModel<Builder>::CxtEncDecModel(cnn::Model& model,
-    unsigned vocab_size_src, unsigned layers, unsigned hidden_dim, unsigned hidden_replicates)
-    : layers(layers), decoder(layers, hidden_dim, hidden_dim, &model),
-    encoder_fwd(layers, hidden_dim, hidden_dim, &model),
-    encoder_bwd(layers, hidden_dim, hidden_dim, &model),
-    context(1, 2 * hidden_dim, hidden_dim, &model), vocab_size(vocab_size_src)
+CxtEncDecModel<Builder>::CxtEncDecModel(cnn::Model& model, int vocab_size_src, int layers, int hidden_dim, int hidden_replicates)
+    : DialogueBuilder<Builder>(model, vocab_size_src, layers, hidden_dim, hidden_replicates)
 {
-    p_cs = model.add_lookup_parameters(long(vocab_size_src), {long(hidden_dim)}); 
-    p_R = model.add_parameters({long(vocab_size), long(hidden_dim)});
-    p_bias = model.add_parameters({ long(vocab_size) });
-    p_bias_cxt = model.add_parameters({ long(hidden_dim * hidden_replicates) });
-    p_bias_cxt->reset_to_zero();
-
     /// for context history
     for (auto l = 0; l < hidden_replicates; ++l)
     {
@@ -87,19 +60,6 @@ CxtEncDecModel<Builder>::CxtEncDecModel(cnn::Model& model,
         pp->reset_to_zero();
         p_h0.push_back(pp);
     }
-}
-
-template <class Builder>
-CxtEncDecModel<Builder>::~CxtEncDecModel()
-{
-}
-
-template<class Builder>
-void CxtEncDecModel<Builder>::reset(ComputationGraph & cg)
-{
-    i_h0.clear(); /// clear context history
-    context.new_graph(cg);
-    context.start_new_sequence();
 }
 
 template <class Builder>
@@ -180,13 +140,88 @@ Expression CxtEncDecModel<Builder>::build_graph(const std::vector<int> &source, 
     return -i_nerr;
 }
 
+/// data parallelization
+/// data is [ s0
 template <class Builder>
-std::vector<float>* CxtEncDecModel<Builder>::auxiliary_vector()
+Expression CxtEncDecModel<Builder>::build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
 {
-    while (num_aux_vecs >= aux_vecs.size())
-        aux_vecs.push_back(new std::vector<float>());
-    // NB, we return the last auxiliary vector, AND increment counter
-    return aux_vecs[num_aux_vecs++];
+    size_t nutt;
+    start_new_instance(source, cg);
+
+    // decoder
+    vector<Expression> errs;
+
+    // now for the target sentence
+    Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
+    Expression i_bias = parameter(cg, p_bias);  // word bias
+    Expression i_bias_cxt = parameter(cg, p_bias_cxt);
+
+    nutt = osent.size();
+
+    int oslen = 0;
+    for (auto p : osent)
+        oslen = (oslen < p.size()) ? p.size() : oslen;
+    oslen -= 1;
+
+    Expression i_bias_mb = concatenate_cols(vector<Expression>(nutt, i_bias));
+    for (unsigned t = 0; t < oslen; ++t) {
+        vector<int> vobs;
+        for (auto p : osent)
+        {
+            if (t < p.size())
+                vobs.push_back(p[t]);
+            else
+                vobs.push_back(-1);
+        }
+
+        Expression i_y_t = decoder_step(vobs, cg);
+        Expression i_r_t = i_bias_mb + i_R * i_y_t;
+
+        cg.incremental_forward();
+
+        Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+        for (size_t i = 0; i < nutt; i++)
+        {
+            if (t < osent[i].size() - 1)
+            {
+                /// only compute errors on with output labels
+                Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
+                Expression i_ydist = log_softmax(r_r_t);
+                errs.push_back(pick(i_ydist, osent[i][t + 1]));
+
+                cg.incremental_forward();
+            }
+        }
+    }
+
+    Expression i_nerr = sum(errs);
+
+    save_context(cg);
+
+    return -i_nerr;
+}
+
+template<class Builder>
+Expression CxtEncDecModel<Builder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
+{
+    size_t nutt = trg_tok.size();
+
+    Expression i_x_t;
+    vector<Expression> v_x_t;
+    for (auto p : trg_tok)
+    {
+        Expression i_x_x;
+        if (p >= 0)
+            i_x_x = lookup(cg, p_cs, p);
+        else
+            i_x_x = input(cg, { (long)hidden_dim }, &zero);
+        v_x_t.push_back(i_x_x);
+    }
+    i_x_t = concatenate_cols(v_x_t);
+
+    Expression i_y_t = decoder.add_input(i_x_t);
+
+    return i_y_t;
 }
 
 template <class Builder>

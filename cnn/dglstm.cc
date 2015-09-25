@@ -185,7 +185,7 @@ Expression DGLSTMBuilder::add_input_impl(int prev, const Expression& x) {
     else
         i_ait = affine_transform({ bimb, vars[X2I], in_stb });
     Expression i_it = logistic(i_ait);
-
+    
     // forget
     Expression i_ft = 1.f - i_it;
     // write memory cell
