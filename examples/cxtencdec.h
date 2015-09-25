@@ -211,28 +211,6 @@ CxtEncDecModel<Builder>::decode(const std::vector<int> &source, ComputationGraph
     return target;
 }
 
-struct Hypothesis {
-    Hypothesis(RNNPointer state, int tgt, float cst, int _t)
-        : builder_state(state), target({tgt}), cost(cst), t(_t) {}
-    Hypothesis(RNNPointer state, int tgt, float cst, Hypothesis &last)
-        : builder_state(state), target(last.target), cost(cst), t(last.t+1) {
-        target.push_back(tgt);
-    }
-    RNNPointer builder_state;
-    std::vector<int> target;
-    float cost;
-    int t;
-};
-
-struct CompareHypothesis
-{
-    bool operator()(const Hypothesis& h1, const Hypothesis& h2)
-    {
-        if (h1.cost < h2.cost) return true;
-        return false; 
-    }
-};
-
 template <class Builder>
 std::vector<int> 
 CxtEncDecModel<Builder>::beam_decode(const std::vector<int> &source, ComputationGraph& cg, int beam_width, 
