@@ -33,10 +33,12 @@ public:
 
 public:
 
-    Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg);
     Expression build_graph(const std::vector<int> &source, const std::vector<int>& osent, ComputationGraph &cg);
+    Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
+        return DialogueBuilder<Builder>::build_graph(source, osent, cg);
+    }
 
-    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg);
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg) override;
 
     std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg,
             int beam_width, Dict &tdict);
@@ -47,6 +49,7 @@ public:
 
 protected:
     std::vector<Parameters*> p_h0;
+
 };
 
 template <class Builder>
@@ -140,69 +143,8 @@ Expression CxtEncDecModel<Builder>::build_graph(const std::vector<int> &source, 
     return -i_nerr;
 }
 
-/// data parallelization
-/// data is [ s0
-template <class Builder>
-Expression CxtEncDecModel<Builder>::build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
-{
-    size_t nutt;
-    start_new_instance(source, cg);
-
-    // decoder
-    vector<Expression> errs;
-
-    // now for the target sentence
-    Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
-    Expression i_bias = parameter(cg, p_bias);  // word bias
-    Expression i_bias_cxt = parameter(cg, p_bias_cxt);
-
-    nutt = osent.size();
-
-    int oslen = 0;
-    for (auto p : osent)
-        oslen = (oslen < p.size()) ? p.size() : oslen;
-    oslen -= 1;
-
-    Expression i_bias_mb = concatenate_cols(vector<Expression>(nutt, i_bias));
-    for (unsigned t = 0; t < oslen; ++t) {
-        vector<int> vobs;
-        for (auto p : osent)
-        {
-            if (t < p.size())
-                vobs.push_back(p[t]);
-            else
-                vobs.push_back(-1);
-        }
-
-        Expression i_y_t = decoder_step(vobs, cg);
-        Expression i_r_t = i_bias_mb + i_R * i_y_t;
-
-        cg.incremental_forward();
-
-        Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
-        for (size_t i = 0; i < nutt; i++)
-        {
-            if (t < osent[i].size() - 1)
-            {
-                /// only compute errors on with output labels
-                Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
-                Expression i_ydist = log_softmax(r_r_t);
-                errs.push_back(pick(i_ydist, osent[i][t + 1]));
-
-                cg.incremental_forward();
-            }
-        }
-    }
-
-    Expression i_nerr = sum(errs);
-
-    save_context(cg);
-
-    return -i_nerr;
-}
-
 template<class Builder>
-Expression CxtEncDecModel<Builder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
+Expression CxtEncDecModel<Builder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg) 
 {
     size_t nutt = trg_tok.size();
 
