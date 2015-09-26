@@ -30,6 +30,9 @@ template <class Builder>
 class CxtEncDecModel : public DialogueBuilder<Builder>{
 public:
     CxtEncDecModel(cnn::Model& model, int vocab_size_src, int layers, int hidden_dim, int hidden_replicates);
+    CxtEncDecModel(cnn::Model& model, int vocab_size_src, int layers, int hidden_dim, int align_dim, int hidden_replicates) :
+        CxtEncDecModel(model, vocab_size_src, layers, hidden_dim, hidden_replicates)
+    {}
 
 public:
 
@@ -39,9 +42,6 @@ public:
     }
 
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg) override;
-
-    std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg,
-            int beam_width, Dict &tdict);
 
     std::vector<int> beam_decode(const std::vector<int> &source, ComputationGraph& cg, int beam_width, Dict &tdict);
     
@@ -164,51 +164,6 @@ Expression CxtEncDecModel<Builder>::decoder_step(vector<int> trg_tok, Computatio
     Expression i_y_t = decoder.add_input(i_x_t);
 
     return i_y_t;
-}
-
-template <class Builder>
-std::vector<int>
-CxtEncDecModel<Builder>::decode(const std::vector<int> &source, ComputationGraph& cg, int beam_width, cnn::Dict &tdict)
-{
-    assert(beam_width == 1); // beam search not implemented 
-    const int sos_sym = tdict.Convert("<s>");
-    const int eos_sym = tdict.Convert("</s>");
-
-    std::vector<int> target;
-    target.push_back(sos_sym); 
-
-    std::cerr << tdict.Convert(target.back());
-    int t = 0;
-    start_new_instance(source, cg);
-    while (target.back() != eos_sym) 
-    {
-        Expression i_scores = add_input(target.back(), t, cg);
-        Expression ydist = softmax(i_scores); // compiler warning, but see below
-
-        // find the argmax next word (greedy)
-        unsigned w = 0;
-        auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
-        auto pr_w = dist[w];
-        for (unsigned x = 1; x < dist.size(); ++x) {
-            if (dist[x] > pr_w) {
-                w = x;
-                pr_w = dist[x];
-            }
-        }
-
-        // break potential infinite loop
-        if (t > 100) {
-            w = eos_sym;
-            pr_w = dist[w];
-        }
-
-        std::cerr << " " << tdict.Convert(w) << " [p=" << pr_w << "]";
-        t += 1;
-        target.push_back(w);
-    }
-    std::cerr << std::endl;
-
-    return target;
 }
 
 template <class Builder>
@@ -348,6 +303,79 @@ CxtEncDecModel<Builder>::sample(const std::vector<int> &source, ComputationGraph
     std::cerr << std::endl;
 
     return target;
+}
+
+template <class Builder>
+class EncDecModel : public DialogueBuilder<Builder>{
+public:
+    EncDecModel(cnn::Model& model, int vocab_size_src, int layers, int hidden_dim, int hidden_replicates);
+    EncDecModel(cnn::Model& model, int vocab_size_src, int layers, int hidden_dim, int align_dim, int hidden_replicates):
+        EncDecModel(model, vocab_size_src, layers, hidden_dim, hidden_replicates)
+    {}
+
+public:
+
+    Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
+        return DialogueBuilder<Builder>::build_graph(source, osent, cg);
+    }
+
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg) override;
+
+    void assign_tocxt(ComputationGraph &cg, size_t nutt) override {};
+
+protected:
+    /// run in batch with multiple sentences
+    /// source [utt][data stream] is utterance first and then its content
+    /// the context RNN uses the last state of the encoder RNN as its input
+    void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg) override {
+        nutt = source.size();
+
+        std::vector<Expression> source_embeddings;
+
+        encoder_bwd.new_graph(cg);
+        encoder_bwd.set_data_in_parallel(nutt);
+        encoder_bwd.start_new_sequence();
+
+        Expression src_bwd = backward_directional<Builder>(slen, source, cg, p_cs, zero, encoder_bwd, HIDDEN_DIM);
+
+        /// pass the last time hidden layer activity to the decoder
+        vector<Expression> to;
+        for (auto s_l : encoder_bwd.final_s()) to.push_back(s_l);
+
+        decoder.new_graph(cg);
+        decoder.set_data_in_parallel(nutt);
+        decoder.start_new_sequence(to);  /// get the intention
+    };
+
+    void save_context(ComputationGraph &cg) override {};
+
+};
+
+template <class Builder>
+EncDecModel<Builder>::EncDecModel(cnn::Model& model, int vocab_size_src, int layers, int hidden_dim, int hidden_replicates)
+    : DialogueBuilder<Builder>(model, vocab_size_src, layers, hidden_dim, hidden_replicates){}
+
+template<class Builder>
+Expression EncDecModel<Builder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
+{
+    size_t nutt = trg_tok.size();
+
+    Expression i_x_t;
+    vector<Expression> v_x_t;
+    for (auto p : trg_tok)
+    {
+        Expression i_x_x;
+        if (p >= 0)
+            i_x_x = lookup(cg, p_cs, p);
+        else
+            i_x_x = input(cg, { (long)hidden_dim }, &zero);
+        v_x_t.push_back(i_x_x);
+    }
+    i_x_t = concatenate_cols(v_x_t);
+
+    Expression i_y_t = decoder.add_input(i_x_t);
+
+    return i_y_t;
 }
 
 
