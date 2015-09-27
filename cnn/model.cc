@@ -5,10 +5,10 @@
 
 #include <unordered_set>
 #include <iostream>
-#include <thrust/version.h>
 
 #define CNN_ALIGN 256
 #if HAVE_CUDA
+#include <thrust/version.h>
 #include "cnn/gpu-ops.h"
 #include "cnn/cuda.h"
 #endif
