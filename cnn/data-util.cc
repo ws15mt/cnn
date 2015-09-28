@@ -352,6 +352,7 @@ NumTurn2DialogId get_numturn2dialid(Corpus corp)
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
 /// to 
 /// [v_spk1_time0 v_spk1_tim1 | v_spk2_time0 v_spk2_time1]
+/// this assumes same length
 Expression shuffle_data(Expression src, size_t nutt, size_t feat_dim, size_t slen)
 {
     Expression i_src = reshape(src, {(long) (nutt * slen * feat_dim)});
@@ -373,6 +374,38 @@ Expression shuffle_data(Expression src, size_t nutt, size_t feat_dim, size_t sle
         i_all_spk.push_back(concatenate_cols(i_each_spk));
     }
     return concatenate_cols(i_all_spk);
+}
+
+/// shuffle the data from 
+/// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
+/// to 
+/// [v_spk1_time0 v_spk1_tim1 | v_spk2_time0 v_spk2_time1]
+/// this assumes different source length
+vector<Expression> shuffle_data(Expression src, size_t nutt, size_t feat_dim, const vector<size_t>& v_slen)
+{
+    /// the input data is arranged into a big matrix, assuming same length of utterance
+    /// but they are different length
+    size_t slen = *std::max_element(v_slen.begin(), v_slen.end());
+
+    Expression i_src = reshape(src, { (long)(nutt * slen * feat_dim) });
+
+    int stride = nutt * feat_dim;
+    vector<Expression> i_all_spk;
+    for (size_t k = 0; k < nutt; k++)
+    {
+        vector<Expression> i_each_spk;
+        for (size_t t = 0; t < v_slen[k]; t++)
+        {
+            long stt = k * feat_dim;
+            long stp = (k + 1)*feat_dim;
+            stt += (t * stride);
+            stp += (t * stride);
+            Expression i_pick = pickrange(i_src, stt, stp);
+            i_each_spk.push_back(i_pick);
+        }
+        i_all_spk.push_back(concatenate_cols(i_each_spk));
+    }
+    return i_all_spk;
 }
 
 /// convert human input string into id string according to a dictionary of word to id

@@ -56,4 +56,6 @@ NumTurn2DialogId get_numturn2dialid(Corpus corp);
 /// [v_spk1_time0 v_spk1_tim1 | v_spk2_time0 v_spk2_time1]
 Expression shuffle_data(Expression src, size_t nutt, size_t feat_dim, size_t slen);
 
+std::vector<Expression> shuffle_data(Expression src, size_t nutt, size_t feat_dim, const vector<std::size_t>& slen);
+
 void convertHumanQuery(const std::string& line, std::vector<int>& t, Dict& td);
