@@ -20,10 +20,7 @@ In `src`, you need to first use [`cmake`](http://www.cmake.org/) to generate the
     cd build
     cmake .. -DEIGEN3_INCLUDE_DIR=/path/to/eigen
 
-On Windows, use the following to build x64
-    cmake .. -DEIGEN3_INCLUDE_DIR=/path/to/eigen -G"Visual Studio 12 Win64"
-
-Then to compile, run
+To compile on Windows, use the introduction in the section "Building on Windows". To compile on Linux, run the following command
 
     make -j 2
 
