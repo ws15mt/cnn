@@ -508,23 +508,41 @@ void Log::backward(const vector<const Tensor*>& xs,
 
 void Concatenate::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   unsigned rows = 0;
+//  cerr << "concatenante: forward" << endl;
   for (auto x : xs) rows += x->d.rows();
   // the following should use auxiliary memory
   src_row_indices.resize(xs.size());
   unsigned ind = 0;
+  unsigned cols = xs[0]->d.cols();
+  unsigned total_rows = 0;
+  for (auto x : xs) {
+      if (x->d.cols() != cols)
+      {
+          cerr << "columns need to the same for Concatenate " << endl;
+          abort();
+      }
+      total_rows += x->d.rows();
+  }
+  
   unsigned k = 0;
   for (auto x : xs) {
     src_row_indices[k++] = ind;
     auto & xi = *x;
     const unsigned rows = xi.d.rows();
 #if HAVE_CUDA
-    assert(xi.d.cols() == 1); // this can be relaxed to the same everywhere
-    CUDA_CHECK(cudaMemcpyAsync(&fx.v[ind], &xi.v[0], sizeof(float) * rows, cudaMemcpyDeviceToDevice));
+    /// relaxed to support multiple columns!
+    size_t stt = ind;
+    for (size_t k = 0; k < cols; k++) /// not efficient, unfortunately
+    {
+        CUDA_CHECK(cudaMemcpyAsync(&fx.v[stt], &xi.v[k * cols], sizeof(float) * rows, cudaMemcpyDeviceToDevice));
+        stt += total_rows;
+    }
 #else
     (*fx).middleRows(ind, rows) = *xi;
 #endif
     ind += rows;
   }
+//  cerr << "concatenante: forward done" << endl;
 }
 
 void Concatenate::backward(const vector<const Tensor*>& xs,
@@ -532,14 +550,20 @@ void Concatenate::backward(const vector<const Tensor*>& xs,
                              const Tensor& dEdf,
                              unsigned i,
                              Tensor& dEdxi) const {
+//    cerr << "concatenante: backward" << endl;
   assert(i < src_row_indices.size());
+  const unsigned total_rows = dEdf.d.rows();
+  const unsigned cols = dEdxi.d.cols();
   const unsigned rows = dEdxi.d.rows();
   const unsigned begin = src_row_indices[i];
 #if HAVE_CUDA
-  CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows, kSCALAR_ONE, &dEdf.v[begin], 1, dEdxi.v, 1));
+  /// not efficient unfortunately
+  for (size_t k = 0; k < cols; k++)
+      CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows, kSCALAR_ONE, &dEdf.v[begin + k * total_rows], 1, &dEdxi.v[k * cols], 1));
 #else
   *dEdxi += (*dEdf).middleRows(begin, rows);
 #endif
+//  cerr << "concatenante: backward done" << endl;
 }
 
 #ifdef HAVE_CUDA
@@ -555,15 +579,16 @@ void ConcatenateColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) co
   unsigned c = 0;
   assert(xs.size() < MAX_CONCAT_COLS_ARGS);
   unsigned* pp = static_cast<unsigned*>(aux_mem);
+//  cerr << "concatenate_cols : forward " << endl;
   for (unsigned i = 0; i < xs.size(); ++i) {
 #if HAVE_CUDA
     CUDA_CHECK(cudaMemcpy(pp+i, &c, sizeof(unsigned), cudaMemcpyHostToDevice));
-    assert(xs[i]->d.cols() == 1);
     // CUBLAS matricies are column-major, so just copy the memory
     auto & xi = *xs[i];
     const unsigned rows = xi.d.rows();
-    CUDA_CHECK(cudaMemcpyAsync(&fx.v[i*rows], &xi.v[0], sizeof(float) * rows, cudaMemcpyDeviceToDevice));
-    c += xs[i]->d.cols();
+    const unsigned cols = xi.d.cols();
+    CUDA_CHECK(cudaMemcpyAsync(&fx.v[rows*c], &xi.v[0], sizeof(float) * rows * cols, cudaMemcpyDeviceToDevice));
+    c += cols;
 #else
       static_cast<unsigned*>(aux_mem)[i] = c;
       auto xi = **xs[i];
@@ -571,6 +596,7 @@ void ConcatenateColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) co
     (*fx).middleCols(c, d) = xi;
     c += d;
 #endif
+//    cerr << "concatenate_cols : forward done " << endl;
   }
 }
 
@@ -578,17 +604,24 @@ void ConcatenateColumns::backward(const vector<const Tensor*>& xs,
                                     const Tensor& fx,
                                     const Tensor& dEdf,
                                     unsigned i,
-                                    Tensor& dEdxi) const {
+                                    Tensor& dEdxi) const 
+{
+  unsigned* pp = static_cast<unsigned*>(aux_mem);
+//  cerr << "concatenate_cols : backward" << endl;
 #if HAVE_CUDA
-    const unsigned rows = dEdxi.d.rows();
-  const unsigned begin = i*rows;
-  CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows, kSCALAR_ONE, &dEdf.v[begin], 1, dEdxi.v, 1));
+  const unsigned rows = dEdxi.d.rows();
+  const unsigned cols = dEdxi.d.cols();
+  unsigned c;
+  CUDA_CHECK(cudaMemcpy(&c, pp + i, sizeof(unsigned), cudaMemcpyDeviceToHost));
+  const unsigned begin = c*rows;
+  CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows * cols, kSCALAR_ONE, &dEdf.v[begin], 1, dEdxi.v, 1));
 #else
   auto dEdx = *dEdxi;
   int d = dEdx.cols();
   int c = static_cast<unsigned*>(aux_mem)[i];
   dEdx += (*dEdf).middleCols(c, d);
 #endif
+//  cerr << "concatenate_cols : backward done" << endl;
 }
 
 void PairwiseRankLoss::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
