@@ -12,7 +12,7 @@ using namespace cnn::expr;
 
 namespace cnn {
 
-    enum { X2I, H2I, C2I, BI, X2O, H2O, C2O, BO, X2C, H2C, BC, X2K, C2K, Q2K, BK, STAB, X2K0};
+    enum { X2I, H2I, C2I, BI, X2F, H2F, C2F, BF, X2O, H2O, C2O, BO, X2C, H2C, BC, X2K, C2K, Q2K, BK, STAB, X2K0 };
 
 DGLSTMBuilder::DGLSTMBuilder(unsigned layers,
                          unsigned input_dim,
@@ -31,6 +31,12 @@ DGLSTMBuilder::DGLSTMBuilder(unsigned layers,
     Parameters* p_c2i = model->add_parameters({long(hidden_dim), long(hidden_dim)});
     Parameters* p_bi = model->add_parameters({long(hidden_dim)});
     
+    // f
+    Parameters* p_x2f = model->add_parameters({ long(hidden_dim), layer_input_dim });
+    Parameters* p_h2f = model->add_parameters({ long(hidden_dim), long(hidden_dim) });
+    Parameters* p_c2f = model->add_parameters({ long(hidden_dim), long(hidden_dim) });
+    Parameters* p_bf = model->add_parameters({ long(hidden_dim) });
+
     // o
     Parameters* p_x2o = model->add_parameters({long(hidden_dim), layer_input_dim});
     Parameters* p_h2o = model->add_parameters({long(hidden_dim), long(hidden_dim)});
@@ -54,9 +60,9 @@ DGLSTMBuilder::DGLSTMBuilder(unsigned layers,
 
     vector<Parameters*> ps;
     if (i==0)
-        ps = { p_x2i, p_h2i, p_c2i, p_bi, p_x2o, p_h2o, p_c2o, p_bo, p_x2c, p_h2c, p_bc, p_x2k, p_c2k, p_q2k, p_bk, p_stab, p_x2k0};
+        ps = { p_x2i, p_h2i, p_c2i, p_bi, p_x2f, p_h2f, p_c2f, p_bf, p_x2o, p_h2o, p_c2o, p_bo, p_x2c, p_h2c, p_bc, p_x2k, p_c2k, p_q2k, p_bk, p_stab, p_x2k0 };
     else
-        ps = { p_x2i, p_h2i, p_c2i, p_bi, p_x2o, p_h2o, p_c2o, p_bo, p_x2c, p_h2c, p_bc, p_x2k, p_c2k, p_q2k, p_bk, p_stab};
+        ps = { p_x2i, p_h2i, p_c2i, p_bi, p_x2f, p_h2f, p_c2f, p_bf, p_x2o, p_h2o, p_c2o, p_bo, p_x2c, p_h2c, p_bc, p_x2k, p_c2k, p_q2k, p_bk, p_stab };
 
     params.push_back(ps);
   }  // layers
@@ -73,6 +79,11 @@ void DGLSTMBuilder::new_graph_impl(ComputationGraph& cg){
     Expression i_h2i = parameter(cg,p[H2I]);
     Expression i_c2i = parameter(cg,p[C2I]);
     Expression i_bi = parameter(cg,p[BI]);
+    //f
+    Expression i_x2f = parameter(cg, p[X2F]);
+    Expression i_h2f = parameter(cg, p[H2F]);
+    Expression i_c2f = parameter(cg, p[C2F]);
+    Expression i_bf = parameter(cg, p[BF]);
     //o
     Expression i_x2o = parameter(cg,p[X2O]);
     Expression i_h2o = parameter(cg,p[H2O]);
@@ -96,10 +107,10 @@ void DGLSTMBuilder::new_graph_impl(ComputationGraph& cg){
     if (i == 0)
     {
         Expression i_x2k0 = parameter(cg, p[X2K0]);
-        vars = { i_x2i, i_h2i, i_c2i, i_bi, i_x2o, i_h2o, i_c2o, i_bo, i_x2c, i_h2c, i_bc, i_x2k, i_c2k, i_q2k, i_bk, i_stab, i_x2k0};
+        vars = { i_x2i, i_h2i, i_c2i, i_bi, i_x2f, i_h2f, i_c2f, i_bf, i_x2o, i_h2o, i_c2o, i_bo, i_x2c, i_h2c, i_bc, i_x2k, i_c2k, i_q2k, i_bk, i_stab, i_x2k0 };
     }
     else
-        vars = { i_x2i, i_h2i, i_c2i, i_bi, i_x2o, i_h2o, i_c2o, i_bo, i_x2c, i_h2c, i_bc, i_x2k, i_c2k, i_q2k, i_bk, i_stab };
+        vars = { i_x2i, i_h2i, i_c2i, i_bi, i_x2f, i_h2f, i_c2f, i_bf, i_x2o, i_h2o, i_c2o, i_bo, i_x2c, i_h2c, i_bc, i_x2k, i_c2k, i_q2k, i_bk, i_stab };
 
     param_vars.push_back(vars);
     
@@ -136,12 +147,17 @@ void DGLSTMBuilder::set_data_in_parallel(int n)
     for (unsigned i = 0; i < layers; ++i) {
         const vector<Expression>& vars = param_vars[i];
         Expression bimb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BI]));
+        Expression bfmb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BF]));
         Expression bcmb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BC]));
         Expression bomb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BO]));
         Expression bkmb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BK]));
         Expression mc2kmb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[C2K]));
         Expression mq2kmb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[Q2K]));
-        vector<Expression> b = { bimb, bcmb, bomb, bkmb, mc2kmb, mq2kmb};
+
+        Expression i_stabilizer = exp(vars[STAB]);
+        Expression i_stab = concatenate(vector<Expression>(input_dims[i], i_stabilizer));  /// self stabilizer
+
+        vector<Expression> b = { bimb, bfmb, bcmb, bomb, bkmb, mc2kmb, mq2kmb, i_stab };
         biases.push_back(b);
     }
 }
@@ -160,9 +176,8 @@ Expression DGLSTMBuilder::add_input_impl(int prev, const Expression& x) {
 
   for (unsigned i = 0; i < layers; ++i) {
     const vector<Expression>& vars = param_vars[i];
-    Expression i_stabilizer = exp(vars[STAB]);
-    vector<Expression> v_stab = vector<Expression>(input_dims[i], i_stabilizer);
-    Expression i_v_stab = concatenate_cols(vector<Expression>(nutt, concatenate(v_stab)));
+    Expression i_stabilizer = biases[i][7];
+    Expression i_v_stab = concatenate_cols(vector<Expression>(nutt, i_stabilizer));
     in_stb = cwise_multiply(i_v_stab, in); 
     Expression i_h_tm1, i_c_tm1;
 
@@ -178,6 +193,7 @@ Expression DGLSTMBuilder::add_input_impl(int prev, const Expression& x) {
       i_h_tm1 = h[prev][i];
       i_c_tm1 = c[prev][i];
     }
+
     // input
     Expression i_ait;
     Expression bimb = biases[i][0];
@@ -188,9 +204,17 @@ Expression DGLSTMBuilder::add_input_impl(int prev, const Expression& x) {
     Expression i_it = logistic(i_ait);
     
     // forget
-    Expression i_ft = 1.f - i_it;
+    // input
+    Expression i_aft;
+    Expression bfmb = biases[i][1];
+    if (has_prev_state)
+        i_ait = affine_transform({ bfmb, vars[X2F], in_stb, vars[H2F], i_h_tm1, vars[C2F], i_c_tm1 });
+    else
+        i_ait = affine_transform({ bfmb, vars[X2F], in_stb });
+    Expression i_ft = logistic(i_ait);
+
     // write memory cell
-    Expression bcmb = biases[i][1];
+    Expression bcmb = biases[i][2];
     Expression i_awt;
     if (has_prev_state)
         i_awt = affine_transform({ bcmb, vars[X2C], in_stb, vars[H2C], i_h_tm1 });
@@ -210,17 +234,17 @@ Expression DGLSTMBuilder::add_input_impl(int prev, const Expression& x) {
 
     /// add lower layer memory cell
     Expression i_k_t; 
-    Expression bkmb = biases[i][3];
+    Expression bkmb = biases[i][4];
     Expression i_k_lowerc = bkmb;
     if (i > 0)
     {
-        Expression mc2kmb = biases[i][4];
+        Expression mc2kmb = biases[i][5];
         i_k_lowerc = i_k_lowerc + cwise_multiply(mc2kmb, lower_layer_c); 
     }
 
     if (has_prev_state)
     {
-        Expression q2kmb = biases[i][5];
+        Expression q2kmb = biases[i][6];
         i_k_t = logistic(i_k_lowerc + vars[X2K] * in_stb + cwise_multiply(q2kmb, i_c_tm1));
     }
     else
@@ -229,7 +253,7 @@ Expression DGLSTMBuilder::add_input_impl(int prev, const Expression& x) {
 
 
     Expression i_aot;
-    Expression bomb = biases[i][2];
+    Expression bomb = biases[i][3];
     if (has_prev_state)
         i_aot = affine_transform({bomb, vars[X2O], in_stb, vars[H2O], i_h_tm1, vars[C2O], ct[i]});
     else

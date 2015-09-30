@@ -266,8 +266,7 @@ Expression bidirectional(int slen, const vector<vector<cnn::real>>& source, Comp
     return src;
 }
 
-template<class Builder>
-vector<Expression> attention_to_source(ComputationGraph& cg, vector<Expression> & v_src, const vector<size_t>& v_slen,
+vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
     Expression i_h_tm1, size_t a_dim, size_t feat_dim,  size_t nutt)
 {
