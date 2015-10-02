@@ -139,7 +139,12 @@ void ConstScalarMultiply::backward(const vector<const Tensor*>& xs,
 }
 
 void DotProduct::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  *fx = (**xs[0]).transpose() * (**xs[1]);
+#if HAVE_CUDA
+    cerr << "doproduct forward" << endl;
+    abort();
+#else
+    *fx = (**xs[0]).transpose() * (**xs[1]);
+#endif
 }
 
 void DotProduct::backward(const vector<const Tensor*>& xs,
@@ -147,7 +152,12 @@ void DotProduct::backward(const vector<const Tensor*>& xs,
                           const Tensor& dEdf,
                           unsigned i,
                           Tensor& dEdxi) const {
-  (*dEdxi) += (dEdf.v[0]) * (**xs[1 - i]);
+#if HAVE_CUDA
+    cerr << "doproduct backward " << endl;
+    abort();
+#else
+    (*dEdxi) += (dEdf.v[0]) * (**xs[1 - i]);
+#endif
 }
 
 void Transpose::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
