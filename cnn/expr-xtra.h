@@ -45,7 +45,7 @@ bool similar_length(const vector<vector<int>>& source);
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
 template<class Builder>
 Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero,
-    Builder & encoder_fwd, Builder& encoder_bwd, size_t feat_dim)
+    Builder * encoder_fwd, Builder* encoder_bwd, size_t feat_dim)
 {
     size_t nutt = source.size();
     /// get the maximum length of utternace from all speakers
@@ -70,7 +70,7 @@ Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, Com
                 vm.push_back(input(cg, { (long)feat_dim }, &zero));
         }
         i_x_t = concatenate_cols(vm);
-        src_fwd[t] = encoder_fwd.add_input(i_x_t);
+        src_fwd[t] = encoder_fwd->add_input(i_x_t);
     }
     for (int t = slen - 1; t >= 0; --t) {
         vector<Expression> vm;
@@ -82,7 +82,7 @@ Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, Com
                 vm.push_back(input(cg, { (long)feat_dim }, &zero));
         }
         i_x_t = concatenate_cols(vm);
-        src_bwd[t] = encoder_bwd.add_input(i_x_t);
+        src_bwd[t] = encoder_bwd->add_input(i_x_t);
     }
 
     for (unsigned i = 0; i < slen; ++i)
