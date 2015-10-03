@@ -203,9 +203,9 @@ vector<Expression> local_attention_to(ComputationGraph& cg, vector<int> v_slen,
 vector<Expression> convert_to_vector(Expression & in, size_t dim, size_t nutt);
 
 /// use key to find value, return a vector with element for each utterance
-vector<Expression> attention_weight(const vector<size_t>& v_slen, vector<Expression>& src_key, Expression i_va, Expression i_Wa,
+vector<Expression> attention_weight(const vector<size_t>& v_slen, const Expression& src_key, Expression i_va, Expression i_Wa,
     Expression i_h_tm1, size_t a_dim, size_t nutt);
 
 /// use key to find value, return a vector with element for each utterance
-vector<Expression> attention_to_key_and_retreive_value(vector<Expression> & v_src_val, const vector<size_t>& v_slen,
+vector<Expression> attention_to_key_and_retreive_value(const Expression & M_t, const vector<size_t>& v_slen,
     const vector<Expression> & i_attention_weight, size_t nutt);

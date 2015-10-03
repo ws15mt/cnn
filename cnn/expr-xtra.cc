@@ -230,7 +230,7 @@ vector<Expression> convert_to_vector(Expression & in, size_t dim, size_t nutt)
 }
 
 /// use key to find value, return a vector with element for each utterance
-vector<Expression> attention_weight(const vector<size_t>& v_slen, vector<Expression>& src_key, Expression i_va, Expression i_Wa,
+vector<Expression> attention_weight(const vector<size_t>& v_slen, const Expression& src_key, Expression i_va, Expression i_Wa,
     Expression i_h_tm1, size_t a_dim, size_t nutt)
 {
     Expression i_c_t;
@@ -252,7 +252,8 @@ vector<Expression> attention_weight(const vector<size_t>& v_slen, vector<Express
     }
     Expression i_wah_m = concatenate_cols(i_wah_rep);  // [d \sum_k v_slen[k]]
 
-    i_e_t = transpose(tanh(i_wah_m + concatenate_cols(src_key))) * i_va;  // [\sum_k v_slen[k] 1]
+    /// compare the input with key for every utterance
+    i_e_t = transpose(tanh(i_wah_m + concatenate_cols(vector<Expression>(nutt, src_key)))) * i_va;  // [\sum_k v_slen[k] 1]
 
     Expression i_alpha_t;
 
@@ -273,7 +274,7 @@ vector<Expression> attention_weight(const vector<size_t>& v_slen, vector<Express
 }
 
 /// use key to find value, return a vector with element for each utterance
-vector<Expression> attention_to_key_and_retreive_value(vector<Expression> & v_src_val, const vector<size_t>& v_slen,
+vector<Expression> attention_to_key_and_retreive_value(const Expression& M_t, const vector<size_t>& v_slen,
     const vector<Expression> & i_attention_weight, size_t nutt)
 {
 
@@ -284,7 +285,7 @@ vector<Expression> attention_to_key_and_retreive_value(vector<Expression> & v_sr
         Expression i_input;
         int istp = istt + v_slen[k];
 
-        i_input = v_src_val[k] * i_attention_weight[k];  // [D v_slen[k]] x[v_slen[k] 1] = [D 1]
+        i_input = M_t * i_attention_weight[k];  // [D v_slen[k]] x[v_slen[k] 1] = [D 1]
         v_input.push_back(i_input);
 
         istt = istp;
