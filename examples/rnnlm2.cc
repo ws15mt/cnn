@@ -15,6 +15,8 @@
 
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
 
@@ -138,6 +140,12 @@ void train(Model &model, LM_t &lm,
     bool first = true;
     int report = 0;
     unsigned lines = 0;
+
+    ofstream out(fname, ofstream::out);
+    boost::archive::text_oarchive oa(out);
+    oa << model;
+    out.close();
+
     while (1) {
         Timer iteration("completed in");
         double loss = 0;
@@ -181,7 +189,7 @@ void train(Model &model, LM_t &lm,
             }
             if (dloss < best) {
                 best = dloss;
-                ofstream out(fname);
+                ofstream out(fname, ofstream::out);
                 boost::archive::text_oarchive oa(out);
                 oa << model;
             }
@@ -213,7 +221,7 @@ void testcorpus(Model &model, LM_t &lm,
 void initialise(Model &model, const string &filename)
 {
     cerr << "Initialising model parameters from file: " << filename << endl;
-    ifstream in(filename);
+    ifstream in(filename, ifstream::in);
     boost::archive::text_iarchive ia(in);
     ia >> model;
 }
