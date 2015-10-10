@@ -13,7 +13,8 @@
 #include <sstream>
 #include <algorithm>
 #include <vector>
-
+#include <codecvt>
+#include <boost/algorithm/string.hpp>
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/program_options/parsers.hpp>
@@ -21,6 +22,7 @@
 
 using namespace cnn;
 using namespace std;
+using namespace boost::algorithm;
 
 /// utterance first ordering of data
 /// [s00 s01 s02 s10 s11 s12] where s1 is the second speaker, and s0 is the firest speaker
@@ -242,61 +244,25 @@ vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t 
     return v_sel_idx; 
 }
 
-int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td)
+Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool appendBSandES)
 {
-    std::istringstream in(line);
-    std::string word;
-    std::string sep = "|||";
-    Dict* d = sd;
-    std::vector<int>* v = s;
-    std::string diagid, turnid;
+    wifstream in(filename);
+    in.imbue(std::locale(std::locale::empty(), new std::codecvt_utf8<wchar_t>));
+    wstring line;
 
-    if (line.length() == 0)
-        return -1;
-
-    in >> diagid;
-    in >> word;
-    if (word != sep)
-    {
-        cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
-        cerr << "expecting diagid" << endl;
-        abort();
-    }
-
-    in >> turnid;
-    in >> word;
-    if (word != sep)
-    {
-        cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
-        cerr << "expecting turn id" << endl;
-        abort();
-    }
-
-    while (in) {
-        in >> word;
-        if (!in) break;
-        if (word == sep) { d = td; v = t; continue; }
-        v->push_back(d->Convert(word));
-    }
-    int res;
-    stringstream(diagid) >> res;
-    return res;
-}
-
-Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength)
-{
-    ifstream in(filename);
-    assert(in);
     Corpus corpus;
     Dialogue diag;
     int prv_diagid = -1;
-    string line;
     int lc = 0, stoks = 0, ttoks = 0;
     min_diag_id = 99999;
     while (getline(in, line)) {
+        trim_left(line);
+        trim_right(line);
+        if (line.length() == 0)
+            break;
         ++lc;
         Sentence source, target;
-        int diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd);
+        int diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, appendBSandES, kSRC_SOS, kSRC_EOS);
         if (diagid == -1)
             break;
         if (diagid < min_diag_id)
@@ -332,6 +298,172 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int 
         corpus.push_back(diag);
     cerr << lc << " lines, " << stoks << " & " << ttoks << " tokens (s & t), " << sd.size() << " & " << sd.size() << " types\n";
     return corpus;
+}
+
+Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool appendBSandES)
+{
+    ifstream in(filename);
+    string line;
+
+    Corpus corpus;
+    Dialogue diag;
+    int prv_diagid = -1;
+    int lc = 0, stoks = 0, ttoks = 0;
+    min_diag_id = 99999;
+    while (getline(in, line)) {
+        trim_left(line);
+        trim_right(line);
+        if (line.length() == 0)
+            break;
+        ++lc;
+        Sentence source, target;
+        int diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, appendBSandES, kSRC_SOS, kSRC_EOS);
+        if (diagid == -1)
+            break;
+        if (diagid < min_diag_id)
+            min_diag_id = diagid;
+        if (diagid != prv_diagid)
+        {
+            if (diag.size() > 0)
+                corpus.push_back(diag);
+            diag.clear();
+            prv_diagid = diagid;
+        }
+        if (source.size() > maxSentLength)
+        {
+            source.resize(maxSentLength - 1);
+            source.push_back(kSRC_EOS);
+        }
+        if (target.size() > maxSentLength)
+        {
+            target.resize(maxSentLength - 1);
+            target.push_back(kSRC_EOS);
+        }
+        diag.push_back(SentencePair(source, target));
+        stoks += source.size();
+        ttoks += target.size();
+
+        if ((source.front() != kSRC_SOS && source.back() != kSRC_EOS)) {
+            cerr << "Sentence in " << filename << ":" << lc << " didn't start or end with <s>, </s>\n";
+            abort();
+        }
+    }
+
+    if (diag.size() > 0)
+        corpus.push_back(diag);
+    cerr << lc << " lines, " << stoks << " & " << ttoks << " tokens (s & t), " << sd.size() << " & " << sd.size() << " types\n";
+    return corpus;
+}
+
+int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool appendSBandSE, int kSRC_SOS, int kSRC_EOS)
+{
+    std::istringstream in(line);
+    std::string word;
+    std::string sep = "|||";
+    Dict* d = sd;
+    std::string diagid, turnid;
+
+    std::vector<int>* v = s;
+
+    if (line.length() == 0)
+        return -1;
+
+    in >> diagid;
+    in >> word;
+    if (word != sep)
+    {
+        cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
+        cerr << "expecting diagid" << endl;
+        abort();
+    }
+
+    in >> turnid;
+    in >> word;
+    if (word != sep)
+    {
+        cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
+        cerr << "expecting turn id" << endl;
+        abort();
+    }
+
+    if (appendSBandSE)
+        v->push_back(kSRC_SOS);
+    while (in) {
+        in >> word;
+        trim(word);
+        if (!in) break;
+        if (word == sep) {
+            if (appendSBandSE)
+                v->push_back(kSRC_EOS);
+            d = td; v = t;
+            if (appendSBandSE)
+                v->push_back(kSRC_SOS);
+            continue;
+        }
+        v->push_back(d->Convert(word));
+    }
+    if (appendSBandSE)
+        v->push_back(kSRC_EOS);
+    int res;
+
+    stringstream(diagid) >> res;
+
+    return res;
+}
+
+int MultiTurnsReadSentencePair(const std::wstring& line, std::vector<int>* s, WDict* sd, std::vector<int>* t, WDict* td, bool appendSBandSE, int kSRC_SOS, int kSRC_EOS)
+{
+    std::wistringstream in(line);
+    std::wstring word;
+    std::wstring sep = L"|||";
+    WDict* d = sd;
+    std::wstring diagid, turnid;
+
+    std::vector<int>* v = s;
+
+    if (line.length() == 0)
+        return -1;
+
+    in >> diagid;
+    in >> word;
+    if (word != sep)
+    {
+        cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
+        cerr << "expecting diagid" << endl;
+        abort();
+    }
+
+    in >> turnid;
+    in >> word;
+    if (word != sep)
+    {
+        cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
+        cerr << "expecting turn id" << endl;
+        abort();
+    }
+
+    if (appendSBandSE)
+        v->push_back(kSRC_SOS);
+    while (in) {
+        in >> word;
+        trim(word);
+        if (!in) break;
+        if (word == sep) {
+            if (appendSBandSE)
+                v->push_back(kSRC_EOS);
+            d = td; v = t;
+            if (appendSBandSE)
+                v->push_back(kSRC_SOS);
+            continue;
+        }
+        v->push_back(d->Convert(word));
+    }
+    if (appendSBandSE)
+        v->push_back(kSRC_EOS);
+    int res;
+
+    wstringstream(diagid) >> res;
+    return res;
 }
 
 NumTurn2DialogId get_numturn2dialid(Corpus corp)
@@ -408,11 +540,24 @@ vector<Expression> shuffle_data(Expression src, size_t nutt, size_t feat_dim, co
     return i_all_spk;
 }
 
-/// convert human input string into id string according to a dictionary of word to id
 void convertHumanQuery(const std::string& line, std::vector<int>& t, Dict& td)
 {
     std::istringstream in(line);
     std::string word;
+    t.clear();
+
+    while (in) {
+        in >> word;
+        if (!in) break;
+        t.push_back(td.Convert(word, true));
+    }
+}
+
+void convertHumanQuery(const std::wstring& line, std::vector<int>& t, WDict& td)
+{
+    std::wistringstream in(line);
+    std::wstring word;
+
     t.clear();
 
     while (in) {

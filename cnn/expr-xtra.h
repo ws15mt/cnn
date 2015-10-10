@@ -45,7 +45,7 @@ bool similar_length(const vector<vector<int>>& source);
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
 template<class Builder>
 Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero,
-    Builder * encoder_fwd, Builder* encoder_bwd, size_t feat_dim)
+    Builder & encoder_fwd, Builder &encoder_bwd, size_t feat_dim)
 {
     size_t nutt = source.size();
     /// get the maximum length of utternace from all speakers
@@ -55,6 +55,124 @@ Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, Com
 
     std::vector<Expression> source_embeddings;
 
+    std::vector<Expression> src_fwd(slen);
+    std::vector<Expression> src_bwd(slen);
+
+    Expression i_x_t;
+
+    for (int t = 0; t < slen; ++t) {
+        vector<Expression> vm;
+        for (size_t k = 0; k < nutt; k++)
+        {
+            if (source[k].size() > t)
+                vm.push_back(lookup(cg, p_cs, source[k][t]));
+            else
+                vm.push_back(input(cg, { (long)feat_dim }, &zero));
+        }
+        i_x_t = concatenate_cols(vm);
+        src_fwd[t] = encoder_fwd.add_input(i_x_t);
+    }
+    for (int t = slen - 1; t >= 0; --t) {
+        vector<Expression> vm;
+        for (size_t k = 0; k < nutt; k++)
+        {
+            if (source[k].size() > t)
+                vm.push_back(lookup(cg, p_cs, source[k][t]));
+            else
+                vm.push_back(input(cg, { (long)feat_dim }, &zero));
+        }
+        i_x_t = concatenate_cols(vm);
+        src_bwd[t] = encoder_bwd.add_input(i_x_t);
+    }
+
+    for (unsigned i = 0; i < slen; ++i)
+    {
+        source_embeddings.push_back(concatenate(std::vector<Expression>({ src_fwd[i], src_bwd[i] })));
+    }
+
+    Expression src = concatenate_cols(source_embeddings);
+
+    return src;
+}
+
+template<class Builder>
+vector<Expression> forward_directional(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero,
+    Builder & encoder_fwd, size_t feat_dim)
+{
+    size_t nutt = source.size();
+    /// get the maximum length of utternace from all speakers
+    slen = 0;
+    for (auto p : source)
+        slen = (slen < p.size()) ? p.size() : slen;
+
+    std::vector<Expression> source_embeddings;
+
+    std::vector<Expression> src_fwd(slen);
+
+    Expression i_x_t;
+
+    for (int t = 0; t < slen; ++t) {
+        vector<Expression> vm;
+        for (size_t k = 0; k < nutt; k++)
+        {
+            if (source[k].size() > t)
+                vm.push_back(lookup(cg, p_cs, source[k][t]));
+            else
+                vm.push_back(input(cg, { (long)feat_dim }, &zero));
+        }
+        i_x_t = concatenate_cols(vm);
+        src_fwd[t] = encoder_fwd.add_input(i_x_t);
+    }
+
+    return src_fwd;
+}
+
+template<class Builder>
+vector<Expression> backward_directional(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero,
+    Builder& encoder_bwd, size_t feat_dim)
+{
+    size_t nutt = source.size();
+    /// get the maximum length of utternace from all speakers
+    slen = 0;
+    for (auto p : source)
+        slen = (slen < p.size()) ? p.size() : slen;
+
+    std::vector<Expression> source_embeddings;
+
+    std::vector<Expression> src_bwd(slen);
+
+    Expression i_x_t;
+
+    for (int t = slen - 1; t >= 0; --t) {
+        vector<Expression> vm;
+        for (size_t k = 0; k < nutt; k++)
+        {
+            if (source[k].size() > t)
+                vm.push_back(lookup(cg, p_cs, source[k][t]));
+            else
+                vm.push_back(input(cg, { (long)feat_dim }, &zero));
+        }
+        i_x_t = concatenate_cols(vm);
+        src_bwd[t] = encoder_bwd.add_input(i_x_t);
+    }
+
+    return src_bwd;
+}
+
+/// do forward and backward embedding on continuous valued vectors
+Expression bidirectional(int slen, const vector<vector<cnn::real>>& source, ComputationGraph& cg, std::vector<Expression>& src_fwd, std::vector<Expression>& src_bwd);
+
+/// do forward and backward embedding on continuous valued vectors
+template<class Builder>
+Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, Builder * encoder_fwd, Builder* encoder_bwd, size_t feat_dim)
+{
+    size_t nutt = source.size();
+    /// get the maximum length of utternace from all speakers 
+    slen = 0;
+    for (auto p : source)
+        slen = (slen < p.size()) ? p.size() : slen;
+
+    std::vector<Expression> source_embeddings;
     std::vector<Expression> src_fwd(slen);
     std::vector<Expression> src_bwd(slen);
 
@@ -90,103 +208,6 @@ Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, Com
         source_embeddings.push_back(concatenate(std::vector<Expression>({ src_fwd[i], src_bwd[i] })));
     }
 
-    Expression src = concatenate_cols(source_embeddings);
-
-    return src;
-}
-
-template<class Builder>
-Expression forward_directional(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero,
-    Builder & encoder_fwd, size_t feat_dim)
-{
-    size_t nutt = source.size();
-    /// get the maximum length of utternace from all speakers
-    slen = 0;
-    for (auto p : source)
-        slen = (slen < p.size()) ? p.size() : slen;
-
-    std::vector<Expression> source_embeddings;
-
-    std::vector<Expression> src_fwd(slen);
-
-    Expression i_x_t;
-
-    for (int t = 0; t < slen; ++t) {
-        vector<Expression> vm;
-        for (size_t k = 0; k < nutt; k++)
-        {
-            if (source[k].size() > t)
-                vm.push_back(lookup(cg, p_cs, source[k][t]));
-            else
-                vm.push_back(input(cg, { (long)feat_dim }, &zero));
-        }
-        i_x_t = concatenate_cols(vm);
-        src_fwd[t] = encoder_fwd.add_input(i_x_t);
-    }
-
-    Expression src = concatenate_cols(src_fwd);
-
-    return src;
-}
-
-template<class Builder>
-Expression backward_directional(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero,
-    Builder& encoder_bwd, size_t feat_dim)
-{
-    size_t nutt = source.size();
-    /// get the maximum length of utternace from all speakers
-    slen = 0;
-    for (auto p : source)
-        slen = (slen < p.size()) ? p.size() : slen;
-
-    std::vector<Expression> source_embeddings;
-
-    std::vector<Expression> src_bwd(slen);
-
-    Expression i_x_t;
-
-    for (int t = slen - 1; t >= 0; --t) {
-        vector<Expression> vm;
-        for (size_t k = 0; k < nutt; k++)
-        {
-            if (source[k].size() > t)
-                vm.push_back(lookup(cg, p_cs, source[k][t]));
-            else
-                vm.push_back(input(cg, { (long)feat_dim }, &zero));
-        }
-        i_x_t = concatenate_cols(vm);
-        src_bwd[t] = encoder_bwd.add_input(i_x_t);
-    }
-
-    Expression src = concatenate_cols(src_bwd);
-
-    return src;
-}
-
-/// do forward and backward embedding on continuous valued vectors
-template<class Builder>
-Expression bidirectional(int slen, const vector<vector<cnn::real>>& source, ComputationGraph& cg, Builder & encoder_fwd, Builder& encoder_bwd,
-    std::vector<Expression>& src_fwd, std::vector<Expression>& src_bwd)
-{
-
-    assert(slen == source.size());
-    std::vector<Expression> source_embeddings;
-
-    src_fwd.resize(slen);
-    src_bwd.resize(slen);
-
-    for (int t = 0; t < source.size(); ++t) {
-        long fdim = source[t].size();
-        src_fwd[t] = input(cg, { fdim }, &source[t]);
-    }
-    for (int t = source.size() - 1; t >= 0; --t) {
-        long fdim = source[t].size();
-        src_bwd[t] = input(cg, { fdim }, &source[t]);
-    }
-
-    for (unsigned i = 0; i < slen - 1; ++i)
-        source_embeddings.push_back(concatenate(std::vector<Expression>({ src_fwd[i], src_bwd[i + 1] })));
-    source_embeddings.push_back(concatenate(std::vector<Expression>({ src_fwd[slen - 1], src_bwd[slen - 1] })));
     Expression src = concatenate_cols(source_embeddings);
 
     return src;

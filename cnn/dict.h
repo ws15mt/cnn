@@ -7,8 +7,10 @@
 #include <vector>
 #include <iostream>
 #include <stdexcept>
+#include <typeinfo>
 
 #include <boost/version.hpp>
+#include <boost/algorithm/string.hpp>
 #if BOOST_VERSION >= 105600
 #include <boost/serialization/split_member.hpp>
 #include <boost/serialization/vector.hpp>
@@ -16,25 +18,33 @@
 #include <boost/serialization/string.hpp>
 #endif
 
+//#define INPUT_UTF8
+
+using namespace std;
 namespace cnn {
 
-class Dict {
-    std::string s_unk; 
- typedef std::unordered_map<std::string, int> Map;
+template<class T>
+class stDict {
+    T s_unk; 
+ typedef std::unordered_map<T, int> Map;
  public:
-  Dict() : frozen(false) {
+  stDict() : frozen(false) {
+#ifdef INPUT_UTF8
+      s_unk = L"<unk>";
+#else
       s_unk = "<unk>";
+#endif
   }
 
   inline unsigned size() const { return words_.size(); }
 
-  inline bool Contains(const std::string& words) {
-    return !(d_.find(words) == d_.end());
+  inline bool Contains(const T& words) {
+      return !(d_.find(words) == d_.end());
   }
 
   void Freeze() { frozen = true; }
 
-  inline int Convert(const std::string& word, bool backofftounk = false)
+  inline int Convert(const T& word, bool backofftounk = false)
   {
     auto i = d_.find(word);
     if (i == d_.end()) {
@@ -45,8 +55,12 @@ class Dict {
           }
           else
           {
-              std::cerr << "Unknown word encountered: " << word << std::endl;
-              throw std::runtime_error("Unknown word encountered in frozen dictionary: " + word);
+#ifdef INPUT_UTF8
+              std::wcerr << L"Unknown word encountered: " << std::endl;
+#else
+              std::cerr << "Unknown word encountered: " << std::endl;
+#endif
+              throw std::runtime_error("Unknown word encountered in frozen dictionary: ");
           }
       }
       words_.push_back(word);
@@ -56,31 +70,37 @@ class Dict {
     }
   }
 
-  inline const std::string& Convert(const int& id) const {
-    assert(id < (int)words_.size());
-    return words_[id];
+  inline const T& Convert(const int& id) const {
+      assert(id < (int)words_.size());
+      return words_[id];
   }
 
-  void clear() { words_.clear(); d_.clear(); }
+  void clear() { words_.clear(); d_.clear();  }
 
  private:
   bool frozen;
-  std::vector<std::string> words_;
+  std::vector<T> words_;
   Map d_;
 
 #if BOOST_VERSION >= 105600
   friend class boost::serialization::access;
   template<class Archive> void serialize(Archive& ar, const unsigned int) {
     ar & frozen;
-    ar & words_;
+    ar & words_; 
     ar & d_;
   }
 #endif
 };
 
+typedef stDict<std::string> Dict;
+typedef stDict<std::wstring> WDict;
+
 std::vector<int> ReadSentence(const std::string& line, Dict* sd);
+std::vector<int> ReadSentence(const std::string& line, WDict* sd);
 void ReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td);
+void ReadSentencePair(const std::string& line, std::vector<int>* s, WDict* sd, std::vector<int>* t, WDict* td);
 
 } // namespace cnn
+
 
 #endif

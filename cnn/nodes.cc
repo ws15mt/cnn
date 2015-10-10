@@ -416,6 +416,13 @@ void Average::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
     fx.v = xs[0]->v;
     return;
   }
+#if HAVE_CUDA
+  TensorTools::Zero(fx);
+  for (unsigned i = 0; i < num_args; ++i)
+      CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), kSCALAR_ONE, xs[i]->v, 1, fx.v, 1));
+  gpu::vconstant_multiplyx(fx.d.size(), 1./num_args, fx.v, fx.v);
+
+#else
   auto res = *fx;
   const unsigned remainder = num_args % 4;
   switch (remainder) {
@@ -427,6 +434,7 @@ void Average::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   for (unsigned i = remainder; i < num_args; i += 4)
     res += **xs[i] + **xs[i+1] + **xs[i+2] + **xs[i+3];
   res /= num_args;
+#endif
 }
 
 void Average::backward(const vector<const Tensor*>& xs,
@@ -434,7 +442,17 @@ void Average::backward(const vector<const Tensor*>& xs,
                      const Tensor& dEdf,
                      unsigned i,
                      Tensor& dEdxi) const {
-  *dEdxi += (*dEdf / xs.size());
+
+#if HAVE_CUDA
+    float fscale = 1. / xs.size();
+    float *fdevptr;
+    CUDA_CHECK(cudaMalloc((void**)&fdevptr, sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(fdevptr, &fscale, sizeof(float), cudaMemcpyHostToDevice));
+    CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), fdevptr, dEdf.v, 1, dEdxi.v, 1));
+    CUDA_CHECK(cudaFree(fdevptr));
+#else
+    *dEdxi += (*dEdf / xs.size());
+#endif
 };
 
 void Tanh::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
@@ -518,7 +536,6 @@ void Log::backward(const vector<const Tensor*>& xs,
 
 void Concatenate::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   unsigned rows = 0;
-//  cerr << "concatenante: forward" << endl;
   for (auto x : xs) rows += x->d.rows();
   // the following should use auxiliary memory
   src_row_indices.resize(xs.size());
@@ -552,7 +569,6 @@ void Concatenate::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
 #endif
     ind += rows;
   }
-//  cerr << "concatenante: forward done" << endl;
 }
 
 void Concatenate::backward(const vector<const Tensor*>& xs,
@@ -560,7 +576,6 @@ void Concatenate::backward(const vector<const Tensor*>& xs,
                              const Tensor& dEdf,
                              unsigned i,
                              Tensor& dEdxi) const {
-//    cerr << "concatenante: backward" << endl;
   assert(i < src_row_indices.size());
   const unsigned total_rows = dEdf.d.rows();
   const unsigned cols = dEdxi.d.cols();
@@ -573,7 +588,6 @@ void Concatenate::backward(const vector<const Tensor*>& xs,
 #else
   *dEdxi += (*dEdf).middleRows(begin, rows);
 #endif
-//  cerr << "concatenante: backward done" << endl;
 }
 
 #ifdef HAVE_CUDA
@@ -589,7 +603,6 @@ void ConcatenateColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) co
   unsigned c = 0;
   assert(xs.size() < MAX_CONCAT_COLS_ARGS);
   unsigned* pp = static_cast<unsigned*>(aux_mem);
-//  cerr << "concatenate_cols : forward " << endl;
   for (unsigned i = 0; i < xs.size(); ++i) {
 #if HAVE_CUDA
     CUDA_CHECK(cudaMemcpy(pp+i, &c, sizeof(unsigned), cudaMemcpyHostToDevice));
@@ -606,7 +619,6 @@ void ConcatenateColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) co
     (*fx).middleCols(c, d) = xi;
     c += d;
 #endif
-//    cerr << "concatenate_cols : forward done " << endl;
   }
 }
 
@@ -617,7 +629,6 @@ void ConcatenateColumns::backward(const vector<const Tensor*>& xs,
                                     Tensor& dEdxi) const 
 {
   unsigned* pp = static_cast<unsigned*>(aux_mem);
-//  cerr << "concatenate_cols : backward" << endl;
 #if HAVE_CUDA
   const unsigned rows = dEdxi.d.rows();
   const unsigned cols = dEdxi.d.cols();
@@ -631,7 +642,6 @@ void ConcatenateColumns::backward(const vector<const Tensor*>& xs,
   int c = static_cast<unsigned*>(aux_mem)[i];
   dEdx += (*dEdf).middleCols(c, d);
 #endif
-//  cerr << "concatenate_cols : backward done" << endl;
 }
 
 void PairwiseRankLoss::forward(const vector<const Tensor*>& xs, Tensor& fx) const {

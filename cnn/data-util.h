@@ -44,9 +44,11 @@ vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, size_t mbsize,
 vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected);
 vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, vector<Dialogue>& selected, NumTurn2DialogId& info);
 
-int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td);
 
-Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength = 10000);
+Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength = 10000, bool appendBSandES = false);
+int MultiTurnsReadSentencePair(const std::wstring& line, std::vector<int>* s, WDict* sd, std::vector<int>* t, WDict* td, bool appendSBandSE = false, int kSRC_SOS = -1, int kSRC_EOS = -1);
+Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength = 10000, bool appendBSandES = false);
+int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool appendSBandSE = false, int kSRC_SOS = -1, int kSRC_EOS = -1);
 
 NumTurn2DialogId get_numturn2dialid(Corpus corp);
 
@@ -59,3 +61,5 @@ Expression shuffle_data(Expression src, size_t nutt, size_t feat_dim, size_t sle
 std::vector<Expression> shuffle_data(Expression src, size_t nutt, size_t feat_dim, const vector<std::size_t>& slen);
 
 void convertHumanQuery(const std::string& line, std::vector<int>& t, Dict& td);
+
+void convertHumanQuery(const std::wstring& line, std::vector<int>& t, WDict& td);

@@ -295,3 +295,29 @@ vector<Expression> attention_to_key_and_retreive_value(const Expression& M_t, co
 }
 
 
+Expression bidirectional(int slen, const vector<vector<cnn::real>>& source, ComputationGraph& cg, std::vector<Expression>& src_fwd, std::vector<Expression>& src_bwd)
+{
+
+    assert(slen == source.size());
+    std::vector<Expression> source_embeddings;
+
+    src_fwd.resize(slen);
+    src_bwd.resize(slen);
+
+    for (int t = 0; t < source.size(); ++t) {
+        long fdim = source[t].size();
+        src_fwd[t] = input(cg, { fdim }, &source[t]);
+    }
+    for (int t = source.size() - 1; t >= 0; --t) {
+        long fdim = source[t].size();
+        src_bwd[t] = input(cg, { fdim }, &source[t]);
+    }
+
+    for (unsigned i = 0; i < slen - 1; ++i)
+        source_embeddings.push_back(concatenate(std::vector<Expression>({ src_fwd[i], src_bwd[i + 1] })));
+    source_embeddings.push_back(concatenate(std::vector<Expression>({ src_fwd[slen - 1], src_bwd[slen - 1] })));
+    Expression src = concatenate_cols(source_embeddings);
+
+    return src;
+}
+
