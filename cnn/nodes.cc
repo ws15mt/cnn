@@ -7,7 +7,6 @@
 #if HAVE_CUDA
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
-
 #include "cnn/cuda.h"
 #include "cnn/gpu-ops.h"
 #pragma comment(lib,"cublas.lib")

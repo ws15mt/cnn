@@ -138,6 +138,12 @@ void train(Model &model, LM_t &lm,
     bool first = true;
     int report = 0;
     unsigned lines = 0;
+
+    ofstream out(fname, ofstream::out);
+    boost::archive::text_oarchive oa(out);
+    oa << model;
+    out.close();
+
     while (1) {
         Timer iteration("completed in");
         double loss = 0;
@@ -181,9 +187,10 @@ void train(Model &model, LM_t &lm,
             }
             if (dloss < best) {
                 best = dloss;
-                ofstream out(fname);
+                ofstream out(fname, ofstream::out);
                 boost::archive::text_oarchive oa(out);
                 oa << model;
+                out.close();
             }
             else{
                 sgd->eta *= 0.5;
@@ -238,8 +245,6 @@ int main(int argc, char** argv) {
       ("gru", "use Gated Recurrent Unit (GRU) for recurrent structure; default RNN")
       ("lstm", "use Long Short Term Memory (GRU) for recurrent structure; default RNN")
       ("dglstm", "use depth-gated LSTM for recurrent structure; default RNN")
-      ("dglstmem", "use depth-gated LSTM with external memory for recurrent structure; default RNN")
-      ("nmn", "use NMN type method with external memory for recurrent structure; default RNN")
       ("verbose,v", "be extremely chatty")
       ("generate,g", value<bool>()->default_value(false), "generate random samples")
       ;
