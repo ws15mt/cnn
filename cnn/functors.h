@@ -106,6 +106,14 @@ struct FQuotient {
   }
 };
 
+struct FConstantMultiply{
+    FConstantMultiply(float c) : c(c) {}
+    CNN_DEVICE_FUNC inline float operator()(const float &x) const {
+        return c * x;
+    }
+    float c;
+};
+
 struct FConstantPlus {
   FConstantPlus(float c) : c(c) {}
   CNN_DEVICE_FUNC inline float operator()(const float &x) const {
@@ -318,6 +326,30 @@ struct FBinaryLogLossBackward {
     float scale = (x_true > 0.f) ? -x_true/x : (1.f-x_true)/(1.-x);
     return d * scale;
   }
+};
+
+struct scale_functor
+{
+    const float a;
+
+    scale_functor(float _a) : a(_a) {}
+
+    CNN_DEVICE_FUNC inline float operator()(const float& x) const
+    {
+        return a * x;
+    }
+};
+
+struct saxpy_functor
+{
+    const float a;
+
+    saxpy_functor(float _a) : a(_a) {}
+
+    CNN_DEVICE_FUNC inline float operator()(const float& x, const float& y) const
+    {
+        return a * x + y;
+    }
 };
 
 } // namespace cnn

@@ -1,5 +1,4 @@
-#ifndef CNN_EXPR_H
-#define CNN_EXPR_H
+#pragma once
 
 #include "cnn/cnn.h"
 #include "cnn/nodes.h"
@@ -120,6 +119,6 @@ template <typename T>
 inline Expression affine_transform(const T& xs) { return detail::f<AffineTransform>(xs); }
 inline Expression affine_transform(const std::initializer_list<Expression>& xs) { return detail::f<AffineTransform>(xs); }
 
+
 } }
 
-#endif

@@ -8,40 +8,44 @@ using namespace std;
 
 Trainer::~Trainer() {}
 
-float Trainer::clip_gradients() {
+/** 
+@scale : proportional to the number of utterances trained in parallel 
+*/
+float Trainer::clip_gradients(float nutt) {
   float gscale = 1;
   if (clipping_enabled) {
     float gg = model->gradient_l2_norm();
-    if (gg > clip_threshold) {
+    if (gg > clip_threshold * nutt) {
       ++clips;
-      gscale = clip_threshold / gg;
+      gscale = (clip_threshold * nutt) / gg;
     }
   }
   return gscale;
 }
 
-void SimpleSGDTrainer::update(real scale) {
-    update(model->lookup_parameters_list(), model->parameters_list(), scale);
+void SimpleSGDTrainer::update(float nutt, real scale) {
+    update(model->lookup_parameters_list(), model->parameters_list(), nutt, scale);
 }
 
-void SimpleSGDTrainer::update(const std::vector<LookupParameters*> &lookup_params, const std::vector<Parameters*> &params, real scale) {
-  const float gscale = clip_gradients();
+void SimpleSGDTrainer::update(const std::vector<LookupParameters*> &lookup_params, const std::vector<Parameters*> &params, float nutt, real scale) {
+  const float gscale = clip_gradients(nutt);
+  float nutt_scale = 1.0 / nutt;
   for (auto p : params) {
 #if HAVE_CUDA
-    gpu::sgd_update(p->values.d.size(), p->g.v, p->values.v, eta * scale * gscale, lambda);
+    gpu::sgd_update(p->values.d.size(), p->g.v, p->values.v, eta * scale * gscale * nutt_scale, lambda);
 #else
     auto reg = (*p->values) * lambda;
-    *p->values -= ((eta * scale * gscale) * *p->g + reg);
+    *p->values -= nutt_scale * ((eta * scale * gscale) * *p->g + reg);
 #endif
     p->clear();
   }
   for (auto p : lookup_params) {
     for (auto i : p->non_zero_grads) {
 #if HAVE_CUDA
-      gpu::sgd_update(p->values[i].d.size(), p->grads[i].v, p->values[i].v, eta * scale * gscale, lambda);
+      gpu::sgd_update(p->values[i].d.size(), p->grads[i].v, p->values[i].v, eta * scale * gscale * nutt_scale, lambda);
 #else
       auto reg = (*p->values[i]) * lambda;
-      *p->values[i] -= (*p->grads[i] * (eta * scale * gscale) + reg);
+      *p->values[i] -= (*p->grads[i] * (eta * scale * gscale * nutt_scale) + reg);
 #endif
     }
     p->clear();
@@ -49,7 +53,7 @@ void SimpleSGDTrainer::update(const std::vector<LookupParameters*> &lookup_param
   ++updates;
 }
 
-void MomentumSGDTrainer::update(real scale) {
+void MomentumSGDTrainer::update(real nutt, real scale) {
   // executed on the first iteration to create vectors to
   // store the velocity
   if (!velocity_allocated) {
@@ -58,12 +62,13 @@ void MomentumSGDTrainer::update(real scale) {
     velocity_allocated = true;
   }
 
-  const float gscale = clip_gradients();
+  const float gscale = clip_gradients(nutt);
+  float nutt_scale = 1.0 / nutt;
   unsigned pi = 0;
   for (auto p : model->parameters_list()) {
     Tensor& v = vp[pi++].h;
     auto reg = *p->values * lambda;
-    (*v) = momentum * (*v) - (eta * scale * gscale) * (*p->g);
+    (*v) = momentum * (*v) - (eta * scale * gscale*nutt_scale) * (*p->g);
     *p->values += *v - reg;
     p->clear();
   }
@@ -73,7 +78,7 @@ void MomentumSGDTrainer::update(real scale) {
     for (auto i : p->non_zero_grads) {
       Tensor& v = vx[i];
       auto reg = (*p->values[i]) * lambda;
-      (*v) = momentum * (*v) - (eta * scale * gscale) * (*p->grads[i]);
+      (*v) = momentum * (*v) - (eta * scale * gscale*nutt_scale) * (*p->grads[i]);
       *p->values[i] += *v - reg;
     }
     p->clear();
@@ -81,7 +86,7 @@ void MomentumSGDTrainer::update(real scale) {
   ++updates;
 }
 
-void AdagradTrainer::update(real scale) {
+void AdagradTrainer::update(real nutt, real scale) {
   unsigned pi;
   if (!shadow_params_allocated) {
     vp = AllocateShadowParameters(*model);
@@ -90,13 +95,14 @@ void AdagradTrainer::update(real scale) {
   }
 
   pi = 0;
-  const float gscale = clip_gradients();
+  const float gscale = clip_gradients(nutt);
+  float nutt_scale = 1.0 / nutt;
   for (auto p : model->parameters_list()) {
     Tensor& v = vp[pi++].h;
     auto reg = (*p->values) * lambda;
     auto g2 = (*p->g).cwiseProduct(*p->g);
     (*v) += g2;
-    auto delta = -(eta * scale * gscale) * (*p->g).cwiseQuotient(((*v).array() + epsilon).matrix().cwiseSqrt());
+    auto delta = -(eta * scale * gscale * nutt_scale) * (*p->g).cwiseQuotient(((*v).array() + epsilon).matrix().cwiseSqrt());
     *p->values += delta - reg;
     p->clear();
   }
@@ -109,7 +115,7 @@ void AdagradTrainer::update(real scale) {
       auto reg = (*p->values[i]) * lambda;
       auto g2 = (*p->grads[i]).cwiseProduct(*p->grads[i]);
       (*v) += g2;
-      auto delta = -(eta * scale * gscale) * (*p->grads[i]).cwiseQuotient(((*v).array() + epsilon).matrix().cwiseSqrt());
+      auto delta = -(eta * scale * gscale * nutt_scale) * (*p->grads[i]).cwiseQuotient(((*v).array() + epsilon).matrix().cwiseSqrt());
       *p->values[i] += delta - reg;
     }
     p->clear();
@@ -118,7 +124,7 @@ void AdagradTrainer::update(real scale) {
   ++updates;
 }
 
-void AdadeltaTrainer::update(real scale) {
+void AdadeltaTrainer::update(real nutt, real scale) {
   unsigned pi;
   if (!shadow_params_allocated) {
     hg = AllocateShadowParameters(*model);
@@ -147,10 +153,11 @@ void AdadeltaTrainer::update(real scale) {
     shadow_params_allocated = true;
   }
 
-  const float gscale = clip_gradients();
+  const float gscale = clip_gradients(nutt);
+  float nutt_scale = 1.0 / nutt;
   pi = 0;
   for (auto p : model->parameters_list()) {
-    auto& g = (scale * gscale) * *p->g;
+    auto& g = (scale * gscale * nutt_scale) * *p->g;
     Tensor& hgv = hg[pi].h;
     Tensor& hdv = hd[pi].h;
     auto reg = (*p->values) * lambda;
@@ -173,7 +180,7 @@ void AdadeltaTrainer::update(real scale) {
     for (auto i : p->non_zero_grads) {
       Tensor& hgv = hgvx[i];
       Tensor& hdv = hdvx[i];
-      auto& g = scale * gscale * *p->grads[i];
+      auto& g = scale * gscale * nutt_scale * *p->grads[i];
       auto reg = (*p->values[i]) * lambda;
       auto g2 = g.cwiseProduct(g);
       *hgv = rho * *hgv + (1.0 - rho) * g2;
@@ -190,7 +197,7 @@ void AdadeltaTrainer::update(real scale) {
   ++updates;
 }
 
-void RmsPropTrainer::update(real scale) {
+void RmsPropTrainer::update(real nutt, real scale) {
   unsigned pi = 0;
   if (!shadow_params_allocated) {
     hg.resize(model->parameters_list().size());
@@ -204,14 +211,15 @@ void RmsPropTrainer::update(real scale) {
     shadow_params_allocated = true;
   }
 
-  const float gscale = clip_gradients();
+  const float gscale = clip_gradients(nutt);
+  float nutt_scale = 1.0 / nutt;
   pi = 0;
   for (auto p : model->parameters_list()) {
     real& d2 = hg[pi++];
     auto reg = (*p->values) * lambda;
     real g2 = (*p->g).squaredNorm();
     d2 = rho * d2 + (1.0 - rho) * g2;
-    *p->values -= ((eta * scale * gscale / sqrt(d2 + epsilon)) * *p->g + reg);
+    *p->values -= ((eta * scale * gscale * nutt_scale / sqrt(d2 + epsilon)) * *p->g + reg);
     p->clear();
   }
 
@@ -223,14 +231,14 @@ void RmsPropTrainer::update(real scale) {
       auto reg = (*p->values[i]) * lambda;
       real g2 = (*p->grads[i]).squaredNorm();
       d2 = rho * d2 + (1.0 - rho) * g2;
-      *p->values[i] -= ((eta * scale * gscale / sqrt(d2 + epsilon)) * *p->grads[i] + reg);
+      *p->values[i] -= ((eta * scale * gscale * nutt_scale / sqrt(d2 + epsilon)) * *p->grads[i] + reg);
     }
     p->clear();
   }
   ++updates;
 }
 
-void AdamTrainer::update(real scale) {
+void AdamTrainer::update(real nutt, real scale) {
   unsigned pi;
   if (!shadow_params_allocated) {
     m = AllocateShadowParameters(*model);
@@ -241,11 +249,12 @@ void AdamTrainer::update(real scale) {
   }
 
   const float gscale = clip_gradients();
+  float nutt_scale = 1.0 / nutt;
   pi = 0;
   static unsigned t = 0;
   for (auto p : model->parameters_list()) {
     ++t;
-    auto g_t = (scale * gscale) * *p->g;
+    auto g_t = (scale * gscale * nutt_scale) * *p->g;
     auto m_t = *m[pi].h;
     auto v_t = *v[pi].h;
     auto reg = (*p->values) * lambda;
@@ -269,7 +278,7 @@ void AdamTrainer::update(real scale) {
     for (auto i : p->non_zero_grads) {
       auto m_t = *vm[i];
       auto v_t = *vv[i];
-      auto g_t = scale * gscale * *p->grads[i];
+      auto g_t = scale * gscale * nutt_scale * *p->grads[i];
       auto g2 = g_t.cwiseProduct(g_t);
       auto reg = (*p->values[i]) * lambda;
       m_t = beta_1 * m_t + (1 - beta_1) * g_t;

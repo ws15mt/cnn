@@ -643,7 +643,9 @@ string SquaredEuclideanDistance::as_string(const vector<string>& arg_names) cons
 
 Dim SquaredEuclideanDistance::dim_forward(const vector<Dim>& xs) const {
   assert(xs.size() == 2);
-  if (xs[0] != xs[1]) {
+  Dim d = xs[0].truncate();
+
+  if (d != xs[1].truncate()) {
     cerr << "Mismatched input dimensions in SquaredEuclideanDistance: " << xs << endl;
     abort();
   }

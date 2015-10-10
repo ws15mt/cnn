@@ -3,11 +3,11 @@
 #include <limits>
 #include <cmath>
 
+#include "cnn/functors.h"
+#if HAVE_CUDA
 #include <thrust/host_vector.h>
 #include <thrust/device_vector.h>
 
-#include "cnn/functors.h"
-#if HAVE_CUDA
 #include "cnn/cuda.h"
 #include "cnn/gpu-ops.h"
 #pragma comment(lib,"cublas.lib")
@@ -117,20 +117,34 @@ void TraceOfProduct::backward(const vector<const Tensor*>& xs,
 }
 
 void ConstScalarMultiply::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  *fx = (**xs[0]) * alpha;
+#if HAVE_CUDA
+    gpu::vconstant_multiplyx(fx.d.size(), alpha, xs[0]->v, fx.v);
+#else
+    *fx = (**xs[0]) * alpha;
+#endif
 }
 
 void ConstScalarMultiply::backward(const vector<const Tensor*>& xs,
                                    const Tensor& fx,
                                    const Tensor& dEdf,
                                    unsigned i,
-                                   Tensor& dEdxi) const {
-  assert(i == 0);
-  *dEdxi += *dEdf * alpha;
+                                   Tensor& dEdxi) const 
+{
+#if HAVE_CUDA
+    gpu::vconstant_multiplyx_backward(fx.d.size(), alpha, xs[0]->v, fx.v);
+#else
+    assert(i == 0);
+    *dEdxi += *dEdf * alpha;
+#endif
 }
 
 void DotProduct::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  *fx = (**xs[0]).transpose() * (**xs[1]);
+#if HAVE_CUDA
+    cerr << "doproduct forward" << endl;
+    abort();
+#else
+    *fx = (**xs[0]).transpose() * (**xs[1]);
+#endif
 }
 
 void DotProduct::backward(const vector<const Tensor*>& xs,
@@ -138,7 +152,12 @@ void DotProduct::backward(const vector<const Tensor*>& xs,
                           const Tensor& dEdf,
                           unsigned i,
                           Tensor& dEdxi) const {
-  (*dEdxi) += (dEdf.v[0]) * (**xs[1 - i]);
+#if HAVE_CUDA
+    cerr << "doproduct backward " << endl;
+    abort();
+#else
+    (*dEdxi) += (dEdf.v[0]) * (**xs[1 - i]);
+#endif
 }
 
 void Transpose::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
@@ -170,7 +189,11 @@ void Transpose::backward(const vector<const Tensor*>& xs,
 void Reshape::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   // just point to the input memory and change dimensions
   // dimensions are handled by forward_dim
+#if HAVE_CUDA
+    gpu::set_to_value_of(xs[0]->d.rows() * xs[0]->d.cols(), fx.v, xs[0]->v);
+#else
   fx.v = xs[0]->v;
+#endif
 }
 
 void Reshape::backward(const vector<const Tensor*>& xs,
@@ -179,7 +202,11 @@ void Reshape::backward(const vector<const Tensor*>& xs,
                             unsigned i,
                             Tensor& dEdxi) const {
   const Tensor reshaped(dEdxi.d, dEdf.v);
+#if HAVE_CUDA
+  gpu::add_to(reshaped.d.cols() * reshaped.d.rows(), reshaped.v, dEdxi.v);
+#else
   *dEdxi += *reshaped;
+#endif
 }
 
 void SumColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
@@ -389,6 +416,13 @@ void Average::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
     fx.v = xs[0]->v;
     return;
   }
+#if HAVE_CUDA
+  TensorTools::Zero(fx);
+  for (unsigned i = 0; i < num_args; ++i)
+      CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), kSCALAR_ONE, xs[i]->v, 1, fx.v, 1));
+  gpu::vconstant_multiplyx(fx.d.size(), 1./num_args, fx.v, fx.v);
+
+#else
   auto res = *fx;
   const unsigned remainder = num_args % 4;
   switch (remainder) {
@@ -400,6 +434,7 @@ void Average::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   for (unsigned i = remainder; i < num_args; i += 4)
     res += **xs[i] + **xs[i+1] + **xs[i+2] + **xs[i+3];
   res /= num_args;
+#endif
 }
 
 void Average::backward(const vector<const Tensor*>& xs,
@@ -407,7 +442,17 @@ void Average::backward(const vector<const Tensor*>& xs,
                      const Tensor& dEdf,
                      unsigned i,
                      Tensor& dEdxi) const {
-  *dEdxi += (*dEdf / xs.size());
+
+#if HAVE_CUDA
+    float fscale = 1. / xs.size();
+    float *fdevptr;
+    CUDA_CHECK(cudaMalloc((void**)&fdevptr, sizeof(float)));
+    CUDA_CHECK(cudaMemcpy(fdevptr, &fscale, sizeof(float), cudaMemcpyHostToDevice));
+    CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), fdevptr, dEdf.v, 1, dEdxi.v, 1));
+    CUDA_CHECK(cudaFree(fdevptr));
+#else
+    *dEdxi += (*dEdf / xs.size());
+#endif
 };
 
 void Tanh::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
@@ -495,14 +540,30 @@ void Concatenate::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   // the following should use auxiliary memory
   src_row_indices.resize(xs.size());
   unsigned ind = 0;
+  unsigned cols = xs[0]->d.cols();
+  unsigned total_rows = 0;
+  for (auto x : xs) {
+      if (x->d.cols() != cols)
+      {
+          cerr << "columns need to the same for Concatenate " << endl;
+          abort();
+      }
+      total_rows += x->d.rows();
+  }
+  
   unsigned k = 0;
   for (auto x : xs) {
     src_row_indices[k++] = ind;
     auto & xi = *x;
     const unsigned rows = xi.d.rows();
 #if HAVE_CUDA
-    assert(xi.d.cols() == 1); // this can be relaxed to the same everywhere
-    CUDA_CHECK(cudaMemcpyAsync(&fx.v[ind], &xi.v[0], sizeof(float) * rows, cudaMemcpyDeviceToDevice));
+    /// relaxed to support multiple columns!
+    size_t stt = ind;
+    for (size_t k = 0; k < cols; k++) /// not efficient, unfortunately
+    {
+        CUDA_CHECK(cudaMemcpyAsync(&fx.v[stt], &xi.v[k * cols], sizeof(float) * rows, cudaMemcpyDeviceToDevice));
+        stt += total_rows;
+    }
 #else
     (*fx).middleRows(ind, rows) = *xi;
 #endif
@@ -516,10 +577,14 @@ void Concatenate::backward(const vector<const Tensor*>& xs,
                              unsigned i,
                              Tensor& dEdxi) const {
   assert(i < src_row_indices.size());
+  const unsigned total_rows = dEdf.d.rows();
+  const unsigned cols = dEdxi.d.cols();
   const unsigned rows = dEdxi.d.rows();
   const unsigned begin = src_row_indices[i];
 #if HAVE_CUDA
-  CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows, kSCALAR_ONE, &dEdf.v[begin], 1, dEdxi.v, 1));
+  /// not efficient unfortunately
+  for (size_t k = 0; k < cols; k++)
+      CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows, kSCALAR_ONE, &dEdf.v[begin + k * total_rows], 1, &dEdxi.v[k * cols], 1));
 #else
   *dEdxi += (*dEdf).middleRows(begin, rows);
 #endif
@@ -541,12 +606,12 @@ void ConcatenateColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) co
   for (unsigned i = 0; i < xs.size(); ++i) {
 #if HAVE_CUDA
     CUDA_CHECK(cudaMemcpy(pp+i, &c, sizeof(unsigned), cudaMemcpyHostToDevice));
-    assert(xs[i]->d.cols() == 1);
     // CUBLAS matricies are column-major, so just copy the memory
     auto & xi = *xs[i];
     const unsigned rows = xi.d.rows();
-    CUDA_CHECK(cudaMemcpyAsync(&fx.v[i*rows], &xi.v[0], sizeof(float) * rows, cudaMemcpyDeviceToDevice));
-    c += xs[i]->d.cols();
+    const unsigned cols = xi.d.cols();
+    CUDA_CHECK(cudaMemcpyAsync(&fx.v[rows*c], &xi.v[0], sizeof(float) * rows * cols, cudaMemcpyDeviceToDevice));
+    c += cols;
 #else
       static_cast<unsigned*>(aux_mem)[i] = c;
       auto xi = **xs[i];
@@ -561,11 +626,16 @@ void ConcatenateColumns::backward(const vector<const Tensor*>& xs,
                                     const Tensor& fx,
                                     const Tensor& dEdf,
                                     unsigned i,
-                                    Tensor& dEdxi) const {
+                                    Tensor& dEdxi) const 
+{
+  unsigned* pp = static_cast<unsigned*>(aux_mem);
 #if HAVE_CUDA
-    const unsigned rows = dEdxi.d.rows();
-  const unsigned begin = i*rows;
-  CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows, kSCALAR_ONE, &dEdf.v[begin], 1, dEdxi.v, 1));
+  const unsigned rows = dEdxi.d.rows();
+  const unsigned cols = dEdxi.d.cols();
+  unsigned c;
+  CUDA_CHECK(cudaMemcpy(&c, pp + i, sizeof(unsigned), cudaMemcpyDeviceToHost));
+  const unsigned begin = c*rows;
+  CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows * cols, kSCALAR_ONE, &dEdf.v[begin], 1, dEdxi.v, 1));
 #else
   auto dEdx = *dEdxi;
   int d = dEdx.cols();

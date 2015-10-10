@@ -28,6 +28,8 @@ struct DGLSTMBuilder: public RNNBuilder {
   }
   unsigned num_h0_components() const override { return 2 * layers; }
   void copy(const RNNBuilder & params) override;
+  void set_data_in_parallel(int n);
+
  protected:
   void new_graph_impl(ComputationGraph& cg) override;
   void start_new_sequence_impl(const std::vector<Expression>& h0) override;
@@ -51,6 +53,8 @@ struct DGLSTMBuilder: public RNNBuilder {
   unsigned layers;
 
   std::vector<int> input_dims;
+
+  std::vector<std::vector<Expression>> biases;
 };
 
 } // namespace cnn

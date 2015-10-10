@@ -18,10 +18,12 @@ inline void swap(RNNPointer& i1, RNNPointer& i2) {
 
 // interface for constructing an RNN, LSTM, GRU, etc.
 struct RNNBuilder {
-  RNNBuilder() : cur(-1) {}
+    RNNBuilder() : cur(-1) , dparallel (1) {}
   virtual ~RNNBuilder();
 
   RNNPointer state() const { return cur; }
+  int data_in_parallel() const { return dparallel;  }
+  void set_data_in_parallel(int n) { dparallel = n; }
 
   // call this to reset the builder when you are working with a newly
   // created ComputationGraph object
@@ -88,6 +90,7 @@ struct RNNBuilder {
   RNNStateMachine sm;
   RNNPointer cur;
   std::vector<RNNPointer> head; // head[i] returns the head position
+  int dparallel; /// the number of data points to process in parallel. this is used in the case of loading multiple sentences and process them at the same time
 };
 
 struct SimpleRNNBuilder : public RNNBuilder {
