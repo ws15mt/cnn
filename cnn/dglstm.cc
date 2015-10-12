@@ -209,10 +209,10 @@ Expression DGLSTMBuilder::add_input_impl(int prev, const Expression& x) {
     Expression i_aft;
     Expression bfmb = biases[i][1];
     if (has_prev_state)
-        i_ait = affine_transform({ bfmb, vars[X2F], in_stb, vars[H2F], i_h_tm1, vars[C2F], i_c_tm1 });
+        i_aft = affine_transform({ bfmb, vars[X2F], in_stb, vars[H2F], i_h_tm1, vars[C2F], i_c_tm1 });
     else
-        i_ait = affine_transform({ bfmb, vars[X2F], in_stb });
-    Expression i_ft = logistic(i_ait);
+        i_aft = affine_transform({ bfmb, vars[X2F], in_stb });
+    Expression i_ft = logistic(i_aft);
 
     // write memory cell
     Expression bcmb = biases[i][2];
