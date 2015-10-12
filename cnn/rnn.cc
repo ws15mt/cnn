@@ -17,14 +17,19 @@ enum { X2H=0, H2H, HB, L2H };
 
 RNNBuilder::~RNNBuilder() {}
 
-SimpleRNNBuilder::SimpleRNNBuilder(unsigned layers,
+SimpleRNNBuilder::SimpleRNNBuilder(unsigned ilayers,
                        unsigned input_dim,
                        unsigned hidden_dim,
                        Model* model,
-                       bool support_lags) : layers(layers), lagging(support_lags) {
+                       bool support_lags) : lagging(support_lags) {
+  layers = layers;
   long layer_input_dim = input_dim;
+  input_dims = vector<unsigned>(layers, layer_input_dim);
+  
   for (unsigned i = 0; i < layers; ++i) {
-    Parameters* p_x2h = model->add_parameters({long(hidden_dim), layer_input_dim});
+    input_dims[i] = layer_input_dim;
+    
+    Parameters* p_x2h = model->add_parameters({ long(hidden_dim), layer_input_dim });
     Parameters* p_h2h = model->add_parameters({long(hidden_dim), long(hidden_dim)});
     Parameters* p_hb = model->add_parameters({long(hidden_dim)});
     vector<Parameters*> ps = {p_x2h, p_h2h, p_hb};

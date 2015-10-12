@@ -17,6 +17,11 @@ struct LSTMBuilder : public RNNBuilder {
                        unsigned input_dim,
                        unsigned hidden_dim,
                        Model* model);
+  LSTMBuilder(std::vector<unsigned> input_dims,
+      const std::vector<std::vector<Parameters*>>& params,
+      std::vector<std::vector<Expression>>& param_vars) :
+      RNNBuilder(input_dims, params, param_vars)
+  {}
 
   Expression back() const { return h.back().back(); }
   std::vector<Expression> final_h() const { return (h.size() == 0 ? h0 : h.back()); }
@@ -37,11 +42,6 @@ protected:
   Expression add_input_impl(int prev, const Expression& x) override;
 
  public:
-  // first index is layer, then ...
-  std::vector<std::vector<Parameters*>> params;
-
-  // first index is layer, then ...
-  std::vector<std::vector<Expression>> param_vars;
 
   // first index is time, second is layer
   std::vector<std::vector<Expression>> h, c;
@@ -51,7 +51,6 @@ protected:
   bool has_initial_state; // if this is false, treat h0 and c0 as 0
   std::vector<Expression> h0;
   std::vector<Expression> c0;
-  unsigned layers;
 };
 
 } // namespace cnn

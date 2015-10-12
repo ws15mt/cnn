@@ -14,12 +14,16 @@ namespace cnn {
 
 enum { X2Z, H2Z, BZ, X2R, H2R, BR, X2H, H2H, BH };
 
-GRUBuilder::GRUBuilder(unsigned layers,
+GRUBuilder::GRUBuilder(unsigned ilayers,
                        unsigned input_dim,
                        unsigned hidden_dim,
-                       Model* model) : hidden_dim(hidden_dim), layers(layers) {
+                       Model* model) : hidden_dim(hidden_dim) {
+  layers = ilayers; 
   long layer_input_dim = input_dim;
+  input_dims = vector<unsigned>(layers, layer_input_dim);
   for (unsigned i = 0; i < layers; ++i) {
+    input_dims[i] = layer_input_dim;
+    
     // z
     Parameters* p_x2z = model->add_parameters({long(hidden_dim), layer_input_dim});
     Parameters* p_h2z = model->add_parameters({long(hidden_dim), long(hidden_dim)});

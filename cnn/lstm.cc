@@ -16,12 +16,16 @@ namespace cnn {
 
 enum { X2I, H2I, C2I, BI, X2O, H2O, C2O, BO, X2C, H2C, BC };
 
-LSTMBuilder::LSTMBuilder(unsigned layers,
+LSTMBuilder::LSTMBuilder(unsigned ilayers,
                          unsigned input_dim,
                          unsigned hidden_dim,
-                         Model* model) : layers(layers) {
+                         Model* model)  {
+  layers = ilayers;
   long layer_input_dim = input_dim;
+  input_dims = vector<unsigned>(layers, layer_input_dim);
   for (unsigned i = 0; i < layers; ++i) {
+    input_dims[i] = layer_input_dim;
+    
     // i
     Parameters* p_x2i = model->add_parameters({long(hidden_dim), layer_input_dim});
     Parameters* p_h2i = model->add_parameters({long(hidden_dim), long(hidden_dim)});
