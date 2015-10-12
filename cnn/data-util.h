@@ -63,3 +63,7 @@ std::vector<Expression> shuffle_data(Expression src, size_t nutt, size_t feat_di
 void convertHumanQuery(const std::string& line, std::vector<int>& t, Dict& td);
 
 void convertHumanQuery(const std::wstring& line, std::vector<int>& t, WDict& td);
+
+std::wstring utf8_to_wstring(const std::string& str);
+
+std::string wstring_to_utf8(const std::wstring& str);

@@ -13,7 +13,9 @@
 #include <sstream>
 #include <algorithm>
 #include <vector>
-#include <codecvt>
+#include <boost/system/config.hpp>
+#include <boost/locale.hpp>
+#include <boost/locale/encoding_utf.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
@@ -23,6 +25,8 @@
 using namespace cnn;
 using namespace std;
 using namespace boost::algorithm;
+using boost::locale::conv::utf_to_utf;
+using namespace boost::locale;
 
 /// utterance first ordering of data
 /// [s00 s01 s02 s10 s11 s12] where s1 is the second speaker, and s0 is the firest speaker
@@ -244,10 +248,24 @@ vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t 
     return v_sel_idx; 
 }
 
+std::wstring utf8_to_wstring(const std::string& str)
+{
+    return utf_to_utf<wchar_t>(str.c_str(), str.c_str() + str.size());
+}
+
+std::string wstring_to_utf8(const std::wstring& str)
+{
+    return utf_to_utf<char>(str.c_str(), str.c_str() + str.size());
+}
+
 Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool appendBSandES)
 {
     wifstream in(filename);
-    in.imbue(std::locale(std::locale::empty(), new std::codecvt_utf8<wchar_t>));
+    generator gen;
+    locale loc  = gen("zh-CN.UTF-8");
+    // Create all locales
+
+    in.imbue(loc); 
     wstring line;
 
     Corpus corpus;
