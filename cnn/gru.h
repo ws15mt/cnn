@@ -20,6 +20,8 @@ struct GRUBuilder : public RNNBuilder {
       RNNBuilder(input_dims, params, param_vars)
   {}
 
+  void set_data_in_parallel(int n);
+
   std::vector<Expression> final_h() const { return (h.size() == 0 ? h0 : h.back()); }
   std::vector<Expression> final_s() const { return final_h(); }
   Expression back() const { return h.back().back(); }
@@ -40,6 +42,7 @@ struct GRUBuilder : public RNNBuilder {
 
 public:
   unsigned hidden_dim;
+  std::vector<std::vector<Expression>> biases;
 };
 
 } // namespace cnn
