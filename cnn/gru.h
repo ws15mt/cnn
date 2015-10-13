@@ -14,10 +14,8 @@ struct GRUBuilder : public RNNBuilder {
                       unsigned input_dim,
                       unsigned hidden_dim,
                       Model* model);
-  GRUBuilder(std::vector<unsigned> input_dims,
-      const std::vector<std::vector<Parameters*>>& params,
-      std::vector<std::vector<Expression>>& param_vars) :
-      RNNBuilder(input_dims, params, param_vars)
+  GRUBuilder(const GRUBuilder& ref):
+      RNNBuilder(ref)
   {}
 
   void set_data_in_parallel(int n);

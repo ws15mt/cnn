@@ -18,10 +18,8 @@ struct DGLSTMBuilder: public RNNBuilder {
                        unsigned input_dim,
                        unsigned hidden_dim,
                        Model* model);
-  DGLSTMBuilder(std::vector<unsigned> input_dims,
-      const std::vector<std::vector<Parameters*>>& params,
-      std::vector<std::vector<Expression>>& param_vars) :
-      RNNBuilder(input_dims, params, param_vars)
+  DGLSTMBuilder(const DGLSTMBuilder& ref) :
+      RNNBuilder(ref) 
   {}
 
   Expression back() const { return h.back().back(); }

@@ -22,13 +22,11 @@ struct RNNBuilder {
 
   virtual ~RNNBuilder();
   /// for parameter sharing 
-  RNNBuilder(std::vector<unsigned> input_dims, 
-      const std::vector<std::vector<Parameters*>>& params,
-      std::vector<std::vector<Expression>>& param_vars) :
-      params(params),
-      param_vars(param_vars),
-      input_dims(input_dims)
+  RNNBuilder(const RNNBuilder& ref)
   {
+      input_dims = ref.input_dims;
+      params = ref.params;
+      param_vars = ref.param_vars;
       layers = input_dims.size();
   }
 
@@ -121,11 +119,10 @@ struct SimpleRNNBuilder : public RNNBuilder {
                             Model* model,
                             bool support_lags=false);
   /// for parameter sharing 
-  SimpleRNNBuilder(std::vector<unsigned> input_dims,
-      const std::vector<std::vector<Parameters*>>& params,
-      std::vector<std::vector<Expression>>& param_vars) :
-      RNNBuilder(input_dims, params, param_vars)
+  SimpleRNNBuilder(const SimpleRNNBuilder& ref) 
+      : RNNBuilder(ref)
   {
+      lagging = ref.lagging;
   }
 
  protected:
@@ -143,6 +140,8 @@ struct SimpleRNNBuilder : public RNNBuilder {
 
   unsigned num_h0_components() const override { return layers; }
 
+  void set_data_in_parallel(int n);
+
 private:
     // first index is time, second is layer
   std::vector<std::vector<Expression>> h;
@@ -151,6 +150,7 @@ private:
   // defaults to zero matrix input
   std::vector<Expression> h0;
   bool lagging;
+  std::vector<std::vector<Expression>> biases;
 };
 
 } // namespace cnn
