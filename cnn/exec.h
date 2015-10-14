@@ -32,7 +32,6 @@ class SimpleExecutionEngine : public ExecutionEngine {
   const Tensor& get_value(VariableIndex i) override;
   const Tensor& get_error(VariableIndex i);
   void backward() override;
-  void backward(const Tensor& dEdFinit);  /// do backward prop with a specified error 
 private:
   std::vector<Tensor> nfxs;
   std::vector<Tensor> ndEdfs;
