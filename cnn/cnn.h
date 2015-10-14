@@ -88,6 +88,9 @@ struct ComputationGraph {
   // what is needed).
   const Tensor& get_value(VariableIndex i);
   const Tensor& get_value(const expr::Expression& e);
+  // get backward error for node at index i. 
+  const Tensor& get_error(VariableIndex i);
+
   // clears forward caches (for get_value etc).
   void invalidate();
   // computes backward gradients from the front-most evaluated node.
