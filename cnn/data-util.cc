@@ -135,59 +135,7 @@ Notice that a dialogue might be used in multiple times
 selected [ turn 0 : <query_00, answer_00> <query_10, answer_10>]
          [ turn 1 : <query_01, answer_01> <query_11, answer_11>]
 */
-vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected)
-{
-    int nutt = 0;
-    vector<int> v_sel_idx;
-
-    if (stt_dialgoue_id >= corp.size())
-        return v_sel_idx;
-
-    while (stt_dialgoue_id < corp.size() && used[stt_dialgoue_id])
-        stt_dialgoue_id++;
-
-    if (stt_dialgoue_id >= corp.size())
-        return v_sel_idx;
-
-    size_t d_turns = corp[stt_dialgoue_id].size();
-    Dialogue first_turn;
-    size_t i_turn = 0;
-
-    selected.clear();
-    selected.resize(d_turns);
-    for (auto p : corp[stt_dialgoue_id])
-    {
-        selected[i_turn].push_back(corp[stt_dialgoue_id][i_turn]);
-        i_turn++;
-    }
-    used[stt_dialgoue_id] = true;
-    v_sel_idx.push_back(stt_dialgoue_id);
-    nutt++;
-
-    for (size_t iss = stt_dialgoue_id + 1; iss < corp.size(); iss++)
-    {
-        if (corp[iss].size() == d_turns && used[iss] == false){
-            i_turn = 0;
-            for (auto p : corp[iss])
-            {
-                selected[i_turn].push_back(corp[iss][i_turn]);
-                i_turn++;
-            }
-
-            used[iss] = true;
-            v_sel_idx.push_back(iss);
-            nutt++;
-            if (selected[0].size() == nbr_dialogues)
-                break;
-        }
-    }
-
-    stt_dialgoue_id++;
-
-    return v_sel_idx;
-}
-
-vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, vector<Dialogue>& selected, NumTurn2DialogId& info)
+vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, PDialogue& selected, NumTurn2DialogId& info)
 {
     /// ciruculum style training, start from short conversations
     /// start from short conversation with as few as one dialogue turn

@@ -14,6 +14,7 @@ class ExecutionEngine {
   virtual const Tensor& incremental_forward() = 0;  // if you want to add nodes and evaluate just the new parts
   virtual const Tensor& incremental_forward(VariableIndex i) = 0;
   virtual const Tensor& get_value(VariableIndex i) = 0;
+  const Tensor& get_error(VariableIndex i) { std::cerr << "not implemented " << std::endl; abort(); };
   virtual void backward() = 0;
  protected:
   explicit ExecutionEngine(const ComputationGraph& cg) : cg(cg) {}
@@ -29,8 +30,10 @@ class SimpleExecutionEngine : public ExecutionEngine {
   const Tensor& incremental_forward() override;  // if you want to add nodes and evaluate just the new parts
   const Tensor& incremental_forward(VariableIndex i) override;
   const Tensor& get_value(VariableIndex i) override;
+  const Tensor& get_error(VariableIndex i);
   void backward() override;
- private:
+  void backward(const Tensor& dEdFinit);  /// do backward prop with a specified error 
+private:
   std::vector<Tensor> nfxs;
   std::vector<Tensor> ndEdfs;
   VariableIndex last_node_evaluated;
