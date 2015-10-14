@@ -321,3 +321,22 @@ Expression bidirectional(int slen, const vector<vector<cnn::real>>& source, Comp
     return src;
 }
 
+vector<cnn::real> get_value(Expression nd, ComputationGraph& cg)
+{
+    /// get the top output
+    vector<cnn::real> vm;
+
+    vm = as_vector(cg.get_value(nd));
+
+    return vm;
+}
+
+vector<cnn::real> get_error(Expression nd, ComputationGraph& cg)
+{
+    /// get the top output
+    vector<cnn::real> vm;
+
+    vm = as_vector(cg.get_error(nd.i));
+
+    return vm;
+}

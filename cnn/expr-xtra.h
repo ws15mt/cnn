@@ -230,3 +230,7 @@ vector<Expression> attention_weight(const vector<size_t>& v_slen, const Expressi
 /// use key to find value, return a vector with element for each utterance
 vector<Expression> attention_to_key_and_retreive_value(const Expression & M_t, const vector<size_t>& v_slen,
     const vector<Expression> & i_attention_weight, size_t nutt);
+
+vector<cnn::real> get_value(Expression nd, ComputationGraph& cg);
+
+vector<cnn::real> get_erro(Expression nd, ComputationGraph& cg);
