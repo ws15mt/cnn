@@ -15,6 +15,8 @@
 
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
 
@@ -220,7 +222,7 @@ void testcorpus(Model &model, LM_t &lm,
 void initialise(Model &model, const string &filename)
 {
     cerr << "Initialising model parameters from file: " << filename << endl;
-    ifstream in(filename);
+    ifstream in(filename, ifstream::in);
     boost::archive::text_iarchive ia(in);
     ia >> model;
 }
