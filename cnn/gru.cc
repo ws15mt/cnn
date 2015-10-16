@@ -68,6 +68,7 @@ void GRUBuilder::new_graph_impl(ComputationGraph& cg) {
     vector<Expression> vars = {x2z, h2z, bz, x2r, h2r, br, x2h, h2h, bh};
     param_vars.push_back(vars);
   }
+  set_data_in_parallel(data_in_parallel());
 }
 
 void GRUBuilder::set_data_in_parallel(int n)

@@ -28,6 +28,8 @@ struct RNNBuilder {
       params = ref.params;
       param_vars = ref.param_vars;
       layers = input_dims.size();
+      cur = ref.cur; 
+      dparallel = ref.dparallel;
   }
 
   RNNPointer state() const { return cur; }

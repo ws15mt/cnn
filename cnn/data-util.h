@@ -34,6 +34,12 @@ typedef vector<PDialogue> PCorpus; /// a parallel corpus consists of many parall
 /// save the number of turns to dialogue id list
 typedef map<int, vector<int>> NumTurn2DialogId;
 
+typedef pair<vector<Sentence>, Sentence> StatementsQuery;
+typedef pair<StatementsQuery, Sentence> FBTurns;
+typedef vector<FBTurns> FBDialogue;
+typedef vector<FBDialogue> FBCorpus;
+
+
 /**
 usually packs a matrix with real value element
 this truncates both source and target 
@@ -72,3 +78,8 @@ void convertHumanQuery(const std::wstring& line, std::vector<int>& t, WDict& td)
 std::wstring utf8_to_wstring(const std::string& str);
 
 std::string wstring_to_utf8(const std::wstring& str);
+
+
+/// utiles to read facebook data
+int read_one_line_facebook_qa(const std::string& line, std::vector<int>& v, Dict& sd);
+FBCorpus read_facebook_qa_corpus(const string &filename, size_t & diag_id, Dict& sd);

@@ -144,8 +144,8 @@ void DGLSTMBuilder::new_graph_impl(ComputationGraph& cg){
         i_x2o, i_h2o, i_c2o, i_bo, i_x2c, i_h2c, i_bc, i_x2k, i_c2k, i_q2k, i_bk, i_stab };
 
     param_vars.push_back(vars);
-    
   }
+  set_data_in_parallel(data_in_parallel());
 }
 
 // layout: 0..layers = c

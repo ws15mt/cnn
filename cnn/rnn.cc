@@ -59,6 +59,7 @@ void SimpleRNNBuilder::new_graph_impl(ComputationGraph& cg) {
 
     param_vars.push_back(vars);
   }
+  set_data_in_parallel(data_in_parallel());
 }
 
 void SimpleRNNBuilder::set_data_in_parallel(int n)

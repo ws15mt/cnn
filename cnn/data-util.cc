@@ -12,6 +12,7 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <string>
 #include <vector>
 #include <boost/system/config.hpp>
 #include <boost/locale.hpp>
@@ -21,6 +22,7 @@
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
+#include <boost/regex.hpp>
 
 using namespace cnn;
 using namespace std;
@@ -531,5 +533,97 @@ void convertHumanQuery(const std::wstring& line, std::vector<int>& t, WDict& td)
         if (!in) break;
         t.push_back(td.Convert(word, true));
     }
+}
+
+FBCorpus read_facebook_qa_corpus(const string &filename, size_t& diag_id, Dict& sd)
+{
+    ifstream in(filename);
+    generator gen;
+
+    string line;
+    int turnid;
+
+    diag_id = -1;
+    FBCorpus corpus;
+    FBDialogue diag;
+    FBTurns turns;
+    StatementsQuery sq;
+    vector<Sentence> statements;
+
+    int prv_turn = 9999, lc = 0, stoks = 0, ttoks = 0;
+
+    while (getline(in, line)) {
+        trim_left(line);
+        trim_right(line);
+        if (line.length() == 0)
+            break;
+        ++lc;
+        Sentence source, query, target;
+        vector<string> vstr; 
+        string newline;
+        string ans; 
+
+        if (find(line.begin(), line.end(), '?') != line.end())
+        {
+            /// check if question
+            boost::split(vstr, line, boost::is_any_of("\t"));
+            ans = vstr[1];
+            
+            newline = vstr[0];
+            std::replace(newline.begin(), newline.end(), '?', ' ');
+
+            turnid = read_one_line_facebook_qa(newline, query, sd);
+            sq = make_pair(statements, query);
+
+            Sentence sans;
+            sans.push_back(sd.Convert(ans));
+            turns = make_pair(sq, sans);
+
+            ttoks++;
+            diag.push_back(turns);
+            statements.clear();
+        }
+        else
+        {
+            newline = line;
+            std::replace(newline.begin(), newline.end(), '.', ' '); 
+            turnid = read_one_line_facebook_qa(newline, source, sd);
+            statements.push_back(source);
+        }
+
+        if (turnid < prv_turn)
+        {
+            diag_id++;
+
+            if (diag.size() > 0)
+                corpus.push_back(diag);
+            diag.clear();
+        }
+        prv_turn = turnid;
+    }
+
+    cerr << lc << " lines & " << diag_id << " dialogues & " << ttoks << " questions " << endl; 
+    return corpus;
+}
+
+int read_one_line_facebook_qa(const std::string& line, std::vector<int>& v, Dict& sd)
+{
+    std::istringstream in(line);
+    std::string word;
+    std::string turnid;
+
+    if (line.length() == 0)
+        return -1;
+
+    in >> turnid;
+
+    while (in) {
+        in >> word;
+        trim(word);
+        if (!in) break;
+        v.push_back(sd.Convert(word));
+    }
+
+    return boost::lexical_cast<int, string>(turnid);
 }
 
