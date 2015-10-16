@@ -25,8 +25,20 @@ typedef pair<Sentence, Sentence> SentencePair;
 typedef vector<SentencePair> Dialogue;
 typedef vector<Dialogue> Corpus;
 
+/// for parallel processing of data
+typedef pair<Sentence, Sentence> SentencePair;
+typedef vector<SentencePair> PTurn;  /// a turn consits of sentences pairs from difference utterances
+typedef vector<PTurn> PDialogue;  /// a dialogue consists of many turns
+typedef vector<PDialogue> PCorpus; /// a parallel corpus consists of many parallel dialogues
+
 /// save the number of turns to dialogue id list
 typedef map<int, vector<int>> NumTurn2DialogId;
+
+typedef pair<vector<Sentence>, Sentence> StatementsQuery;
+typedef pair<StatementsQuery, Sentence> FBTurns;
+typedef vector<FBTurns> FBDialogue;
+typedef vector<FBDialogue> FBCorpus;
+
 
 /**
 usually packs a matrix with real value element
@@ -41,8 +53,7 @@ vector<vector<Expression>> pack_obs(FCorpusPointers raw, size_t mbsize, Computat
 vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, size_t mbsize, ComputationGraph& cg, const vector<size_t>& rand_stt);
 
 /// return the index of the selected dialogues
-vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected);
-vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, vector<Dialogue>& selected, NumTurn2DialogId& info);
+vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, PDialogue& selected, NumTurn2DialogId& info);
 
 
 Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength = 10000, bool appendBSandES = false);
@@ -63,3 +74,12 @@ std::vector<Expression> shuffle_data(Expression src, size_t nutt, size_t feat_di
 void convertHumanQuery(const std::string& line, std::vector<int>& t, Dict& td);
 
 void convertHumanQuery(const std::wstring& line, std::vector<int>& t, WDict& td);
+
+std::wstring utf8_to_wstring(const std::string& str);
+
+std::string wstring_to_utf8(const std::wstring& str);
+
+
+/// utiles to read facebook data
+int read_one_line_facebook_qa(const std::string& line, std::vector<int>& v, Dict& sd);
+FBCorpus read_facebook_qa_corpus(const string &filename, size_t & diag_id, Dict& sd);

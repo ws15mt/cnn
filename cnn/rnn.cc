@@ -17,14 +17,19 @@ enum { X2H=0, H2H, HB, L2H };
 
 RNNBuilder::~RNNBuilder() {}
 
-SimpleRNNBuilder::SimpleRNNBuilder(unsigned layers,
+SimpleRNNBuilder::SimpleRNNBuilder(unsigned ilayers,
                        unsigned input_dim,
                        unsigned hidden_dim,
                        Model* model,
-                       bool support_lags) : layers(layers), lagging(support_lags) {
+                       bool support_lags) : lagging(support_lags) {
+  layers = ilayers;
   long layer_input_dim = input_dim;
+  input_dims = vector<unsigned>(layers, layer_input_dim);
+  
   for (unsigned i = 0; i < layers; ++i) {
-    Parameters* p_x2h = model->add_parameters({long(hidden_dim), layer_input_dim});
+    input_dims[i] = layer_input_dim;
+    
+    Parameters* p_x2h = model->add_parameters({ long(hidden_dim), layer_input_dim });
     Parameters* p_h2h = model->add_parameters({long(hidden_dim), long(hidden_dim)});
     Parameters* p_hb = model->add_parameters({long(hidden_dim)});
     vector<Parameters*> ps = {p_x2h, p_h2h, p_hb};
@@ -54,6 +59,24 @@ void SimpleRNNBuilder::new_graph_impl(ComputationGraph& cg) {
 
     param_vars.push_back(vars);
   }
+  set_data_in_parallel(data_in_parallel());
+}
+
+void SimpleRNNBuilder::set_data_in_parallel(int n)
+{
+    RNNBuilder::set_data_in_parallel(n);
+
+    biases.clear();
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        Expression bimb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[2]));
+        Expression bcmb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[HB]));
+
+        vector<Expression> b = { bimb,
+            bcmb
+        };
+        biases.push_back(b);
+    }
 }
 
 void SimpleRNNBuilder::start_new_sequence_impl(const vector<Expression>& h_0) {
@@ -71,7 +94,8 @@ Expression SimpleRNNBuilder::add_input_impl(int prev, const Expression &in) {
   for (unsigned i = 0; i < layers; ++i) {
     const vector<Expression>& vars = param_vars[i];
 
-    Expression y = affine_transform({vars[2], vars[0], x});
+//    Expression y = affine_transform({ vars[2], vars[0], x });
+    Expression y = affine_transform({ biases[i][0], vars[0], x });
 
     if (prev == -1 && h0.size() > 0)
       y = y + vars[1] * h0[i];
@@ -93,7 +117,8 @@ Expression SimpleRNNBuilder::add_auxiliary_input(const Expression &in, const Exp
     const vector<Expression>& vars = param_vars[i];
     assert(vars.size() >= L2H + 1);
 
-    Expression y = affine_transform({vars[HB], vars[X2H], x, vars[L2H], aux});
+//    Expression y = affine_transform({ vars[HB], vars[X2H], x, vars[L2H], aux });
+    Expression y = affine_transform({ biases[i][1], vars[X2H], x, vars[L2H], aux });
 
     if (t == 0 && h0.size() > 0)
       y = y + vars[H2H] * h0[i];

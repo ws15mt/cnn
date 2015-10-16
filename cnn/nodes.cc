@@ -589,11 +589,7 @@ void Concatenate::backward(const vector<const Tensor*>& xs,
 #endif
 }
 
-#ifdef HAVE_CUDA
 #define MAX_CONCAT_COLS_ARGS 512
-#else
-#define MAX_CONCAT_COLS_ARGS 8192
-#endif
 size_t ConcatenateColumns::aux_storage_size() const {
   return MAX_CONCAT_COLS_ARGS * sizeof(unsigned);
 }

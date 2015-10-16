@@ -14,12 +14,16 @@ namespace cnn {
 
 enum { X2Z, H2Z, BZ, X2R, H2R, BR, X2H, H2H, BH };
 
-GRUBuilder::GRUBuilder(unsigned layers,
+GRUBuilder::GRUBuilder(unsigned ilayers,
                        unsigned input_dim,
                        unsigned hidden_dim,
-                       Model* model) : hidden_dim(hidden_dim), layers(layers) {
+                       Model* model) : hidden_dim(hidden_dim) {
+  layers = ilayers; 
   long layer_input_dim = input_dim;
+  input_dims = vector<unsigned>(layers, layer_input_dim);
   for (unsigned i = 0; i < layers; ++i) {
+    input_dims[i] = layer_input_dim;
+    
     // z
     Parameters* p_x2z = model->add_parameters({long(hidden_dim), layer_input_dim});
     Parameters* p_h2z = model->add_parameters({long(hidden_dim), long(hidden_dim)});
@@ -64,6 +68,23 @@ void GRUBuilder::new_graph_impl(ComputationGraph& cg) {
     vector<Expression> vars = {x2z, h2z, bz, x2r, h2r, br, x2h, h2h, bh};
     param_vars.push_back(vars);
   }
+  set_data_in_parallel(data_in_parallel());
+}
+
+void GRUBuilder::set_data_in_parallel(int n)
+{
+    RNNBuilder::set_data_in_parallel(n);
+
+    biases.clear();
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        Expression bimb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BZ]));
+        Expression bcmb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BR]));
+        Expression bomb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BH]));
+
+        vector<Expression> b = { bimb, bcmb, bomb};
+        biases.push_back(b);
+    }
 }
 
 void GRUBuilder::start_new_sequence_impl(const std::vector<Expression>& h_0) {
@@ -91,30 +112,36 @@ Expression GRUBuilder::add_input_impl(int prev, const Expression& x) {
     // update gate
     Expression zt;
     if (prev_zero)
-      zt = affine_transform({vars[BZ], vars[X2Z], in});
+//        zt = affine_transform({ biases[i][0]vars[BZ], vars[X2Z], in });
+      zt = affine_transform({ biases[i][0], vars[X2Z], in });
     else
-      zt = affine_transform({vars[BZ], vars[X2Z], in, vars[H2Z], h_tprev});
+  //   zt = affine_transform({ vars[BZ], vars[X2Z], in, vars[H2Z], h_tprev });
+      zt = affine_transform({ biases[i][0], vars[X2Z], in, vars[H2Z], h_tprev });
     zt = logistic(zt);
     // forget
     Expression ft = 1.f - zt;
     // reset gate
     Expression rt;
     if (prev_zero)
-      rt = affine_transform({vars[BR], vars[X2R], in});
+        rt = affine_transform({ biases[i][1], vars[X2R], in });
+//    rt = affine_transform({ vars[BR], vars[X2R], in });
     else
-      rt = affine_transform({vars[BR], vars[X2R], in, vars[H2R], h_tprev});
+        rt = affine_transform({ biases[i][1], vars[X2R], in });
+  //  rt = affine_transform({ vars[BR], vars[X2R], in });
     rt = logistic(rt);
 
     // candidate activation
     Expression ct;
     if (prev_zero) {
-      ct = affine_transform({vars[BH], vars[X2H], in});
+      ct = affine_transform({ biases[i][2], vars[X2H], in });
+      //  ct = affine_transform({ vars[BH], vars[X2H], in });
       ct = tanh(ct);
       Expression nwt = cwise_multiply(zt, ct);
       in = ht[i] = nwt;
     } else {
       Expression ght = cwise_multiply(rt, h_tprev);
-      ct = affine_transform({vars[BH], vars[X2H], in, vars[H2H], ght});
+      ct = affine_transform({ biases[i][2], vars[X2H], in, vars[H2H], ght });
+//      ct = affine_transform({ vars[BH], vars[X2H], in, vars[H2H], ght });
       ct = tanh(ct);
       Expression nwt = cwise_multiply(zt, ct);
       Expression crt = cwise_multiply(ft, h_tprev);

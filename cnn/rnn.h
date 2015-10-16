@@ -18,8 +18,19 @@ inline void swap(RNNPointer& i1, RNNPointer& i2) {
 
 // interface for constructing an RNN, LSTM, GRU, etc.
 struct RNNBuilder {
-    RNNBuilder() : cur(-1) , dparallel (1) {}
+  RNNBuilder() : cur(-1) , dparallel (1) {}
+
   virtual ~RNNBuilder();
+  /// for parameter sharing 
+  RNNBuilder(const RNNBuilder& ref)
+  {
+      input_dims = ref.input_dims;
+      params = ref.params;
+      param_vars = ref.param_vars;
+      layers = input_dims.size();
+      cur = ref.cur; 
+      dparallel = ref.dparallel;
+  }
 
   RNNPointer state() const { return cur; }
   int data_in_parallel() const { return dparallel;  }
@@ -85,6 +96,15 @@ struct RNNBuilder {
   virtual void new_graph_impl(ComputationGraph& cg) = 0;
   virtual void start_new_sequence_impl(const std::vector<Expression>& h_0) = 0;
   virtual Expression add_input_impl(int prev, const Expression& x) = 0;
+ public:
+  /// for parameters
+  // first index is layer, then ...
+  std::vector<std::vector<Parameters*>> params;
+  // first index is layer, then ...
+  std::vector<std::vector<Expression>> param_vars;
+ public:
+  unsigned layers;  /// number of layers
+  std::vector<unsigned> input_dims;  /// input dimension at each layer
  private:
   // the state machine ensures that the caller is behaving
   RNNStateMachine sm;
@@ -100,6 +120,12 @@ struct SimpleRNNBuilder : public RNNBuilder {
                             unsigned hidden_dim,
                             Model* model,
                             bool support_lags=false);
+  /// for parameter sharing 
+  SimpleRNNBuilder(const SimpleRNNBuilder& ref) 
+      : RNNBuilder(ref)
+  {
+      lagging = ref.lagging;
+  }
 
  protected:
   void new_graph_impl(ComputationGraph& cg) override;
@@ -116,22 +142,17 @@ struct SimpleRNNBuilder : public RNNBuilder {
 
   unsigned num_h0_components() const override { return layers; }
 
- private:
-  // first index is layer, then x2h h2h hb
-  std::vector<std::vector<Parameters*>> params;
+  void set_data_in_parallel(int n);
 
-  // first index is layer, then x2h h2h hb
-  std::vector<std::vector<Expression>> param_vars;
-
-  // first index is time, second is layer
+private:
+    // first index is time, second is layer
   std::vector<std::vector<Expression>> h;
 
   // initial value of h
   // defaults to zero matrix input
   std::vector<Expression> h0;
   bool lagging;
-public:
-    unsigned layers;
+  std::vector<std::vector<Expression>> biases;
 };
 
 } // namespace cnn
