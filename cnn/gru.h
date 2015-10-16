@@ -14,6 +14,12 @@ struct GRUBuilder : public RNNBuilder {
                       unsigned input_dim,
                       unsigned hidden_dim,
                       Model* model);
+  GRUBuilder(const GRUBuilder& ref):
+      RNNBuilder(ref)
+  {}
+
+  void set_data_in_parallel(int n);
+
   std::vector<Expression> final_h() const { return (h.size() == 0 ? h0 : h.back()); }
   std::vector<Expression> final_s() const { return final_h(); }
   Expression back() const { return h.back().back(); }
@@ -25,12 +31,6 @@ struct GRUBuilder : public RNNBuilder {
   void start_new_sequence_impl(const std::vector<Expression>& h0) override;
   Expression add_input_impl(int prev, const Expression& x) override;
 
-  // first index is layer, then ...
-  std::vector<std::vector<Parameters*>> params;
-
-  // first index is layer, then ...
-  std::vector<std::vector<Expression>> param_vars;
-
   // first index is time, second is layer
   std::vector<std::vector<Expression>> h;
 
@@ -40,7 +40,7 @@ struct GRUBuilder : public RNNBuilder {
 
 public:
   unsigned hidden_dim;
-  unsigned layers;
+  std::vector<std::vector<Expression>> biases;
 };
 
 } // namespace cnn

@@ -30,6 +30,18 @@ const Tensor& SimpleExecutionEngine::get_value(VariableIndex i) {
     return nfxs[i];
 }
 
+const Tensor& SimpleExecutionEngine::get_error(VariableIndex i) 
+{
+    assert(i < cg.nodes.size());
+    if (ndEdfs.size() != cg.nodes.size())
+    {
+        cerr << "need to run backward before calling this function" << endl;
+        abort();
+    }
+
+    return ndEdfs[i];
+}
+
 const Tensor& SimpleExecutionEngine::incremental_forward() {
   const VariableIndex node_max_index = (VariableIndex)cg.nodes.size();
   return incremental_forward(node_max_index);

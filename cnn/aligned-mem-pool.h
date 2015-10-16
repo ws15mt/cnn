@@ -50,7 +50,7 @@ inline void cnn_mm_free(void* mem) {
 template <unsigned AlignedBits>
 class AlignedMemoryPool {
  public:
-  explicit AlignedMemoryPool(size_t cap) {
+  explicit AlignedMemoryPool(unsigned long cap) {
       mem = nullptr;
       sys_alloc(cap);
       zero_all();
@@ -62,7 +62,7 @@ class AlignedMemoryPool {
   }
 
   // returns nullptr if OOM
-  void* allocate(size_t n) {
+  void* allocate(unsigned long n) {
     auto rounded_n = round_up_align(n);
     if (rounded_n + used > capacity)
       return nullptr;
@@ -74,7 +74,7 @@ class AlignedMemoryPool {
     //std::cerr << "freeing " << used << " bytes\n";
     used = 0;
   }
-  void free_and_grow_capacity(size_t new_cap = 0) {
+  void free_and_grow_capacity(unsigned long new_cap = 0) {
     cnn_mm_free(mem);
     if (new_cap)
       sys_alloc(new_cap);
@@ -92,7 +92,7 @@ class AlignedMemoryPool {
 #endif
   }
  private:
-  void sys_alloc(size_t cap) {
+  void sys_alloc(unsigned long cap) {
     capacity = round_up_align(cap);
     mem = cnn_mm_malloc(capacity, 1 << AlignedBits);
     used = 0;
@@ -105,13 +105,13 @@ class AlignedMemoryPool {
     std::memset(mem, 0, capacity);
 #endif
   }
-  inline static size_t round_up_align(size_t n) {
+  inline static size_t round_up_align(unsigned long n) {
     if (AlignedBits < 2) return n;
     auto c = (n & ((1 << (AlignedBits)) - 1)) > 0 ? 1 : 0;
     return ((n >> (AlignedBits)) + c) << (AlignedBits);
   }
-  size_t capacity;
-  size_t used;
+  unsigned long capacity;
+  unsigned long used;
   void* mem;
 };
 

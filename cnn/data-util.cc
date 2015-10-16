@@ -12,17 +12,23 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <string>
 #include <vector>
-#include <codecvt>
+#include <boost/system/config.hpp>
+#include <boost/locale.hpp>
+#include <boost/locale/encoding_utf.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
+#include <boost/regex.hpp>
 
 using namespace cnn;
 using namespace std;
 using namespace boost::algorithm;
+using boost::locale::conv::utf_to_utf;
+using namespace boost::locale;
 
 /// utterance first ordering of data
 /// [s00 s01 s02 s10 s11 s12] where s1 is the second speaker, and s0 is the firest speaker
@@ -131,59 +137,7 @@ Notice that a dialogue might be used in multiple times
 selected [ turn 0 : <query_00, answer_00> <query_10, answer_10>]
          [ turn 1 : <query_01, answer_01> <query_11, answer_11>]
 */
-vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &stt_dialgoue_id, vector<bool>& used, vector<Dialogue>& selected)
-{
-    int nutt = 0;
-    vector<int> v_sel_idx;
-
-    if (stt_dialgoue_id >= corp.size())
-        return v_sel_idx;
-
-    while (stt_dialgoue_id < corp.size() && used[stt_dialgoue_id])
-        stt_dialgoue_id++;
-
-    if (stt_dialgoue_id >= corp.size())
-        return v_sel_idx;
-
-    size_t d_turns = corp[stt_dialgoue_id].size();
-    Dialogue first_turn;
-    size_t i_turn = 0;
-
-    selected.clear();
-    selected.resize(d_turns);
-    for (auto p : corp[stt_dialgoue_id])
-    {
-        selected[i_turn].push_back(corp[stt_dialgoue_id][i_turn]);
-        i_turn++;
-    }
-    used[stt_dialgoue_id] = true;
-    v_sel_idx.push_back(stt_dialgoue_id);
-    nutt++;
-
-    for (size_t iss = stt_dialgoue_id + 1; iss < corp.size(); iss++)
-    {
-        if (corp[iss].size() == d_turns && used[iss] == false){
-            i_turn = 0;
-            for (auto p : corp[iss])
-            {
-                selected[i_turn].push_back(corp[iss][i_turn]);
-                i_turn++;
-            }
-
-            used[iss] = true;
-            v_sel_idx.push_back(iss);
-            nutt++;
-            if (selected[0].size() == nbr_dialogues)
-                break;
-        }
-    }
-
-    stt_dialgoue_id++;
-
-    return v_sel_idx;
-}
-
-vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, vector<Dialogue>& selected, NumTurn2DialogId& info)
+vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, PDialogue& selected, NumTurn2DialogId& info)
 {
     /// ciruculum style training, start from short conversations
     /// start from short conversation with as few as one dialogue turn
@@ -244,10 +198,24 @@ vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t 
     return v_sel_idx; 
 }
 
+std::wstring utf8_to_wstring(const std::string& str)
+{
+    return utf_to_utf<wchar_t>(str.c_str(), str.c_str() + str.size());
+}
+
+std::string wstring_to_utf8(const std::wstring& str)
+{
+    return utf_to_utf<char>(str.c_str(), str.c_str() + str.size());
+}
+
 Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool appendBSandES)
 {
     wifstream in(filename);
-    in.imbue(std::locale(std::locale::empty(), new std::codecvt_utf8<wchar_t>));
+    generator gen;
+    locale loc  = gen("zh-CN.UTF-8");
+    // Create all locales
+
+    in.imbue(loc); 
     wstring line;
 
     Corpus corpus;
@@ -565,5 +533,97 @@ void convertHumanQuery(const std::wstring& line, std::vector<int>& t, WDict& td)
         if (!in) break;
         t.push_back(td.Convert(word, true));
     }
+}
+
+FBCorpus read_facebook_qa_corpus(const string &filename, size_t& diag_id, Dict& sd)
+{
+    ifstream in(filename);
+    generator gen;
+
+    string line;
+    int turnid;
+
+    diag_id = -1;
+    FBCorpus corpus;
+    FBDialogue diag;
+    FBTurns turns;
+    StatementsQuery sq;
+    vector<Sentence> statements;
+
+    int prv_turn = 9999, lc = 0, stoks = 0, ttoks = 0;
+
+    while (getline(in, line)) {
+        trim_left(line);
+        trim_right(line);
+        if (line.length() == 0)
+            break;
+        ++lc;
+        Sentence source, query, target;
+        vector<string> vstr; 
+        string newline;
+        string ans; 
+
+        if (find(line.begin(), line.end(), '?') != line.end())
+        {
+            /// check if question
+            boost::split(vstr, line, boost::is_any_of("\t"));
+            ans = vstr[1];
+            
+            newline = vstr[0];
+            std::replace(newline.begin(), newline.end(), '?', ' ');
+
+            turnid = read_one_line_facebook_qa(newline, query, sd);
+            sq = make_pair(statements, query);
+
+            Sentence sans;
+            sans.push_back(sd.Convert(ans));
+            turns = make_pair(sq, sans);
+
+            ttoks++;
+            diag.push_back(turns);
+            statements.clear();
+        }
+        else
+        {
+            newline = line;
+            std::replace(newline.begin(), newline.end(), '.', ' '); 
+            turnid = read_one_line_facebook_qa(newline, source, sd);
+            statements.push_back(source);
+        }
+
+        if (turnid < prv_turn)
+        {
+            diag_id++;
+
+            if (diag.size() > 0)
+                corpus.push_back(diag);
+            diag.clear();
+        }
+        prv_turn = turnid;
+    }
+
+    cerr << lc << " lines & " << diag_id << " dialogues & " << ttoks << " questions " << endl; 
+    return corpus;
+}
+
+int read_one_line_facebook_qa(const std::string& line, std::vector<int>& v, Dict& sd)
+{
+    std::istringstream in(line);
+    std::string word;
+    std::string turnid;
+
+    if (line.length() == 0)
+        return -1;
+
+    in >> turnid;
+
+    while (in) {
+        in >> word;
+        trim(word);
+        if (!in) break;
+        v.push_back(sd.Convert(word));
+    }
+
+    return boost::lexical_cast<int, string>(turnid);
 }
 
