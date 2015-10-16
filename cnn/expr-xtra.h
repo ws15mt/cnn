@@ -12,6 +12,11 @@
 using namespace cnn;
 using namespace std;
 
+inline bool is_close(float a, float b) {
+    /// to-do use CNTK's isclose function
+    return (fabs(a - b) < 1e-7);
+}
+
 Expression arange(ComputationGraph &cg, unsigned begin, unsigned end, bool log_transform, std::vector<float> *aux_mem);
 
 Expression repeat(ComputationGraph &cg, unsigned num, float value, std::vector<float> *aux_mem);
