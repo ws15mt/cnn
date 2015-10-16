@@ -102,12 +102,10 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories(${CMAKE_CURRENT_BINARY_DIR}/../quartzin/src/cnn)
 
 link_directories(${BOOST_LIBRARYDIR})
 
 
 add_subdirectory(cnn)
 add_subdirectory(examples)
-add_subdirectory(../quartzin/src/cnn "${CMAKE_CURRENT_BINARY_DIR}/kaisheny/dev/src")
 
