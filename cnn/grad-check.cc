@@ -31,7 +31,7 @@ void CheckGrad(Model& m, ComputationGraph& g) {
   bool flag = false;
   const vector<Parameters*>& params = m.parameters_list();
   for (auto pp : params) {
-    cerr << "\nPARAMETERS " << pp << endl;
+    cerr << "\nPARAMETERS " << pp << " name = " << pp->name << endl;
     Parameters& p = *pp;
     size_t ts = p.dim.size();
     for (size_t i = 0; i < ts; ++i) {
@@ -70,7 +70,12 @@ void CheckGrad(Model& m, ComputationGraph& g) {
           max((float)0.0, ceil(log10(min(fabs(g), fabs(grd))))) - (int)GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL);
       float diff = fabs(g - grd);
       bool wrong = (std::isnan(diff) || diff > threshold);
-        
+      
+      if (diff > 0.2)
+      {
+          cerr << "too large error" << endl;
+
+      }
       if (wrong)
       {
           flag = true; cerr << "***[" << diff << "] ";
