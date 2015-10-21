@@ -22,6 +22,15 @@ const Tensor& SimpleExecutionEngine::forward(VariableIndex i) {
   return incremental_forward(i);
 }
 
+void SimpleExecutionEngine::set_value(const Tensor& t, VariableIndex i) {
+    assert(i < cg.nodes.size());
+    if (i >= last_node_evaluated) {
+        cerr << " this is only for adapting parameters. need to precompute node using forward or incremental forward before calling this function" << endl;
+        abort();
+    }
+    nfxs[i] = t;
+}
+
 const Tensor& SimpleExecutionEngine::get_value(VariableIndex i) {
     assert(i < cg.nodes.size());
     if (i >= last_node_evaluated) {
@@ -40,6 +49,11 @@ const Tensor& SimpleExecutionEngine::get_error(VariableIndex i)
     }
 
     return ndEdfs[i];
+}
+
+void SimpleExecutionEngine::set_last_node_evaluated(VariableIndex idx)
+{
+    last_node_evaluated = idx;
 }
 
 const Tensor& SimpleExecutionEngine::incremental_forward() {
