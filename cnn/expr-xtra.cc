@@ -96,7 +96,7 @@ Expression bidirectional(int slen, const vector<int>& source, ComputationGraph& 
 
 /// source [1..T][1..NUTT] is time first and then content from each utterance
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
-Expression embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, size_t feat_dim)
+vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, size_t feat_dim)
 {
     size_t nutt = source.size();
     /// get the maximum length of utternace from all speakers
@@ -121,9 +121,7 @@ Expression embedding(unsigned & slen, const vector<vector<int>>& source, Computa
         source_embeddings.push_back(i_x_t);
     }
 
-    Expression src = concatenate_cols(source_embeddings);
-
-    return src;
+    return source_embeddings;
 }
 
 vector<size_t> each_sentence_length(const vector<vector<int>>& source)

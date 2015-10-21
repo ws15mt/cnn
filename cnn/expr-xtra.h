@@ -40,7 +40,7 @@ Expression bidirectional(int slen, const vector<int>& source, ComputationGraph& 
 
 /// source [1..T][1..NUTT] is time first and then content from each utterance
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
-Expression embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, size_t feat_dim);
+vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, size_t feat_dim);
 
 vector<size_t> each_sentence_length(const vector<vector<int>>& source);
 
@@ -237,5 +237,4 @@ vector<Expression> attention_to_key_and_retreive_value(const Expression & M_t, c
     const vector<Expression> & i_attention_weight, size_t nutt);
 
 vector<cnn::real> get_value(Expression nd, ComputationGraph& cg);
-
-vector<cnn::real> get_erro(Expression nd, ComputationGraph& cg);
+vector<cnn::real> get_error(Expression nd, ComputationGraph& cg);
