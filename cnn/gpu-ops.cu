@@ -277,15 +277,18 @@ void softmax_backward(int n, const float* fx, const float* dEdf, float* dEdx) {
 void logsoftmax_backward(int n, const float* fx, const float* dEdf, float* dEdx) 
 {
     /*
-    float off_diag_sum = -(*fx).binaryExpr(*dEdf, FWeightedError()).sum();
+    float off_diag_sum = 0;
+    for (auto p : as_vector(dEdf))
+    off_diag_sum += p;
+    off_diag_sum *= -1;
     *dEdxi += (*fx).binaryExpr(*dEdf, FLogSoftmaxBackward(off_diag_sum));
     */
     thrust::device_ptr<float> dp = thrust::device_pointer_cast((float*)fx);
     thrust::device_ptr<float> de = thrust::device_pointer_cast((float*)dEdf);
     thrust::device_ptr<float> dr = thrust::device_pointer_cast(dEdx);
     thrust::device_vector<float> dtemp(n);
-    thrust::transform(dp, dp + n, de, dtemp.begin(), FWeightedError());
-    float off_diag_sum  = - thrust::reduce(dtemp.begin(), dtemp.end());
+//    thrust::transform(dp, dp + n, de, dtemp.begin(), FWeightedError());
+    float off_diag_sum  = - thrust::reduce(de.begin(), de.end());
     thrust::transform(dp, dp + n, de, dtemp.begin(), FLogSoftmaxBackward(off_diag_sum)); 
     thrust::transform(dtemp.begin(), dtemp.end(), dr, dr, thrust::plus<float>());
 }
