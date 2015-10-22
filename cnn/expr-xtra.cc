@@ -124,6 +124,56 @@ vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source,
     return source_embeddings;
 }
 
+/// return an expression for the time embedding weight
+Expression time_embedding_weight(size_t t, size_t feat_dim, size_t slen, ComputationGraph& cg, map<size_t, map<size_t, tExpression>> & m_time_embedding_weight)
+{
+    if (m_time_embedding_weight.find(t) == m_time_embedding_weight.end() || m_time_embedding_weight[t].find(feat_dim) == m_time_embedding_weight[t].end()
+        || m_time_embedding_weight[t][feat_dim].find(slen) == m_time_embedding_weight[t][feat_dim].end()){
+
+        vector<cnn::real> lj(feat_dim, 1 - (t +1) / (slen + 0.0));
+        for (size_t k = 0; k < lj.size(); k++)
+        {
+            lj[k] -= (k + 1.0) / feat_dim * (1 - 2.0 * (t  + 1.0) / slen );
+        }
+        Expression wgt = input(cg, { (long)feat_dim }, &lj);
+        cg.incremental_forward();
+        m_time_embedding_weight[t][feat_dim][slen] = wgt;
+    }
+    return m_time_embedding_weight[t][feat_dim][slen] ;
+}
+
+/// representation of a sentence using a single vector
+vector<Expression> time_embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, size_t feat_dim, map<size_t, map<size_t, tExpression>>  &m_time_embedding_weight)
+{
+    size_t nutt = source.size();
+    /// get the maximum length of utternace from all speakers
+    slen = 0;
+    for (auto p : source)
+        slen = (slen < p.size()) ? p.size() : slen;
+
+    std::vector<Expression> source_embeddings;
+
+    Expression i_x_t;
+
+    for (size_t k = 0; k < nutt; k++)
+    {
+        vector<Expression> vm;
+        int t = 0;
+        while (t < source[k].size())
+        {
+            Expression xij = lookup(cg, p_cs, source[k][t]);
+            Expression wgt = time_embedding_weight(t, feat_dim, slen, cg, m_time_embedding_weight); 
+            vm.push_back(cwise_multiply(wgt, xij));
+
+            t++;
+        }
+        i_x_t = sum(vm);
+        source_embeddings.push_back(i_x_t);
+    }
+    return source_embeddings;
+}
+
+
 vector<size_t> each_sentence_length(const vector<vector<int>>& source)
 {
     /// get each sentence length

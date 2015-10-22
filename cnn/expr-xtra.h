@@ -42,6 +42,14 @@ Expression bidirectional(int slen, const vector<int>& source, ComputationGraph& 
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
 vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, size_t feat_dim);
 
+/// return an expression for the time embedding weight
+typedef std::map<size_t, Expression> tExpression;
+Expression time_embedding_weight(size_t t, size_t feat_dim, size_t slen, ComputationGraph & cg, map<size_t, map<size_t, tExpression>> & m_time_embedding_weight);
+
+/// following Facebook's MemNN time encoding
+/// representation of a sentence using a single vector
+vector<Expression> time_embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, size_t feat_dim, map<size_t, map<size_t, tExpression >> &m_time_embedding_weight);
+
 vector<size_t> each_sentence_length(const vector<vector<int>>& source);
 
 bool similar_length(const vector<vector<int>>& source);
