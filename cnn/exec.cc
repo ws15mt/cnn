@@ -84,7 +84,7 @@ const Tensor& SimpleExecutionEngine::incremental_forward(VariableIndex node_max_
     nfxs[last_node_evaluated].v = static_cast<float*>(fxs->allocate(node->dim.size() * sizeof(float)));
     if (nfxs[last_node_evaluated].v == nullptr) {
       cerr << "out of memory\n";
-      abort();
+      throw("out of memory");
     }
     void* aux_mem = nullptr;
     size_t aux_size = node->aux_storage_size();
