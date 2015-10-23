@@ -116,13 +116,13 @@ void UnitTest(Expression node, ComputationGraph& g) {
     float alpha = GRADIENT_CHECK_PARAM_DELTA; /// change to this alpha, which then shows that the difference between numeric and error propagation is around 10e-5.
 
     VariableIndex iidx = node.i;
-    Tensor ov; 
+    Tensor ov;
 
     /// do forward pass to have everything initialized
     float E0 = as_scalar(g.forward());
 
     /// check only this node
-    g.set_last_node_evaluated( iidx); 
+    g.set_last_node_evaluated(iidx);
     float E = as_scalar(g.incremental_forward());
     ov = g.get_value(node);
 
@@ -137,42 +137,26 @@ void UnitTest(Expression node, ComputationGraph& g) {
     {
         for (size_t i = 0; i < ivalue.size(); ++i) {
             float old, newval;
-#if HAVE_CUDA
-            cudaMemcpy(&old, &p.values.v[i], sizeof(float), cudaMemcpyDeviceToHost);
-#else
             old = ivalue[i];
-#endif
 
             newval = old - alpha;
-#if HAVE_CUDA
-            cudaMemcpy(&p.values.v[i], &newval, sizeof(float), cudaMemcpyHostToDevice);
-#else
             Tensor tv = ov;
-            tv.v[i] = newval; 
+            tv.v[i] = newval;
             g.set_value(tv, node);
-#endif
             g.set_last_node_evaluated(iidx);
             float E_left = as_scalar(g.incremental_forward());
 
             newval = old + alpha;
-#if HAVE_CUDA
-            cudaMemcpy(&p.values.v[i], &newval, sizeof(float), cudaMemcpyHostToDevice);
-#else
             tv = ov;
             tv.v[i] = newval;
             g.set_value(tv, node);
-#endif
             g.set_last_node_evaluated(iidx);
             float E_right = as_scalar(g.incremental_forward());
             float g = (E_right - E_left) / (2 * alpha);
 
             float threshold;
             float grd;
-#if HAVE_CUDA
-            cudaMemcpy(&grd, &p.g.v[i], sizeof(float), cudaMemcpyDeviceToHost);
-#else
             grd = grderr[i];
-#endif
             threshold = (float)pow(10.0,
                 max((float)0.0, ceil(log10(min(fabs(g), fabs(grd))))) - (int)GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL);
             float diff = fabs(g - grd);
@@ -198,6 +182,5 @@ void UnitTest(Expression node, ComputationGraph& g) {
         cerr << "\nGRADIENT CHECK PASSED\n";
     }
 }
-
 }
 

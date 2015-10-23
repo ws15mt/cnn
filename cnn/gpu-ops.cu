@@ -288,7 +288,7 @@ void logsoftmax_backward(int n, const float* fx, const float* dEdf, float* dEdx)
     thrust::device_ptr<float> dr = thrust::device_pointer_cast(dEdx);
     thrust::device_vector<float> dtemp(n);
 //    thrust::transform(dp, dp + n, de, dtemp.begin(), FWeightedError());
-    float off_diag_sum  = - thrust::reduce(de.begin(), de.end());
+    float off_diag_sum  = - thrust::reduce(de, de + n);
     thrust::transform(dp, dp + n, de, dtemp.begin(), FLogSoftmaxBackward(off_diag_sum)); 
     thrust::transform(dtemp.begin(), dtemp.end(), dr, dr, thrust::plus<float>());
 }
