@@ -9,15 +9,15 @@ using namespace std;
 Trainer::~Trainer() {}
 
 /** 
-@scale : proportional to the number of utterances trained in parallel 
+@scale : proportional to the number of samples trained in parallel 
 */
-float Trainer::clip_gradients(float nutt) {
+float Trainer::clip_gradients(float samples) {
   float gscale = 1;
   if (clipping_enabled) {
     float gg = model->gradient_l2_norm();
-    if (gg > clip_threshold * nutt) {
+    if (gg > clip_threshold * samples) {
       ++clips;
-      gscale = (clip_threshold * nutt) / gg;
+      gscale = (clip_threshold * samples) / gg;
     }
   }
   return gscale;
@@ -27,9 +27,9 @@ void SimpleSGDTrainer::update(float nutt, real scale) {
     update(model->lookup_parameters_list(), model->parameters_list(), nutt, scale);
 }
 
-void SimpleSGDTrainer::update(const std::vector<LookupParameters*> &lookup_params, const std::vector<Parameters*> &params, float nutt, real scale) {
-  const float gscale = clip_gradients(nutt);
-  float nutt_scale = 1.0 / nutt;
+void SimpleSGDTrainer::update(const std::vector<LookupParameters*> &lookup_params, const std::vector<Parameters*> &params, float samples, real scale) {
+  const float gscale = clip_gradients(samples);
+  float nutt_scale = 1.0 / samples;
   for (auto p : params) {
 #if HAVE_CUDA
     gpu::sgd_update(p->values.d.size(), p->g.v, p->values.v, eta * scale * gscale * nutt_scale, lambda);
@@ -86,7 +86,7 @@ void MomentumSGDTrainer::update(real nutt, real scale) {
   ++updates;
 }
 
-void AdagradTrainer::update(real nutt, real scale) {
+void AdagradTrainer::update(real nsamples, real scale) {
   unsigned pi;
   if (!shadow_params_allocated) {
     vp = AllocateShadowParameters(*model);
@@ -95,8 +95,8 @@ void AdagradTrainer::update(real nutt, real scale) {
   }
 
   pi = 0;
-  const float gscale = clip_gradients(nutt);
-  float nutt_scale = 1.0 / nutt;
+  const float gscale = clip_gradients(nsamples);
+  float nutt_scale = 1.0 / nsamples;
   for (auto p : model->parameters_list()) {
     Tensor& v = vp[pi++].h;
     auto reg = (*p->values) * lambda;
