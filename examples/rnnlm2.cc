@@ -140,13 +140,15 @@ void train(Model &model, LM_t &lm,
     bool first = true;
     int report = 0;
     unsigned lines = 0;
+    unsigned total_epoch = 40;
 
     ofstream out(fname, ofstream::out);
     boost::archive::text_oarchive oa(out);
     oa << model;
     out.close();
 
-    while (1) {
+    size_t i_epoch = 0;
+    while (i_epoch < total_epoch) {
         Timer iteration("completed in");
         double loss = 0;
         unsigned chars = 0;
@@ -199,6 +201,8 @@ void train(Model &model, LM_t &lm,
             }
             cerr << "\n***TEST E = " << (dloss / dchars) << " ppl=" << exp(dloss / dchars) << ' ';
         }
+
+        i_epoch++;
     }
 }
 
@@ -338,12 +342,12 @@ int main(int argc, char** argv) {
   }
 
   Model model;
-  bool use_momentum = false;
+  bool use_momentum = true;
   Trainer* sgd = nullptr;
-  //if (use_momentum)
-  //  sgd = new MomentumSGDTrainer(&model);
-  //else
-  sgd = new SimpleSGDTrainer(&model);
+  if (use_momentum)
+    sgd = new MomentumSGDTrainer(&model);
+  else
+    sgd = new SimpleSGDTrainer(&model);
 
   if (vm.count("test") == 0)
   {
