@@ -773,8 +773,10 @@ EIGEN_STRONG_INLINE float logsumexp(const T& x) {
   const float m = x.maxCoeff();
   float z = 0;
   for (unsigned i = 0; i < x.rows(); ++i)
-    z += CNN_EXPF(x(i,0) - m);
-  return m + logf(z);
+      z += exp(x(i, 0) - m);
+  //z += CNN_EXPF(x(i, 0) - m);
+  //  return m + logf(z);
+  return m + log(z);
 }
 
 void Softmax::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
@@ -867,8 +869,12 @@ void LogSoftmax::backward(const vector<const Tensor*>& xs,
 #if HAVE_CUDA
       gpu::logsoftmax_backward(xs[0]->d.size(), fx.v, dEdf.v, dEdxi.v);
 #else
-    float off_diag_sum = -(*fx).binaryExpr(*dEdf, FWeightedError()).sum();
-    *dEdxi += (*fx).binaryExpr(*dEdf, FLogSoftmaxBackward(off_diag_sum));
+      float off_diag_sum = 0;
+      for (auto p : as_vector(dEdf))
+          off_diag_sum += p;
+      off_diag_sum *= -1;
+//      float off_diag_sum = -(*fx).binaryExpr(*dEdf, FWeightedError()).sum();
+      *dEdxi += (*fx).binaryExpr(*dEdf, FLogSoftmaxBackward(off_diag_sum));
 #endif
   } else {
     cerr << "LogSoftmaxBackward not implemented for multiple columns\n";

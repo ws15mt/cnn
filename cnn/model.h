@@ -42,18 +42,20 @@ struct Parameters : public ParametersBase {
   Dim dim;
   Tensor values;
   Tensor g;
- private:
+  std::string name;
+private:
   Parameters() {}
   ~Parameters() {
       cnn_mm_free(values.v);
       cnn_mm_free(g.v); 
   }
-  explicit Parameters(const Dim& d, float minmax); // initialize with ~U(-minmax,+minmax)
+  explicit Parameters(const Dim& d, float minmax, std::string nodename = ""); // initialize with ~U(-minmax,+minmax)
                                  // or Glorot initialization if minmax = 0
   friend class boost::serialization::access;
-  template<class Archive> void serialize(Archive& ar, const unsigned int) {
-    ar & dim;
-    ar & values;
+  template<class Archive> void serialize(Archive& ar, const unsigned int version) {
+      ar & name;
+      ar & dim;
+      ar & values;
   }
 };
 
@@ -75,13 +77,16 @@ struct LookupParameters : public ParametersBase {
   std::vector<Tensor> grads;
   // gradients are sparse, so track which components are nonzero
   std::unordered_set<unsigned> non_zero_grads;
- private:
+  std::string name;
+private:
   LookupParameters() {}
   ~LookupParameters();
-  LookupParameters(unsigned n, const Dim& d);
+  LookupParameters(unsigned n, const Dim& d, std::string nodename = "");
+
   friend class boost::serialization::access;
   template<class Archive>
   void save(Archive& ar, const unsigned int) const {
+    ar & name;
     ar & dim;
     int nv = values.size();
     ar & nv;
@@ -90,6 +95,7 @@ struct LookupParameters : public ParametersBase {
   }
   template<class Archive>
   void load(Archive& ar, const unsigned int) {
+    ar & name;
     ar & dim;
     int nv;
     ar & nv;
@@ -110,8 +116,8 @@ class Model {
   ~Model();
   float gradient_l2_norm() const;
   // set scale to use custom initialization
-  Parameters* add_parameters(const Dim& d, float scale = 0.0f);
-  LookupParameters* add_lookup_parameters(unsigned n, const Dim& d);
+  Parameters* add_parameters(const Dim& d, float scale = 0.0f, std::string nodename = "");
+  LookupParameters* add_lookup_parameters(unsigned n, const Dim& d, std::string nodename = "");
   // project weights so their L2 norm = radius
   void project_weights(float radius = 1.0f);
 

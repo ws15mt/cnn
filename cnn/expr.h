@@ -5,14 +5,14 @@
 
 namespace cnn { namespace expr {
 
-struct Expression {
+typedef struct Expression{
   ComputationGraph *pg;
   VariableIndex i;
 
   Expression() : pg(nullptr) { }
   Expression(ComputationGraph *pg, VariableIndex i) : pg(pg), i(i) { }
   const Tensor& value() { return pg->get_value(i); }
-};
+} ;
 
 Expression input(ComputationGraph& g, real s);
 Expression input(ComputationGraph& g, const real *ps);
