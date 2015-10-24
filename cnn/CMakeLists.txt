@@ -27,6 +27,7 @@ set(cnn_library_SRCS
     training.cc
     dglstm.cc
     treelstm.cc
+    math-util.cc
 )
 
 # Headers:
@@ -62,6 +63,7 @@ set(cnn_library_HDRS
     training.h
     dglstm.h
     treelstm.h
+    math-util.h
 )
 
 if(WITH_CUDA_BACKEND)
