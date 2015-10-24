@@ -148,7 +148,7 @@ void train(Model &model, LM_t &lm,
     out.close();
 
     size_t i_epoch = 0;
-    while (i_epoch < total_epoch) {
+    while (sgd->epoch < total_epoch) {
         Timer iteration("completed in");
         double loss = 0;
         unsigned chars = 0;
@@ -173,7 +173,7 @@ void train(Model &model, LM_t &lm,
             ++lines;
         }
         sgd->status();
-        cerr << " E = " << (loss / chars) << " ppl=" << exp(loss / chars) << ' ';
+        cerr << " report = " << report << " E = " << (loss / chars) << " ppl=" << exp(loss / chars) << ' ';
 
         if (randomSample)
             lm.RandomSample();
@@ -342,7 +342,7 @@ int main(int argc, char** argv) {
   }
 
   Model model;
-  bool use_momentum = true;
+  bool use_momentum = false;
   Trainer* sgd = nullptr;
   if (use_momentum)
     sgd = new MomentumSGDTrainer(&model);
