@@ -233,8 +233,9 @@ struct FWeightedError {
 struct FLogSoftmaxBackward {
   explicit FLogSoftmaxBackward(float off_diag_sum) : off_diag_sum(off_diag_sum) {}
   CNN_DEVICE_FUNC inline float operator()(const float &t, const float &d) const {
-    return off_diag_sum * CNN_EXPF(t) + d;
-    //return (off_diag_sum + d) * t;
+      //return off_diag_sum * CNN_EXPF(t) + d;
+      return off_diag_sum * exp(t) + d;
+      //return (off_diag_sum + d) * t;
   }
   float off_diag_sum;
 };

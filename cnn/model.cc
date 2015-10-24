@@ -19,7 +19,7 @@ namespace cnn {
 
 ParametersBase::~ParametersBase() {}
 
-Parameters::Parameters(const Dim& d, float scale) : dim(d) {
+Parameters::Parameters(const Dim& d, float scale , std::string nodename) : dim(d), name(nodename) {
   values.d = g.d = d;
   values.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
   if (scale) TensorTools::Randomize(values, scale); else TensorTools::Randomize(values);
@@ -61,6 +61,7 @@ void Parameters::g_squared_l2norm(float* sqnorm) const {
 void Parameters::copy(const Parameters & param) {
   assert(dim == param.dim);
   TensorTools::CopyElements(values, param.values);
+  this->name = param.name;
 }
 
 void Parameters::accumulate_grad(const Tensor& d) {
@@ -85,7 +86,7 @@ LookupParameters::~LookupParameters()
     }
 }
 
-LookupParameters::LookupParameters(unsigned n, const Dim& d) : dim(d), values(n), grads(n) {
+LookupParameters::LookupParameters(unsigned n, const Dim& d, std::string nodename) : dim(d), values(n), grads(n), name(nodename) {
   for (unsigned i = 0; i < n; ++i) {
     auto& v = values[i];
     v.d = d;
@@ -152,6 +153,7 @@ void LookupParameters::copy(const LookupParameters & param) {
   assert(dim == param.dim);
   for(size_t i = 0; i < param.values.size(); ++i)
     TensorTools::CopyElements(values[i], param.values[i]);
+  this->name = param.name;
 }
 
 void LookupParameters::accumulate_grad(unsigned index, const Tensor& d) {
@@ -211,15 +213,16 @@ float Model::gradient_l2_norm() const {
 #endif
 }
 
-Parameters* Model::add_parameters(const Dim& d, float scale) {
-  Parameters* p = new Parameters(d, scale);
+Parameters* Model::add_parameters(const Dim& d, float scale, std::string nodename) {
+  Parameters* p = new Parameters(d, scale, nodename);
   all_params.push_back(p);
   params.push_back(p);
   return p;
 }
 
-LookupParameters* Model::add_lookup_parameters(unsigned n, const Dim& d) {
-  LookupParameters* p = new LookupParameters(n,d);
+LookupParameters* Model::add_lookup_parameters(unsigned n, const Dim& d, std::string nodename) {
+  LookupParameters* p = new LookupParameters(n,d, nodename);
+  if (nodename != "") p->name = nodename;
   all_params.push_back(p);
   lookup_params.push_back(p);
   return p;

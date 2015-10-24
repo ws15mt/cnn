@@ -91,6 +91,10 @@ struct ComputationGraph {
   // get backward error for node at index i. 
   const Tensor& get_error(VariableIndex i);
 
+  /// set value for a node given by the index i
+  void  set_value(const Tensor& t, VariableIndex i);
+  void  set_value(const Tensor& t, expr::Expression& e);
+
   // clears forward caches (for get_value etc).
   void invalidate();
   // computes backward gradients from the front-most evaluated node.
@@ -102,9 +106,9 @@ struct ComputationGraph {
   // data
   std::vector<Node*> nodes;       // **stored in topological order**
   std::vector<VariableIndex> parameter_nodes; // nodes that contain parameters that can be updated (subset of nodes)
-  VariableIndex last_node_evaluated; // enables forward graphs to be evaluated incrementally
 
   ExecutionEngine* ee;  // handles the execution
+  void set_last_node_evaluated(VariableIndex idx);
  private:
   void set_dim_for_new_node(const VariableIndex& i);
 };
