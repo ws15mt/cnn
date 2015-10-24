@@ -64,10 +64,13 @@ namespace cnn {
         rndeng = new mt19937(random_seed);
 
         cerr << "Allocating memory...\n";
-//        fxs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
-//        dEdfs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
+#ifdef CUDA
+        fxs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
+        dEdfs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
+#else
         fxs = new AlignedMemoryPool<ALIGN>(8191UL * (1UL << 21));
         dEdfs = new AlignedMemoryPool<ALIGN>(8191UL * (1UL << 21));
+#endif
         cerr << "Done.\n";
     }
 
