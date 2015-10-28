@@ -65,7 +65,7 @@ namespace cnn {
 
 struct FHuberForward {
   FHuberForward(float c) : c(c) {}
-  CNN_DEVICE_FUNC float operator()(const float & x) const {
+  CNN_DEVICE_FUNC inline float operator()(float x) const {
     const float a = fabs(x);
     return (a < c) ? x*x : c*(2*a - c);
   }
@@ -311,7 +311,9 @@ struct FL2SGDUpdate {
 struct FBinaryLogLoss {
   CNN_DEVICE_FUNC inline float operator()(const float &x, const float &x_true) const {
     if (x_true == 1.f) {
-      return -1.f * x_true * log(x);
+        float z = x;
+      if (x == 0.f) z = std::numeric_limits<float>::min();
+      return -1.f * x_true * log(z);
     }
     else if (x_true == 0.f) {
       return -1.f * (1.f - x_true) * log1p(-x);
@@ -323,10 +325,19 @@ struct FBinaryLogLoss {
 };
 
 struct FBinaryLogLossBackward {
-  CNN_DEVICE_FUNC inline float operator()(const float &x, const float &x_true, const float & d) const {
-    float scale = (x_true > 0.f) ? -x_true/x : (1.f-x_true)/(1.-x);
-    return d * scale;
+  explicit FBinaryLogLossBackward(float d) : d(d) {}
+  CNN_DEVICE_FUNC inline float operator()(float x, float x_true) const {
+    if (x == x_true) return 0;
+    if (x == 0.f) x = std::numeric_limits<float>::min();
+    if (x == 1.f) x = 0.9999999f;
+    if (x_true == 1.f) {
+      return d * -x_true / x;
+    } else if (x_true == 0.f) {
+      return d * (1.f - x_true) / (1.f - x);
+	}
+    return d * ((1.f - x_true) / (1.f - x) + (-x_true / x));
   }
+  float d;
 };
 
 struct scale_functor

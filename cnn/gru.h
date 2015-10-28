@@ -13,7 +13,8 @@ struct GRUBuilder : public RNNBuilder {
   explicit GRUBuilder(unsigned layers,
                       unsigned input_dim,
                       unsigned hidden_dim,
-                      Model* model);
+                      Model* model,
+                      float iscale = 1.0);
   GRUBuilder(const GRUBuilder& ref):
       RNNBuilder(ref)
   {}

@@ -6,6 +6,7 @@
 #include <iostream>
 
 #include "cnn/nodes.h"
+#include "cnn/expr-xtra.h"
 
 using namespace std;
 using namespace cnn::expr;
@@ -17,10 +18,20 @@ enum { X2H=0, H2H, HB, L2H };
 
 RNNBuilder::~RNNBuilder() {}
 
+void RNNBuilder::display(ComputationGraph& cg) {
+
+    for (unsigned i = 0; i < layers; ++i) {
+        const std::vector<Expression>& vars = param_vars[i];
+        for (size_t i = 0; i < vars.size(); i++)
+            display_value(vars[i], cg);
+    }
+}
+
 SimpleRNNBuilder::SimpleRNNBuilder(unsigned ilayers,
                        unsigned input_dim,
                        unsigned hidden_dim,
                        Model* model,
+                       float iscale,
                        bool support_lags) : lagging(support_lags) {
   layers = ilayers;
   long layer_input_dim = input_dim;
@@ -29,12 +40,12 @@ SimpleRNNBuilder::SimpleRNNBuilder(unsigned ilayers,
   for (unsigned i = 0; i < layers; ++i) {
     input_dims[i] = layer_input_dim;
     
-    Parameters* p_x2h = model->add_parameters({ long(hidden_dim), layer_input_dim });
-    Parameters* p_h2h = model->add_parameters({long(hidden_dim), long(hidden_dim)});
-    Parameters* p_hb = model->add_parameters({long(hidden_dim)});
+    Parameters* p_x2h = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
+    Parameters* p_h2h = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+    Parameters* p_hb = model->add_parameters({ long(hidden_dim) }, iscale);
     vector<Parameters*> ps = {p_x2h, p_h2h, p_hb};
     if (lagging)
-        ps.push_back(model->add_parameters({long(hidden_dim), long(hidden_dim)}));
+        ps.push_back(model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale));
     params.push_back(ps);
     layer_input_dim = hidden_dim;
   }

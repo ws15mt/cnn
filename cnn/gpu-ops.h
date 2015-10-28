@@ -4,6 +4,8 @@
 namespace cnn {
 namespace gpu {
 
+    void vpairwise_rank_loss(int n, float margin, const float* xgood, const float* xbad, float* y);
+
     void set_to_value_of(int n, float* x0, float val);
     void set_to_value_of(int n, float* x0, float *val);
 

@@ -29,20 +29,21 @@ namespace cnn {
 DGLSTMBuilder::DGLSTMBuilder(unsigned ilayers,
     unsigned input_dim,
     unsigned hidden_dim,
-    Model* model) 
+    Model* model,
+    float iscale) 
 {
     layers = ilayers;
     Parameters * p_x2k, *p_c2k, *p_q2k, *p_bk, *p_x2k0;
     long layer_input_dim = input_dim;
     input_dims = vector<unsigned>(layers, layer_input_dim);
-    p_x2k0 = model->add_parameters({ long(hidden_dim), long(layer_input_dim) });
+    p_x2k0 = model->add_parameters({ long(hidden_dim), long(layer_input_dim) }, iscale);
     for (unsigned i = 0; i < layers; ++i) {
         input_dims[i] = layer_input_dim;
         // i
-        Parameters* p_x2i = model->add_parameters({ long(hidden_dim), layer_input_dim });
-        Parameters* p_h2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) });
-        Parameters* p_c2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) });
-        Parameters* p_bi = model->add_parameters({ long(hidden_dim) });
+        Parameters* p_x2i = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
+        Parameters* p_h2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+        Parameters* p_c2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+        Parameters* p_bi = model->add_parameters({ long(hidden_dim) }, iscale);
 #ifdef USE_STANDARD_LSTM_DEFINE
         // f
         Parameters* p_x2f = model->add_parameters({ long(hidden_dim), layer_input_dim });
@@ -51,24 +52,24 @@ DGLSTMBuilder::DGLSTMBuilder(unsigned ilayers,
         Parameters* p_bf = model->add_parameters({ long(hidden_dim) });
 #endif
         // o
-        Parameters* p_x2o = model->add_parameters({ long(hidden_dim), layer_input_dim });
-        Parameters* p_h2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) });
-        Parameters* p_c2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) });
-        Parameters* p_bo = model->add_parameters({ long(hidden_dim) });
+        Parameters* p_x2o = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
+        Parameters* p_h2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+        Parameters* p_c2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+        Parameters* p_bo = model->add_parameters({ long(hidden_dim) }, iscale);
 
         // c
-        Parameters* p_x2c = model->add_parameters({ long(hidden_dim), layer_input_dim });
-        Parameters* p_h2c = model->add_parameters({ long(hidden_dim), long(hidden_dim) });
-        Parameters* p_bc = model->add_parameters({ long(hidden_dim) });
+        Parameters* p_x2c = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
+        Parameters* p_h2c = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+        Parameters* p_bc = model->add_parameters({ long(hidden_dim) }, iscale);
 
-        p_x2k = model->add_parameters({ long(hidden_dim), long(layer_input_dim) });
-        p_c2k = model->add_parameters({ long(hidden_dim) });
-        p_bk = model->add_parameters({ long(hidden_dim) });
-        p_q2k = model->add_parameters({ long(hidden_dim) });
+        p_x2k = model->add_parameters({ long(hidden_dim), long(layer_input_dim) }, iscale);
+        p_c2k = model->add_parameters({ long(hidden_dim) }, iscale);
+        p_bk = model->add_parameters({ long(hidden_dim) }, iscale);
+        p_q2k = model->add_parameters({ long(hidden_dim) }, iscale);
 
         layer_input_dim = hidden_dim;  // output (hidden) from 1st layer is input to next
 
-        Parameters * p_stab = model->add_parameters({ 1 });
+        Parameters * p_stab = model->add_parameters({ 1 }, iscale);
         p_stab->reset_to_zero();
 
         vector<Parameters*> ps;

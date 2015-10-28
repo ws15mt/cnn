@@ -92,7 +92,10 @@ struct RNNBuilder {
   virtual unsigned num_h0_components() const  = 0;
   // copy the parameters of another builder
   virtual void copy(const RNNBuilder & params) = 0;
- protected:
+
+  void display(ComputationGraph& cg);
+
+protected:
   virtual void new_graph_impl(ComputationGraph& cg) = 0;
   virtual void start_new_sequence_impl(const std::vector<Expression>& h_0) = 0;
   virtual Expression add_input_impl(int prev, const Expression& x) = 0;
@@ -119,6 +122,7 @@ struct SimpleRNNBuilder : public RNNBuilder {
                             unsigned input_dim,
                             unsigned hidden_dim,
                             Model* model,
+                            float i_scale = 1.0,
                             bool support_lags=false);
   /// for parameter sharing 
   SimpleRNNBuilder(const SimpleRNNBuilder& ref) 

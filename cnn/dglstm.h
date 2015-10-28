@@ -17,7 +17,8 @@ struct DGLSTMBuilder: public RNNBuilder {
   explicit DGLSTMBuilder(unsigned layers,
                        unsigned input_dim,
                        unsigned hidden_dim,
-                       Model* model);
+                       Model* model,
+                       float iscale = 1.0);
   DGLSTMBuilder(const DGLSTMBuilder& ref) :
       RNNBuilder(ref) 
   {}

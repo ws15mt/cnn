@@ -7,6 +7,7 @@
 
 #include "cnn/nodes.h"
 #include "cnn/training.h"
+#include "cnn/expr-xtra.h"
 
 using namespace std;
 
@@ -17,7 +18,7 @@ enum { X2Z, H2Z, BZ, X2R, H2R, BR, X2H, H2H, BH };
 GRUBuilder::GRUBuilder(unsigned ilayers,
                        unsigned input_dim,
                        unsigned hidden_dim,
-                       Model* model) : hidden_dim(hidden_dim) {
+                       Model* model, float iscale) : hidden_dim(hidden_dim) {
   layers = ilayers; 
   long layer_input_dim = input_dim;
   input_dims = vector<unsigned>(layers, layer_input_dim);
@@ -25,19 +26,19 @@ GRUBuilder::GRUBuilder(unsigned ilayers,
     input_dims[i] = layer_input_dim;
     
     // z
-    Parameters* p_x2z = model->add_parameters({long(hidden_dim), layer_input_dim});
-    Parameters* p_h2z = model->add_parameters({long(hidden_dim), long(hidden_dim)});
-    Parameters* p_bz = model->add_parameters({long(hidden_dim)});
+    Parameters* p_x2z = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
+    Parameters* p_h2z = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+    Parameters* p_bz = model->add_parameters({ long(hidden_dim) }, iscale);
     
     // r
-    Parameters* p_x2r = model->add_parameters({long(hidden_dim), layer_input_dim});
-    Parameters* p_h2r = model->add_parameters({long(hidden_dim), long(hidden_dim)});
-    Parameters* p_br = model->add_parameters({long(hidden_dim)});
+    Parameters* p_x2r = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
+    Parameters* p_h2r = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+    Parameters* p_br = model->add_parameters({ long(hidden_dim) }, iscale);
 
     // h
-    Parameters* p_x2h = model->add_parameters({long(hidden_dim), layer_input_dim});
-    Parameters* p_h2h = model->add_parameters({long(hidden_dim), long(hidden_dim)});
-    Parameters* p_bh = model->add_parameters({long(hidden_dim)});
+    Parameters* p_x2h = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
+    Parameters* p_h2h = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+    Parameters* p_bh = model->add_parameters({ long(hidden_dim) }, iscale);
     layer_input_dim = hidden_dim;  // output (hidden) from 1st layer is input to next
 
     vector<Parameters*> ps = {p_x2z, p_h2z, p_bz, p_x2r, p_h2r, p_br, p_x2h, p_h2h, p_bh};

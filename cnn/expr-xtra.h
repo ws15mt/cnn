@@ -109,6 +109,35 @@ Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, Com
 }
 
 template<class Builder>
+Expression bidirectional(unsigned & slen, const vector<int>& source, ComputationGraph& cg, LookupParameters* p_cs, Builder & encoder_fwd, Builder &encoder_bwd)
+{
+    std::vector<Expression> source_embeddings;
+
+    std::vector<Expression> src_fwd(slen);
+    std::vector<Expression> src_bwd(slen);
+
+    Expression i_x_t;
+
+    for (int t = 0; t < slen; ++t) {
+        i_x_t = lookup(cg, p_cs, source[t]);
+        src_fwd[t] = encoder_fwd.add_input(i_x_t);
+    }
+    for (int t = slen - 1; t >= 0; --t) {
+        i_x_t = lookup(cg, p_cs, source[t]);
+        src_bwd[t] = encoder_bwd.add_input(i_x_t);
+    }
+
+    for (unsigned i = 0; i < slen; ++i)
+    {
+        source_embeddings.push_back(concatenate(std::vector<Expression>({ src_fwd[i], src_bwd[i] })));
+    }
+
+    Expression src = concatenate_cols(source_embeddings);
+
+    return src;
+}
+
+template<class Builder>
 vector<Expression> forward_directional(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero,
     Builder & encoder_fwd, size_t feat_dim)
 {
@@ -226,6 +255,8 @@ Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, Com
     return src;
 }
 
+vector<Expression> convert_to_vector(Expression & in, size_t dim, size_t nutt);
+
 vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
     Expression i_h_tm1, size_t a_dim, size_t feat_dim, size_t nutt);
@@ -233,8 +264,6 @@ vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<
 vector<Expression> local_attention_to(ComputationGraph& cg, vector<int> v_slen,
     Expression i_Wlp, Expression i_blp, Expression i_vlp,
     Expression i_h_tm1, size_t nutt);
-
-vector<Expression> convert_to_vector(Expression & in, size_t dim, size_t nutt);
 
 /// use key to find value, return a vector with element for each utterance
 vector<Expression> attention_weight(const vector<size_t>& v_slen, const Expression& src_key, Expression i_va, Expression i_Wa,
@@ -244,5 +273,11 @@ vector<Expression> attention_weight(const vector<size_t>& v_slen, const Expressi
 vector<Expression> attention_to_key_and_retreive_value(const Expression & M_t, const vector<size_t>& v_slen,
     const vector<Expression> & i_attention_weight, size_t nutt);
 
+vector<Expression> alignmatrix_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
+    Expression i_U, Expression src, Expression i_va, Expression i_Wa,
+    Expression i_h_tm1, size_t a_dim, size_t feat_dim, size_t nutt, ComputationGraph& cg);
+    
 vector<cnn::real> get_value(Expression nd, ComputationGraph& cg);
 vector<cnn::real> get_error(Expression nd, ComputationGraph& cg);
+
+void display_value(const Expression &source, ComputationGraph &cg);

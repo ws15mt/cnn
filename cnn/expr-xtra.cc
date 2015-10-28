@@ -388,3 +388,71 @@ vector<cnn::real> get_error(Expression nd, ComputationGraph& cg)
 
     return vm;
 }
+
+
+/// return alignment matrix to source
+vector<Expression> alignmatrix_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
+    Expression i_U, Expression src, Expression i_va, Expression i_Wa,
+    Expression i_h_tm1, size_t a_dim, size_t feat_dim, size_t nutt, ComputationGraph& cg)
+{
+    Expression i_c_t;
+    Expression i_e_t;
+    int slen = 0;
+    vector<Expression> i_wah_rep;
+
+    for (auto p : v_slen)
+        slen += p;
+
+    display_value(i_h_tm1, cg);
+    display_value(i_Wa, cg);
+    Expression i_wah = i_Wa * i_h_tm1;  /// [d nutt]
+    display_value(i_wah, cg);
+    Expression i_wah_reshaped = reshape(i_wah, { long(nutt * a_dim) });
+    for (size_t k = 0; k < nutt; k++)
+    {
+        Expression i_wah_each = pickrange(i_wah_reshaped, k * a_dim, (k + 1)*a_dim);  /// [d]
+        /// need to do subsampling
+        i_wah_rep.push_back(concatenate_cols(std::vector<Expression>(v_slen[k], i_wah_each)));  /// [d v_slen[k]]
+    }
+    Expression i_wah_m = concatenate_cols(i_wah_rep);  // [d \sum_k v_slen[k]]
+    display_value(i_wah_m, cg);
+
+    display_value(src, cg);
+    display_value(i_va, cg);
+    i_e_t = transpose(tanh(i_wah_m + src)) * i_va;  // [\sum_k v_slen[k] 1]
+
+    Expression i_alpha_t;
+
+    vector<Expression> v_alignment;
+    int istt = 0;
+    for (size_t k = 0; k < nutt; k++)
+    {
+        Expression i_input;
+        int istp = istt + v_slen[k];
+        display_value(i_e_t, cg);
+        Expression i_alignment = softmax(pickrange(i_e_t, istt, istp));
+        v_alignment.push_back(i_alignment);
+
+        istt = istp;
+    }
+
+    return v_alignment;
+}
+
+void display_value(const Expression &source, ComputationGraph &cg)
+{
+    cg.incremental_forward();
+    const Tensor &a = cg.get_value(source.i);
+
+    float I = a.d.cols();
+    float J = a.d.rows();
+
+    for (int j = 0; j < J; ++j) {
+        for (int i = 0; i < I; ++i) {
+            float v = TensorTools::AccessElement(a, Dim(j, i));
+            std::cout << v << ' ';
+        }
+        std::cout << endl;
+    }
+}
+
