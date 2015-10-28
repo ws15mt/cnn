@@ -33,7 +33,8 @@ struct AttentionalModel {
         unsigned hidden_dim, unsigned align_dim, bool rnn_src_embeddings,
 	    bool giza_extensions, unsigned hidden_replicates=1, 
         LookupParameters* cs=0, LookupParameters *ct=0, 
-        bool use_external_memory = false /// this is for extmem rnn memory size
+        bool use_external_memory = false , /// this is for extmem rnn memory size
+        float iscale = 1.0  /// random initialization range
     );
 
     ~AttentionalModel();
@@ -108,31 +109,31 @@ template <class Builder>
 AttentionalModel<Builder>::AttentionalModel(cnn::Model& model,
     unsigned vocab_size_src, unsigned _vocab_size_tgt, unsigned layers, unsigned hidden_dim, 
     unsigned align_dim, bool _rnn_src_embeddings, bool _giza_extentions, unsigned hidden_replicates, 
-    LookupParameters* cs, LookupParameters *ct, bool use_external_memory = false)
-    : layers(layers), builder(layers, (_rnn_src_embeddings) ? 3 * hidden_dim : 2 * hidden_dim, hidden_dim, &model),
-  builder_src_fwd(1, hidden_dim, hidden_dim, &model),
-  builder_src_bwd(1, hidden_dim, hidden_dim, &model),
+    LookupParameters* cs, LookupParameters *ct, bool use_external_memory = false, float iscale = 1.0)
+    : layers(layers), builder(layers, (_rnn_src_embeddings) ? 3 * hidden_dim : 2 * hidden_dim, hidden_dim, &model, iscale),
+  builder_src_fwd(1, hidden_dim, hidden_dim, &model, iscale),
+  builder_src_bwd(1, hidden_dim, hidden_dim, &model, iscale),
   rnn_src_embeddings(_rnn_src_embeddings), 
   giza_extensions(_giza_extentions), vocab_size_tgt(_vocab_size_tgt),
   num_aux_vecs(0)
 {
-    p_cs = (cs) ? cs : model.add_lookup_parameters(long(vocab_size_src), {long(hidden_dim)}); 
-    p_ct = (ct) ? ct : model.add_lookup_parameters(vocab_size_tgt, {long(hidden_dim)}); 
-    p_R = model.add_parameters({long(vocab_size_tgt), long(hidden_dim)});
-    p_bias = model.add_parameters({long(vocab_size_tgt)});
+    p_cs = (cs) ? cs : model.add_lookup_parameters(long(vocab_size_src), {long(hidden_dim)}, iscale); 
+    p_ct = (ct) ? ct : model.add_lookup_parameters(vocab_size_tgt, {long(hidden_dim)}, iscale); 
+    p_R = model.add_parameters({long(vocab_size_tgt), long(hidden_dim)}, iscale);
+    p_bias = model.add_parameters({ long(vocab_size_tgt) }, iscale);
 
     if (use_external_memory)
     { 
         for (auto l = 0; l < layers; ++l)
         {
-            Parameters *pp = model.add_parameters({ RNNEM_MEM_SIZE });
+            Parameters *pp = model.add_parameters({ RNNEM_MEM_SIZE }, iscale);
             pp->reset_to_zero();
             p_h0.push_back(pp);
         }
 #ifdef DBG_NEW_RNNEM
         for (auto l = 0; l < layers; ++l)
         {
-            Parameters * pp = model.add_parameters({ long(hidden_dim), long(RNNEM_MEM_SIZE) });
+            Parameters * pp = model.add_parameters({ long(hidden_dim), long(RNNEM_MEM_SIZE) }, iscale);
             pp->reset_to_zero(); 
             p_h0.push_back(pp); 
         }
@@ -140,27 +141,27 @@ AttentionalModel<Builder>::AttentionalModel(cnn::Model& model,
     }
     for (auto l = 0; l < hidden_replicates * layers; ++l)
     {
-        Parameters *pp = model.add_parameters({ long(hidden_dim) });
+        Parameters *pp = model.add_parameters({ long(hidden_dim) }, iscale);
         pp->reset_to_zero();
         p_h0.push_back(pp);
     }
 
-    p_Wa = model.add_parameters({ long(align_dim), long(hidden_dim) });
-    p_P = model.add_parameters({ long(hidden_dim), long(hidden_dim) });
+    p_Wa = model.add_parameters({ long(align_dim), long(hidden_dim) }, iscale);
+    p_P = model.add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
     if (rnn_src_embeddings) {
-        p_Ua = model.add_parameters({ long(align_dim), 2 * long(hidden_dim) });
-        p_Q = model.add_parameters({ long(hidden_dim), 2 * long(hidden_dim) });
+        p_Ua = model.add_parameters({ long(align_dim), 2 * long(hidden_dim) }, iscale);
+        p_Q = model.add_parameters({ long(hidden_dim), 2 * long(hidden_dim) }, iscale);
     }
     else {
-        p_Ua = model.add_parameters({long(align_dim), long(hidden_dim)});
-        p_Q = model.add_parameters({ long(hidden_dim), long(hidden_dim) });
+        p_Ua = model.add_parameters({ long(align_dim), long(hidden_dim) }, iscale);
+        p_Q = model.add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
     }
 #ifdef ALIGNMENT
     if (giza_extensions) {
         p_Ta = model.add_parameters({long(align_dim), 9});
     }
 #endif
-    p_va = model.add_parameters({ long(align_dim) });
+    p_va = model.add_parameters({ long(align_dim) }, iscale);
 }
 
 template <class Builder>
@@ -275,13 +276,16 @@ Expression AttentionalModel<Builder>::add_input(int trg_tok, int t, ComputationG
     try{
         // alignment input -- FIXME: just done for top layer
         auto i_h_tm1 = (t == 0 && i_h0.size() > 0) ? i_h0.back() : builder.final_h().back();
-        //WTF(i_h_tm1);
+        if (verbose)
+            display_value(i_h_tm1, cg);
         //Expression i_e_t = tanh(i_src_M * i_h_tm1); 
         Expression i_wah = i_Wa * i_h_tm1;
-        //WTF(i_wah);
+        if (verbose)
+            display_value(i_wah, cg);
         // want numpy style broadcasting, but have to do this manually
         Expression i_wah_rep = concatenate_cols(std::vector<Expression>(slen, i_wah));
-        //WTF(i_wah_rep);
+        if (verbose)
+            display_value(i_wah_rep, cg);
         Expression i_e_t;
         if (giza_extensions) {
 #ifdef ALIGNMENT
@@ -323,36 +327,35 @@ Expression AttentionalModel<Builder>::add_input(int trg_tok, int t, ComputationG
         }
         else {
             i_e_t = transpose(tanh(i_wah_rep + i_uax)) * i_va;
-            //WTF(i_e_t);
+            if (verbose)
+                display_value(i_e_t, cg);
         }
         Expression i_alpha_t = softmax(i_e_t);
-        //WTF(i_alpha_t);
+        if (verbose)
+            display_value(i_alpha_t, cg);
 #ifdef ALIGNMENT
         aligns.push_back(i_alpha_t);
 #endif
         Expression i_c_t = src * i_alpha_t;
-        //WTF(i_c_t);
+        if (verbose)
+            display_value(i_c_t, cg);
         // word input
         Expression i_x_t = lookup(cg, p_ct, trg_tok);
-        //WTF(i_x_t);
+        if (verbose)
+            display_value(i_x_t, cg);
         Expression input = concatenate(std::vector<Expression>({ i_x_t, i_c_t })); // vstack/hstack?
-        //WTF(input);
+        if (verbose)
+            display_value(input, cg);
         // y_t = RNN([x_t, a_t])
         Expression i_y_t;
         if (prev_state)
             i_y_t = builder.add_input(*prev_state, input);
         else
             i_y_t = builder.add_input(input);
+        if (verbose)
+            display_value(i_y_t, cg);
 
-        //WTF(i_y_t);
-#ifndef VANILLA_TARGET_LSTM 
-        // Bahdanau does a max-out thing here; I do a tanh. Tomaatos tomateos. 
-        Expression i_tildet_t = tanh(affine_transform({ i_y_t, i_Q, i_c_t, i_P, i_x_t }));
-
-        i_r_t = affine_transform({ i_bias, i_R, i_tildet_t });
-#else
-        Expression i_r_t = affine_transform({ i_bias, i_R, i_y_t });
-#endif    
+        i_r_t = affine_transform({ i_bias, i_R, i_y_t });
     }
     catch (...)
     {
@@ -389,9 +392,9 @@ Expression AttentionalModel<Builder>::BuildGraph(const std::vector<int> &source,
     const unsigned tlen = target.size() - 1;
     for (unsigned t = 0; t < tlen; ++t) {
         Expression i_r_t = add_input(target[t], t, cg);
-        //WTF(i_r_t);
-        Expression i_err = pickneglogsoftmax(i_r_t, target[t + 1]);
-        errs.push_back(i_err);
+        errs.push_back(pickneglogsoftmax(i_r_t, target[t + 1]));
+        if (verbose)
+            display_value(errs.back(), cg);
     }
 
 #ifdef ALIGNMENT
@@ -419,9 +422,9 @@ Expression AttentionalModel<Builder>::BuildGraph(const std::vector<int> &source,
     const unsigned tlen = target.size() - 1;
     for (unsigned t = 0; t < tlen; ++t) {
         Expression i_r_t = add_input(target[t], t, cg);
-        //WTF(i_r_t);
-        Expression i_err = pickneglogsoftmax(i_r_t, target[t + 1]);
-        errs.push_back(i_err);
+        errs.push_back(pickneglogsoftmax(i_r_t, target[t + 1]));
+        if (verbose)
+            display_value(errs.back(), cg);
     }
 
 #ifdef ALIGNMENT
@@ -465,8 +468,6 @@ vector<Expression> AttentionalModel<Builder>::BuildGraphWithoutNormalization(con
     const unsigned tlen = target.size() - 1;
     for (unsigned t = 0; t < tlen; ++t) {
         Expression i_r_t = add_input(target[t], t, cg);
-        //WTF(i_r_t);
-//        Expression i_err = pickneglogsoftmax(i_r_t, target[t + 1]);
         errs.push_back(i_r_t);
     }
 #ifdef ALIGNMENT

@@ -23,6 +23,7 @@
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
 #include <boost/regex.hpp>
+#include <boost/lexical_cast.hpp>
 
 using namespace cnn;
 using namespace std;
@@ -337,6 +338,7 @@ int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dic
         return -1;
 
     in >> diagid;
+    trim(diagid);
     in >> word;
     if (word != sep)
     {
@@ -374,7 +376,7 @@ int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dic
         v->push_back(kSRC_EOS);
     int res;
 
-    stringstream(diagid) >> res;
+    res = boost::lexical_cast<int>(diagid);
 
     return res;
 }

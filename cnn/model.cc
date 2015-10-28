@@ -22,7 +22,7 @@ ParametersBase::~ParametersBase() {}
 Parameters::Parameters(const Dim& d, float scale , std::string nodename) : dim(d), name(nodename) {
   values.d = g.d = d;
   values.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
-  if (scale) TensorTools::Randomize(values, scale); else TensorTools::Randomize(values);
+  TensorTools::Randomize(values, scale); 
   g.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
   TensorTools::Zero(g);
 }
@@ -86,12 +86,12 @@ LookupParameters::~LookupParameters()
     }
 }
 
-LookupParameters::LookupParameters(unsigned n, const Dim& d, std::string nodename) : dim(d), values(n), grads(n), name(nodename) {
+LookupParameters::LookupParameters(unsigned n, const Dim& d, float scale, std::string nodename) : dim(d), values(n), grads(n), name(nodename) {
   for (unsigned i = 0; i < n; ++i) {
     auto& v = values[i];
     v.d = d;
     v.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
-    TensorTools::Randomize(v);
+    TensorTools::Randomize(v, scale);
 
     auto& g = grads[i];
     g.d = d;
@@ -220,8 +220,8 @@ Parameters* Model::add_parameters(const Dim& d, float scale, std::string nodenam
   return p;
 }
 
-LookupParameters* Model::add_lookup_parameters(unsigned n, const Dim& d, std::string nodename) {
-  LookupParameters* p = new LookupParameters(n,d, nodename);
+LookupParameters* Model::add_lookup_parameters(unsigned n, const Dim& d, float scale, std::string nodename) {
+  LookupParameters* p = new LookupParameters(n,d, scale, nodename);
   if (nodename != "") p->name = nodename;
   all_params.push_back(p);
   lookup_params.push_back(p);
