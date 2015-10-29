@@ -675,7 +675,7 @@ void Concatenate::backward(const vector<const Tensor*>& xs,
 #endif
 }
 
-#define MAX_CONCAT_COLS_ARGS 512
+#define MAX_CONCAT_COLS_ARGS 2048
 size_t ConcatenateColumns::aux_storage_size() const {
   return MAX_CONCAT_COLS_ARGS * sizeof(unsigned);
 }
@@ -683,6 +683,12 @@ size_t ConcatenateColumns::aux_storage_size() const {
 void ConcatenateColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   unsigned c = 0;
   assert(xs.size() < MAX_CONCAT_COLS_ARGS);
+  if (xs.size() >= MAX_CONCAT_COLS_ARGS)
+  {
+      cerr << "column size too large to " << xs.size() << endl;
+      throw("error : column size too large");
+  }
+
   unsigned* pp = static_cast<unsigned*>(aux_mem);
   for (unsigned i = 0; i < xs.size(); ++i) {
 #if HAVE_CUDA
