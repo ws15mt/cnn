@@ -259,7 +259,10 @@ vector<Expression> convert_to_vector(Expression & in, size_t dim, size_t nutt);
 
 vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t feat_dim, size_t nutt);
+    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& wgt);
+vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, const vector<size_t>& v_slen,
+    Expression i_U, Expression src, Expression i_va, Expression i_Wa,
+    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt);
 
 vector<Expression> local_attention_to(ComputationGraph& cg, vector<int> v_slen,
     Expression i_Wlp, Expression i_blp, Expression i_vlp,
@@ -280,4 +283,4 @@ vector<Expression> alignmatrix_to_source(vector<Expression> & v_src, const vecto
 vector<cnn::real> get_value(Expression nd, ComputationGraph& cg);
 vector<cnn::real> get_error(Expression nd, ComputationGraph& cg);
 
-void display_value(const Expression &source, ComputationGraph &cg);
+void display_value(const Expression &source, ComputationGraph &cg, string what_to_say = "");

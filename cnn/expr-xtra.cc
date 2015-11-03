@@ -200,7 +200,7 @@ bool similar_length(const vector<vector<int>>& source)
 
 vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t feat_dim, size_t nutt)
+    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt)
 {
     Expression i_c_t;
     Expression i_e_t;
@@ -231,10 +231,54 @@ vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<
         Expression i_input;
         int istp = istt + v_slen[k];
 
-        i_input = v_src[k] * softmax(pickrange(i_e_t, istt, istp));  // [D v_slen[k]] x[v_slen[k] 1] = [D 1]
+        Expression wgt = softmax(pickrange(i_e_t, istt, istp));
+        v_wgt.push_back(wgt);
+
+        i_input = v_src[k] * wgt;  // [D v_slen[k]] x[v_slen[k] 1] = [D 1]
         v_input.push_back(i_input);
 
         istt = istp;
+    }
+
+    return v_input;
+}
+
+/// use bilinear model for attention
+vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, const vector<size_t>& v_slen,
+    Expression i_U, Expression src, Expression i_va, Expression i_Wa,
+    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt)
+{
+    Expression i_c_t;
+    Expression i_e_t;
+    int slen = 0;
+    vector<Expression> i_wah_rep;
+
+    for (auto p : v_slen)
+        slen += p;
+
+    Expression i_wa = i_Wa * i_h_tm1 ;  /// [d nutt]
+    Expression i_wah;
+    if (v_slen.size() > 1)
+    {
+        i_wah = i_wa + concatenate_cols(vector<Expression>(v_slen.size(), i_va));
+    }
+    else
+        i_wah = i_wa + i_va;
+    Expression i_wah_reshaped = reshape(i_wah, { long(nutt * a_dim) });
+
+    Expression i_alpha_t;
+
+    vector<Expression> v_input;
+    int istt = 0;
+    for (size_t k = 0; k < nutt; k++)
+    {
+        Expression i_input ;
+        Expression i_bilinear = transpose(v_src[k]) * pickrange(i_wah_reshaped, k * a_dim, (k + 1)* a_dim); // [v_slen x 1]
+        Expression wgt = softmax(i_bilinear);
+        v_wgt.push_back(wgt);
+
+        i_input = v_src[k] * wgt;  // [D v_slen[k]] x[v_slen[k] 1] = [D 1]
+        v_input.push_back(i_input);
     }
 
     return v_input;
@@ -439,7 +483,7 @@ vector<Expression> alignmatrix_to_source(vector<Expression> & v_src, const vecto
     return v_alignment;
 }
 
-void display_value(const Expression &source, ComputationGraph &cg)
+void display_value(const Expression &source, ComputationGraph &cg, string what_to_say)
 {
     cg.incremental_forward();
     const Tensor &a = cg.get_value(source.i);
@@ -447,6 +491,8 @@ void display_value(const Expression &source, ComputationGraph &cg)
     float I = a.d.cols();
     float J = a.d.rows();
 
+    if (what_to_say.size() > 0)
+        cout << what_to_say << endl;
     for (int j = 0; j < J; ++j) {
         for (int i = 0; i < I; ++i) {
             float v = TensorTools::AccessElement(a, Dim(j, i));
