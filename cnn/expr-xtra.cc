@@ -200,7 +200,7 @@ bool similar_length(const vector<vector<int>>& source)
 
 vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt)
+    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, float fscale )
 {
     Expression i_c_t;
     Expression i_e_t;
@@ -231,7 +231,7 @@ vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<
         Expression i_input;
         int istp = istt + v_slen[k];
 
-        Expression wgt = softmax(pickrange(i_e_t, istt, istp));
+        Expression wgt = softmax(fscale * pickrange(i_e_t, istt, istp));
         v_wgt.push_back(wgt);
 
         i_input = v_src[k] * wgt;  // [D v_slen[k]] x[v_slen[k] 1] = [D 1]
@@ -246,7 +246,7 @@ vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<
 /// use bilinear model for attention
 vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, const vector<size_t>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt)
+    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, const float fscale)
 {
     Expression i_c_t;
     Expression i_e_t;
@@ -274,7 +274,7 @@ vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, cons
     {
         Expression i_input ;
         Expression i_bilinear = transpose(v_src[k]) * pickrange(i_wah_reshaped, k * a_dim, (k + 1)* a_dim); // [v_slen x 1]
-        Expression wgt = softmax(i_bilinear);
+        Expression wgt = softmax(fscale * i_bilinear);
         v_wgt.push_back(wgt);
 
         i_input = v_src[k] * wgt;  // [D v_slen[k]] x[v_slen[k] 1] = [D 1]

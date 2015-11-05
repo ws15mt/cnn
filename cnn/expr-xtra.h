@@ -259,10 +259,10 @@ vector<Expression> convert_to_vector(Expression & in, size_t dim, size_t nutt);
 
 vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& wgt);
+    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& wgt, float fscale = 1.0);
 vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, const vector<size_t>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt);
+    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, float fscale = 1.0);
 
 vector<Expression> local_attention_to(ComputationGraph& cg, vector<int> v_slen,
     Expression i_Wlp, Expression i_blp, Expression i_vlp,
