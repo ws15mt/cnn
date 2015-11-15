@@ -73,7 +73,7 @@ Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, Com
 
     Expression i_x_t;
 
-    for (int t = 0; t < slen; ++t) {
+    for (unsigned t = 0; t < slen; ++t) {
         vector<Expression> vm;
         for (size_t k = 0; k < nutt; k++)
         {
@@ -220,7 +220,7 @@ Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, Com
 
     Expression i_x_t;
 
-    for (int t = 0; t < slen; ++t) {
+    for (unsigned t = 0; t < slen; ++t) {
         vector<Expression> vm;
         for (size_t k = 0; k < nutt; k++)
         {
