@@ -32,7 +32,10 @@ typedef vector<PTurn> PDialogue;  /// a dialogue consists of many turns
 typedef vector<PDialogue> PCorpus; /// a parallel corpus consists of many parallel dialogues
 
 /// save the number of turns to dialogue id list
-typedef map<int, vector<int>> NumTurn2DialogId;
+typedef struct{
+    vector<int> vNumTurns;  /// vector saving number of turns to be accessed, can shuffle this vector so that the access of dialogues are randomized
+    map<int, vector<int>> mapNumTurn2DialogId;
+} NumTurn2DialogId;
 
 typedef pair<vector<Sentence>, Sentence> StatementsQuery;
 typedef pair<StatementsQuery, Sentence> FBTurns;
