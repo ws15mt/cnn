@@ -495,6 +495,7 @@ Expression shuffle_data(Expression src, size_t nutt, size_t feat_dim, size_t sle
 /// to 
 /// [v_spk1_time0 v_spk1_tim1 | v_spk2_time0 v_spk2_time1]
 /// this assumes different source length
+/// the result vector for each element doesn't have redundence, i.e., all elements are valid.
 vector<Expression> shuffle_data(Expression src, size_t nutt, size_t feat_dim, const vector<size_t>& v_slen)
 {
     /// the input data is arranged into a big matrix, assuming same length of utterance

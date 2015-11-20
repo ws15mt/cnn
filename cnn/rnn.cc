@@ -97,25 +97,50 @@ void SimpleRNNBuilder::start_new_sequence_impl(const vector<Expression>& h_0) {
 }
 
 Expression SimpleRNNBuilder::add_input_impl(int prev, const Expression &in) {
-  const unsigned t = h.size();
-  h.push_back(vector<Expression>(layers));
+    const unsigned t = h.size();
+    h.push_back(vector<Expression>(layers));
 
-  Expression x = in;
+    Expression x = in;
 
-  for (unsigned i = 0; i < layers; ++i) {
-    const vector<Expression>& vars = param_vars[i];
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
 
-//    Expression y = affine_transform({ vars[2], vars[0], x });
-    Expression y = affine_transform({ biases[i][0], vars[0], x });
+        //    Expression y = affine_transform({ vars[2], vars[0], x });
+        Expression y = affine_transform({ biases[i][0], vars[0], x });
 
-    if (prev == -1 && h0.size() > 0)
-      y = y + vars[1] * h0[i];
-    else if (prev >= 0)
-      y = y + vars[1] * h[prev][i];
+        if (prev == -1 && h0.size() > 0)
+            y = y + vars[1] * h0[i];
+        else if (prev >= 0)
+            y = y + vars[1] * h[prev][i];
 
-    x = h[t][i] = tanh(y);
-  }
-  return h[t].back();
+        x = h[t][i] = tanh(y);
+    }
+    return h[t].back();
+}
+
+Expression SimpleRNNBuilder::add_input_impl(const vector<Expression>& prev_history, const Expression &in) {
+    const unsigned t = h.size();
+    h.push_back(vector<Expression>(layers));
+
+    Expression x = in;
+
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+
+        //    Expression y = affine_transform({ vars[2], vars[0], x });
+        Expression y = affine_transform({ biases[i][0], vars[0], x });
+
+        if (prev_history.size() == layers)
+            y = y + vars[1] * prev_history[i];
+        else
+        {
+            cerr << "wrong dimension for prev history in RNN" << endl;
+            throw("wrong dimension for prev history in RNN");
+        }
+
+        x = h[t][i] = tanh(y);
+    }
+    return h[t].back();
 }
 
 Expression SimpleRNNBuilder::add_auxiliary_input(const Expression &in, const Expression &aux) {

@@ -74,6 +74,16 @@ struct RNNBuilder {
     return add_input_impl(prev, x);
   }
 
+  // add dependency on an external history
+  // this can be used to reset prehistory to null for specific elements 
+  // so can run data parallelization on RNNs
+  Expression add_input(const std::vector<Expression>& prv_history, const Expression& x) {
+      sm.transition(RNNOp::add_input);
+      head.push_back(cur);
+      cur = head.size() - 1;
+      return add_input_impl(prv_history, x);
+  }
+
   // rewind the last timestep - this DOES NOT remove the variables
   // from the computation graph, it just means the next time step will
   // see a different previous state. You can remind as many times as
@@ -99,7 +109,8 @@ protected:
   virtual void new_graph_impl(ComputationGraph& cg) = 0;
   virtual void start_new_sequence_impl(const std::vector<Expression>& h_0) = 0;
   virtual Expression add_input_impl(int prev, const Expression& x) = 0;
- public:
+  virtual Expression add_input_impl(const std::vector<Expression>& prev_history, const Expression& x) = 0;
+public:
   /// for parameters
   // first index is layer, then ...
   std::vector<std::vector<Parameters*>> params;
@@ -135,6 +146,7 @@ struct SimpleRNNBuilder : public RNNBuilder {
   void new_graph_impl(ComputationGraph& cg) override;
   void start_new_sequence_impl(const std::vector<Expression>& h_0) override;
   Expression add_input_impl(int prev, const Expression& x) override;
+  Expression add_input_impl(const std::vector<Expression>& prev_history, const Expression& x) override;
 
  public:
   Expression add_auxiliary_input(const Expression& x, const Expression &aux);

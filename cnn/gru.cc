@@ -97,59 +97,106 @@ void GRUBuilder::start_new_sequence_impl(const std::vector<Expression>& h_0) {
 }
 
 Expression GRUBuilder::add_input_impl(int prev, const Expression& x) {
-  const bool has_initial_state = (h0.size() > 0);
-  const unsigned t = h.size();
-  h.push_back(vector<Expression>(layers));
-  vector<Expression>& ht = h.back();
-  Expression in = x;
-  for (unsigned i = 0; i < layers; ++i) {
-    const vector<Expression>& vars = param_vars[i];
-    Expression h_tprev;
-    // prev_zero means that h_tprev should be treated as 0
-    bool prev_zero = false;
-    if (prev >= 0 || has_initial_state) {
-      h_tprev = (prev < 0) ? h0[i] : h[prev][i];
-    } else { prev_zero = true; }
-    // update gate
-    Expression zt;
-    if (prev_zero)
-//        zt = affine_transform({ biases[i][0]vars[BZ], vars[X2Z], in });
-      zt = affine_transform({ biases[i][0], vars[X2Z], in });
-    else
-  //   zt = affine_transform({ vars[BZ], vars[X2Z], in, vars[H2Z], h_tprev });
-      zt = affine_transform({ biases[i][0], vars[X2Z], in, vars[H2Z], h_tprev });
-    zt = logistic(zt);
-    // forget
-    Expression ft = 1.f - zt;
-    // reset gate
-    Expression rt;
-    if (prev_zero)
-        rt = affine_transform({ biases[i][1], vars[X2R], in });
-//    rt = affine_transform({ vars[BR], vars[X2R], in });
-    else
-        rt = affine_transform({ biases[i][1], vars[X2R], in });
-  //  rt = affine_transform({ vars[BR], vars[X2R], in });
-    rt = logistic(rt);
+    const bool has_initial_state = (h0.size() > 0);
+    const unsigned t = h.size();
+    h.push_back(vector<Expression>(layers));
+    vector<Expression>& ht = h.back();
+    Expression in = x;
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        Expression h_tprev;
+        // prev_zero means that h_tprev should be treated as 0
+        bool prev_zero = false;
+        if (prev >= 0 || has_initial_state) {
+            h_tprev = (prev < 0) ? h0[i] : h[prev][i];
+        }
+        else { prev_zero = true; }
+        // update gate
+        Expression zt;
+        if (prev_zero)
+            //        zt = affine_transform({ biases[i][0]vars[BZ], vars[X2Z], in });
+            zt = affine_transform({ biases[i][0], vars[X2Z], in });
+        else
+            //   zt = affine_transform({ vars[BZ], vars[X2Z], in, vars[H2Z], h_tprev });
+            zt = affine_transform({ biases[i][0], vars[X2Z], in, vars[H2Z], h_tprev });
+        zt = logistic(zt);
+        // forget
+        Expression ft = 1.f - zt;
+        // reset gate
+        Expression rt;
+        if (prev_zero)
+            rt = affine_transform({ biases[i][1], vars[X2R], in });
+        //    rt = affine_transform({ vars[BR], vars[X2R], in });
+        else
+            rt = affine_transform({ biases[i][1], vars[X2R], in, vars[X2R], h_tprev });
+        //  rt = affine_transform({ vars[BR], vars[X2R], in });
+        rt = logistic(rt);
 
-    // candidate activation
-    Expression ct;
-    if (prev_zero) {
-      ct = affine_transform({ biases[i][2], vars[X2H], in });
-      //  ct = affine_transform({ vars[BH], vars[X2H], in });
-      ct = tanh(ct);
-      Expression nwt = cwise_multiply(zt, ct);
-      in = ht[i] = nwt;
-    } else {
-      Expression ght = cwise_multiply(rt, h_tprev);
-      ct = affine_transform({ biases[i][2], vars[X2H], in, vars[H2H], ght });
-//      ct = affine_transform({ vars[BH], vars[X2H], in, vars[H2H], ght });
-      ct = tanh(ct);
-      Expression nwt = cwise_multiply(zt, ct);
-      Expression crt = cwise_multiply(ft, h_tprev);
-      in = ht[i] = crt + nwt;
+        // candidate activation
+        Expression ct;
+        if (prev_zero) {
+            ct = affine_transform({ biases[i][2], vars[X2H], in });
+            //  ct = affine_transform({ vars[BH], vars[X2H], in });
+            ct = tanh(ct);
+            Expression nwt = cwise_multiply(zt, ct);
+            in = ht[i] = nwt;
+        }
+        else {
+            Expression ght = cwise_multiply(rt, h_tprev);
+            ct = affine_transform({ biases[i][2], vars[X2H], in, vars[H2H], ght });
+            //      ct = affine_transform({ vars[BH], vars[X2H], in, vars[H2H], ght });
+            ct = tanh(ct);
+            Expression nwt = cwise_multiply(zt, ct);
+            Expression crt = cwise_multiply(ft, h_tprev);
+            in = ht[i] = crt + nwt;
+        }
     }
-  }
-  return ht.back();
+    return ht.back();
+}
+
+Expression GRUBuilder::add_input_impl(const std::vector<Expression> & prev_history, const Expression& x) {
+    const bool has_initial_state = (h0.size() > 0);
+    const unsigned t = h.size();
+    h.push_back(vector<Expression>(layers));
+    vector<Expression>& ht = h.back();
+    Expression in = x;
+
+    if (prev_history.size() != num_h0_components())
+    {
+        cerr << "GRU prevhistory has wrong dimension. it should have the same number of elements as the number of layers" << endl;
+        throw("GRU prevhistory has wrong dimension. it should have the same number of elements as the number of layers");
+    }
+
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        Expression h_tprev;
+        // prev_zero means that h_tprev should be treated as 0
+        bool prev_zero = false;
+        h_tprev = prev_history[i];
+
+        // update gate
+        Expression zt;
+        zt = affine_transform({ biases[i][0], vars[X2Z], in, vars[H2Z], h_tprev });
+        zt = logistic(zt);
+        // forget
+        Expression ft = 1.f - zt;
+        // reset gate
+        Expression rt;
+        rt = affine_transform({ biases[i][1], vars[X2R], in, vars[X2R], h_tprev });
+
+        rt = logistic(rt);
+
+        // candidate activation
+        Expression ct;
+        Expression ght = cwise_multiply(rt, h_tprev);
+        ct = affine_transform({ biases[i][2], vars[X2H], in, vars[H2H], ght });
+
+        ct = tanh(ct);
+        Expression nwt = cwise_multiply(zt, ct);
+        Expression crt = cwise_multiply(ft, h_tprev);
+        in = ht[i] = crt + nwt;
+    }
+    return ht.back();
 }
 
 void GRUBuilder::copy(const RNNBuilder & rnn) {
