@@ -5,6 +5,7 @@
 
 namespace cnn { namespace math {
 
+    int levenshtein_distance(const std::vector<std::string> &s1, const std::vector<std::string> &s2);
 
 } }
 

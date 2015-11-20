@@ -13,7 +13,8 @@ struct GRUBuilder : public RNNBuilder {
   explicit GRUBuilder(unsigned layers,
                       unsigned input_dim,
                       unsigned hidden_dim,
-                      Model* model);
+                      Model* model,
+                      float iscale = 1.0);
   GRUBuilder(const GRUBuilder& ref):
       RNNBuilder(ref)
   {}
@@ -30,6 +31,7 @@ struct GRUBuilder : public RNNBuilder {
   void new_graph_impl(ComputationGraph& cg) override;
   void start_new_sequence_impl(const std::vector<Expression>& h0) override;
   Expression add_input_impl(int prev, const Expression& x) override;
+  Expression add_input_impl(const std::vector<Expression>& prev, const Expression& x) override;
 
   // first index is time, second is layer
   std::vector<std::vector<Expression>> h;

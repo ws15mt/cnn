@@ -14,6 +14,7 @@ set(cnn_library_SRCS
     gru.cc
     init.cc
     lstm.cc
+    math-util.cc
     model.cc
     nodes.cc
     nodes-common.cc
@@ -49,6 +50,7 @@ set(cnn_library_HDRS
     gru.h
     init.h
     lstm.h
+    math-util.h
     model.h
     nodes.h
     param-nodes.h

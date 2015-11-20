@@ -16,7 +16,8 @@ struct LSTMBuilder : public RNNBuilder {
   explicit LSTMBuilder(unsigned layers,
                        unsigned input_dim,
                        unsigned hidden_dim,
-                       Model* model);
+                       Model* model,
+                       float iscale = 1.0);
   LSTMBuilder(const LSTMBuilder& ref)
       : RNNBuilder(ref)
   {}
@@ -38,8 +39,9 @@ protected:
   void new_graph_impl(ComputationGraph& cg) override;
   void start_new_sequence_impl(const std::vector<Expression>& h0) override;
   Expression add_input_impl(int prev, const Expression& x) override;
+  Expression add_input_impl(const std::vector<Expression>& prv_history, const Expression& x) override;
 
- public:
+public:
 
   // first index is time, second is layer
   std::vector<std::vector<Expression>> h, c;

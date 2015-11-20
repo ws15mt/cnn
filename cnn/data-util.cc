@@ -23,6 +23,7 @@
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
 #include <boost/regex.hpp>
+#include <boost/lexical_cast.hpp>
 
 using namespace cnn;
 using namespace std;
@@ -268,7 +269,7 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int
     return corpus;
 }
 
-Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool appendBSandES)
+Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool appendBSandES, bool bcharacter)
 {
     ifstream in(filename);
     string line;
@@ -285,7 +286,7 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int 
             break;
         ++lc;
         Sentence source, target;
-        int diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, appendBSandES, kSRC_SOS, kSRC_EOS);
+        int diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, appendBSandES, kSRC_SOS, kSRC_EOS, bcharacter);
         if (diagid == -1)
             break;
         if (diagid < min_diag_id)
@@ -323,7 +324,7 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int 
     return corpus;
 }
 
-int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool appendSBandSE, int kSRC_SOS, int kSRC_EOS)
+int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool appendSBandSE, int kSRC_SOS, int kSRC_EOS, bool bcharacter)
 {
     std::istringstream in(line);
     std::string word;
@@ -337,6 +338,7 @@ int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dic
         return -1;
 
     in >> diagid;
+    trim(diagid);
     in >> word;
     if (word != sep)
     {
@@ -368,13 +370,25 @@ int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dic
                 v->push_back(kSRC_SOS);
             continue;
         }
-        v->push_back(d->Convert(word));
+        /// if character need to add blank before and after string, also seperate chacter with blank
+        if (bcharacter && word != "<s>" & word != "</s>")
+        {
+            v->push_back(d->Convert(" "));
+            for (size_t k = 0; k < word.size();k++)
+                v->push_back(d->Convert(boost::lexical_cast<string>(word[k])));
+        }
+        else
+        {
+            if (word == "</s>" && bcharacter)
+                v->push_back(d->Convert(" "));
+            v->push_back(d->Convert(word));
+        }
     }
     if (appendSBandSE)
         v->push_back(kSRC_EOS);
     int res;
 
-    stringstream(diagid) >> res;
+    res = boost::lexical_cast<int>(diagid);
 
     return res;
 }
@@ -481,6 +495,7 @@ Expression shuffle_data(Expression src, size_t nutt, size_t feat_dim, size_t sle
 /// to 
 /// [v_spk1_time0 v_spk1_tim1 | v_spk2_time0 v_spk2_time1]
 /// this assumes different source length
+/// the result vector for each element doesn't have redundence, i.e., all elements are valid.
 vector<Expression> shuffle_data(Expression src, size_t nutt, size_t feat_dim, const vector<size_t>& v_slen)
 {
     /// the input data is arranged into a big matrix, assuming same length of utterance

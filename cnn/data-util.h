@@ -55,11 +55,18 @@ vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, size_t mbsize,
 /// return the index of the selected dialogues
 vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, PDialogue& selected, NumTurn2DialogId& info);
 
-
+/**
+read corpus
+@bcharacter : read data in character level. default is false, which is word-level.
+*/
 Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength = 10000, bool appendBSandES = false);
 int MultiTurnsReadSentencePair(const std::wstring& line, std::vector<int>* s, WDict* sd, std::vector<int>* t, WDict* td, bool appendSBandSE = false, int kSRC_SOS = -1, int kSRC_EOS = -1);
-Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength = 10000, bool appendBSandES = false);
-int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool appendSBandSE = false, int kSRC_SOS = -1, int kSRC_EOS = -1);
+Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength = 10000, bool appendBSandES = false, bool bcharacter = false);
+/**
+read sentence pair in one line, with seperaotr |||
+@bcharacter : read data in character level, default is false, which is word-level
+*/
+int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool appendSBandSE = false, int kSRC_SOS = -1, int kSRC_EOS = -1, bool bcharacter = false);
 
 NumTurn2DialogId get_numturn2dialid(Corpus corp);
 

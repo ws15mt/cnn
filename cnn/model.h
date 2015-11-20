@@ -81,7 +81,7 @@ struct LookupParameters : public ParametersBase {
 private:
   LookupParameters() {}
   ~LookupParameters();
-  LookupParameters(unsigned n, const Dim& d, std::string nodename = "");
+  LookupParameters(unsigned n, const Dim& d, float scale, std::string nodename = "");
 
   friend class boost::serialization::access;
   template<class Archive>
@@ -116,8 +116,8 @@ class Model {
   ~Model();
   float gradient_l2_norm() const;
   // set scale to use custom initialization
-  Parameters* add_parameters(const Dim& d, float scale = 0.0f, std::string nodename = "");
-  LookupParameters* add_lookup_parameters(unsigned n, const Dim& d, std::string nodename = "");
+  Parameters* add_parameters(const Dim& d, float scale = 1.0f, std::string nodename = "");
+  LookupParameters* add_lookup_parameters(unsigned n, const Dim& d, float scale = 1.0f, std::string nodename = "");
   // project weights so their L2 norm = radius
   void project_weights(float radius = 1.0f);
 

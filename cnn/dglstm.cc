@@ -29,20 +29,21 @@ namespace cnn {
 DGLSTMBuilder::DGLSTMBuilder(unsigned ilayers,
     unsigned input_dim,
     unsigned hidden_dim,
-    Model* model) 
+    Model* model,
+    float iscale) 
 {
     layers = ilayers;
     Parameters * p_x2k, *p_c2k, *p_q2k, *p_bk, *p_x2k0;
     long layer_input_dim = input_dim;
     input_dims = vector<unsigned>(layers, layer_input_dim);
-    p_x2k0 = model->add_parameters({ long(hidden_dim), long(layer_input_dim) });
+    p_x2k0 = model->add_parameters({ long(hidden_dim), long(layer_input_dim) }, iscale);
     for (unsigned i = 0; i < layers; ++i) {
         input_dims[i] = layer_input_dim;
         // i
-        Parameters* p_x2i = model->add_parameters({ long(hidden_dim), layer_input_dim });
-        Parameters* p_h2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) });
-        Parameters* p_c2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) });
-        Parameters* p_bi = model->add_parameters({ long(hidden_dim) });
+        Parameters* p_x2i = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
+        Parameters* p_h2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+        Parameters* p_c2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+        Parameters* p_bi = model->add_parameters({ long(hidden_dim) }, iscale);
 #ifdef USE_STANDARD_LSTM_DEFINE
         // f
         Parameters* p_x2f = model->add_parameters({ long(hidden_dim), layer_input_dim });
@@ -51,24 +52,24 @@ DGLSTMBuilder::DGLSTMBuilder(unsigned ilayers,
         Parameters* p_bf = model->add_parameters({ long(hidden_dim) });
 #endif
         // o
-        Parameters* p_x2o = model->add_parameters({ long(hidden_dim), layer_input_dim });
-        Parameters* p_h2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) });
-        Parameters* p_c2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) });
-        Parameters* p_bo = model->add_parameters({ long(hidden_dim) });
+        Parameters* p_x2o = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
+        Parameters* p_h2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+        Parameters* p_c2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+        Parameters* p_bo = model->add_parameters({ long(hidden_dim) }, iscale);
 
         // c
-        Parameters* p_x2c = model->add_parameters({ long(hidden_dim), layer_input_dim });
-        Parameters* p_h2c = model->add_parameters({ long(hidden_dim), long(hidden_dim) });
-        Parameters* p_bc = model->add_parameters({ long(hidden_dim) });
+        Parameters* p_x2c = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
+        Parameters* p_h2c = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+        Parameters* p_bc = model->add_parameters({ long(hidden_dim) }, iscale);
 
-        p_x2k = model->add_parameters({ long(hidden_dim), long(layer_input_dim) });
-        p_c2k = model->add_parameters({ long(hidden_dim) });
-        p_bk = model->add_parameters({ long(hidden_dim) });
-        p_q2k = model->add_parameters({ long(hidden_dim) });
+        p_x2k = model->add_parameters({ long(hidden_dim), long(layer_input_dim) }, iscale);
+        p_c2k = model->add_parameters({ long(hidden_dim) }, iscale);
+        p_bk = model->add_parameters({ long(hidden_dim) }, iscale);
+        p_q2k = model->add_parameters({ long(hidden_dim) }, iscale);
 
         layer_input_dim = hidden_dim;  // output (hidden) from 1st layer is input to next
 
-        Parameters * p_stab = model->add_parameters({ 1 });
+        Parameters * p_stab = model->add_parameters({ 1 }, iscale);
         p_stab->reset_to_zero();
 
         vector<Parameters*> ps;
@@ -305,6 +306,96 @@ Expression DGLSTMBuilder::add_input_impl(int prev, const Expression& x) {
     lower_layer_c = ct[i];
   }
   return ht.back();
+}
+
+Expression DGLSTMBuilder::add_input_impl(const std::vector<Expression>& prev_history, const Expression& x) {
+    h.push_back(vector<Expression>(layers));
+    c.push_back(vector<Expression>(layers));
+    vector<Expression>& ht = h.back();
+    vector<Expression>& ct = c.back();
+
+    Expression lower_layer_c = x;  /// at layer 0, no lower memory but observation
+    Expression in = x;
+    Expression in_stb;
+
+    if (prev_history.size() != num_h0_components())
+    {
+        cerr << "LSTM prevhistory has wrong dimension. it should have the same number of elements as the number of layers" << endl;
+        throw("LSTM prevhistory has wrong dimension. it should have the same number of elements as the number of layers");
+    }
+
+    int nutt = data_in_parallel();
+
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        Expression i_stabilizer = biases[i][6];
+        Expression i_v_stab = concatenate_cols(vector<Expression>(nutt, i_stabilizer));
+        in_stb = cwise_multiply(i_v_stab, in);
+        Expression i_h_tm1, i_c_tm1;
+
+        i_h_tm1 = prev_history[i+layers];
+        i_c_tm1 = prev_history[i];
+
+        // input
+        Expression i_ait;
+        Expression bimb = biases[i][0];
+        i_ait = affine_transform({ bimb, vars[X2I], in_stb, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
+
+        Expression i_it = logistic(i_ait);
+
+        // forget
+        // input
+#ifdef USE_STANDARD_LSTM_DEFINE
+        Expression i_aft;
+        Expression bfmb = biases[i][7];
+        if (has_prev_state)
+            i_aft = affine_transform({ bfmb, vars[X2F], in_stb, vars[H2F], i_h_tm1, vars[C2F], i_c_tm1 });
+        else
+            i_aft = affine_transform({ bfmb, vars[X2F], in_stb });
+        Expression i_ft = logistic(i_aft);
+#else
+        Expression i_ft = 1.0 - i_it;
+#endif
+
+        // write memory cell
+        Expression bcmb = biases[i][1];
+        Expression i_awt;
+        i_awt = affine_transform({ bcmb, vars[X2C], in_stb, vars[H2C], i_h_tm1 });
+
+        Expression i_wt = tanh(i_awt);
+
+        // output
+        Expression i_before_add_with_lower_linearly;
+        Expression i_nwt = cwise_multiply(i_it, i_wt);
+        Expression i_crt = cwise_multiply(i_ft, i_c_tm1);
+        i_before_add_with_lower_linearly = i_crt + i_nwt;
+
+        /// add lower layer memory cell
+        Expression i_k_t;
+        Expression bkmb = biases[i][3];
+        Expression i_k_lowerc = bkmb;
+        if (i > 0)
+        {
+            Expression mc2kmb = biases[i][4];
+            i_k_lowerc = i_k_lowerc + cwise_multiply(mc2kmb, lower_layer_c);
+        }
+
+        Expression q2kmb = biases[i][5];
+        i_k_t = logistic(i_k_lowerc + vars[X2K] * in_stb + cwise_multiply(q2kmb, i_c_tm1));
+
+        ct[i] = i_before_add_with_lower_linearly + cwise_multiply(i_k_t, (i == 0) ? vars[X2K0] * lower_layer_c : lower_layer_c);
+
+
+        Expression i_aot;
+        Expression bomb = biases[i][2];
+        i_aot = affine_transform({ bomb, vars[X2O], in_stb, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
+ 
+        Expression i_ot = logistic(i_aot);
+        Expression ph_t = tanh(ct[i]);
+        in = ht[i] = cwise_multiply(i_ot, ph_t);
+        lower_layer_c = ct[i];
+    }
+    return ht.back();
 }
 
 void DGLSTMBuilder::copy(const RNNBuilder & rnn) {
