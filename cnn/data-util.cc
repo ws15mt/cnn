@@ -138,7 +138,7 @@ Notice that a dialogue might be used in multiple times
 selected [ turn 0 : <query_00, answer_00> <query_10, answer_10>]
          [ turn 1 : <query_01, answer_01> <query_11, answer_11>]
 */
-vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, PDialogue& selected, NumTurn2DialogId& info)
+vector<int> get_same_length_dialogues(Corpus corp, int nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, PDialogue& selected, NumTurn2DialogId& info)
 {
     int nutt = 0;
     vector<int> v_sel_idx;
@@ -169,7 +169,7 @@ vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t 
     size_t nd = 0;
     for (auto k : vd)
     {
-        if (used[k] == false && nd < nbr_dialogues)
+        if (used[k] == false && (nbr_dialogues < 0 ||(nd < nbr_dialogues && nbr_dialogues >= 0)))
         {
             size_t iturn = 0;
             for (auto p : corp[k])
@@ -181,6 +181,8 @@ vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t 
             v_sel_idx.push_back(k);
             nd++;
         }
+        if (nbr_dialogues >= 0 && nd >= nbr_dialogues)
+            break;
     }
 
     min_nbr_turns = nbr_turn;
