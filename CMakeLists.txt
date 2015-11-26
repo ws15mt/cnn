@@ -110,6 +110,5 @@ link_directories(${BOOST_LIBRARYDIR})
 
 add_subdirectory(cnn)
 add_subdirectory(examples)
-#add_subdirectory(../quartzin/src/cnn "${CMAKE_CURRENT_BINARY_DIR}/kaisheny/dev/src")
-add_subdirectory(../conversation/src/cnn "${CMAKE_CURRENT_BINARY_DIR}/kaisheny/dev/src")
+add_subdirectory(../conversation/src/cnn "${CMAKE_CURRENT_BINARY_DIR}/conversation/dev/src")
 
