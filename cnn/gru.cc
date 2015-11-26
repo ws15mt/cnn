@@ -128,7 +128,7 @@ Expression GRUBuilder::add_input_impl(int prev, const Expression& x) {
             rt = affine_transform({ biases[i][1], vars[X2R], in });
         //    rt = affine_transform({ vars[BR], vars[X2R], in });
         else
-            rt = affine_transform({ biases[i][1], vars[X2R], in, vars[X2R], h_tprev });
+            rt = affine_transform({ biases[i][1], vars[X2R], in, vars[H2R], h_tprev });
         //  rt = affine_transform({ vars[BR], vars[X2R], in });
         rt = logistic(rt);
 

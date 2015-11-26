@@ -32,7 +32,10 @@ typedef vector<PTurn> PDialogue;  /// a dialogue consists of many turns
 typedef vector<PDialogue> PCorpus; /// a parallel corpus consists of many parallel dialogues
 
 /// save the number of turns to dialogue id list
-typedef map<int, vector<int>> NumTurn2DialogId;
+typedef struct{
+    vector<int> vNumTurns;  /// vector saving number of turns to be accessed, can shuffle this vector so that the access of dialogues are randomized
+    map<int, vector<int>> mapNumTurn2DialogId;
+} NumTurn2DialogId;
 
 typedef pair<vector<Sentence>, Sentence> StatementsQuery;
 typedef pair<StatementsQuery, Sentence> FBTurns;
@@ -53,7 +56,7 @@ vector<vector<Expression>> pack_obs(FCorpusPointers raw, size_t mbsize, Computat
 vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, size_t mbsize, ComputationGraph& cg, const vector<size_t>& rand_stt);
 
 /// return the index of the selected dialogues
-vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, PDialogue& selected, NumTurn2DialogId& info);
+vector<int> get_same_length_dialogues(Corpus corp, int nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, PDialogue& selected, NumTurn2DialogId& info);
 
 /**
 read corpus

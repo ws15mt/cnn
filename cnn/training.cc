@@ -96,13 +96,12 @@ void AdagradTrainer::update(real nsamples, real scale) {
 
   pi = 0;
   const float gscale = clip_gradients(nsamples);
-  float nutt_scale = 1.0 / nsamples;
   for (auto p : model->parameters_list()) {
     Tensor& v = vp[pi++].h;
     auto reg = (*p->values) * lambda;
     auto g2 = (*p->g).cwiseProduct(*p->g);
     (*v) += g2;
-    auto delta = -(eta * scale * gscale * nutt_scale) * (*p->g).cwiseQuotient(((*v).array() + epsilon).matrix().cwiseSqrt());
+    auto delta = -(eta * scale * gscale) * (*p->g).cwiseQuotient(((*v).array() + epsilon).matrix().cwiseSqrt());
     *p->values += delta - reg;
     p->clear();
   }
@@ -115,7 +114,7 @@ void AdagradTrainer::update(real nsamples, real scale) {
       auto reg = (*p->values[i]) * lambda;
       auto g2 = (*p->grads[i]).cwiseProduct(*p->grads[i]);
       (*v) += g2;
-      auto delta = -(eta * scale * gscale * nutt_scale) * (*p->grads[i]).cwiseQuotient(((*v).array() + epsilon).matrix().cwiseSqrt());
+      auto delta = -(eta * scale * gscale) * (*p->grads[i]).cwiseQuotient(((*v).array() + epsilon).matrix().cwiseSqrt());
       *p->values[i] += delta - reg;
     }
     p->clear();

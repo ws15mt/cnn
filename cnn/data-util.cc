@@ -138,50 +138,38 @@ Notice that a dialogue might be used in multiple times
 selected [ turn 0 : <query_00, answer_00> <query_10, answer_10>]
          [ turn 1 : <query_01, answer_01> <query_11, answer_11>]
 */
-vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, PDialogue& selected, NumTurn2DialogId& info)
+vector<int> get_same_length_dialogues(Corpus corp, int nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, PDialogue& selected, NumTurn2DialogId& info)
 {
-    /// ciruculum style training, start from short conversations
-    /// start from short conversation with as few as one dialogue turn
     int nutt = 0;
     vector<int> v_sel_idx;
     int nbr_turn = -1;
-    bool need_shuffle = false; 
 
-    for (auto p : info)
+    for (auto n : info.vNumTurns)
     {
-        if (p.first < min_nbr_turns) continue;
-        for (auto k: p.second)
+        for (auto k : info.mapNumTurn2DialogId[n])
         {
             if (used[k] == false)
             {
-                nbr_turn = p.first;
-                if (nbr_turn != min_nbr_turns)
-                {
-                    need_shuffle = true;
-                }
-                break;
+                nbr_turn = n;
             }
+            if (nbr_turn != -1)
+                break;
         }
-        if (nbr_turn != -1)
+        if (nbr_turn!= -1)
             break;
     }
+
     if (nbr_turn == -1)
         return v_sel_idx;
 
     selected.clear();
     selected.resize(nbr_turn);
-    vector<int> vd = info[nbr_turn];
-
-    if (need_shuffle)
-    {
-        random_shuffle(vd.begin(), vd.end());
-        info[nbr_turn] = vd;
-    }
+    vector<int> vd = info.mapNumTurn2DialogId[nbr_turn];
 
     size_t nd = 0;
     for (auto k : vd)
     {
-        if (used[k] == false && nd < nbr_dialogues)
+        if (used[k] == false && (nbr_dialogues < 0 ||(nd < nbr_dialogues && nbr_dialogues >= 0)))
         {
             size_t iturn = 0;
             for (auto p : corp[k])
@@ -193,6 +181,8 @@ vector<int> get_same_length_dialogues(Corpus corp, size_t nbr_dialogues, size_t 
             v_sel_idx.push_back(k);
             nd++;
         }
+        if (nbr_dialogues >= 0 && nd >= nbr_dialogues)
+            break;
     }
 
     min_nbr_turns = nbr_turn;
@@ -456,7 +446,11 @@ NumTurn2DialogId get_numturn2dialid(Corpus corp)
     for (auto p : corp)
     {
         size_t d_turns = p.size();
-        info[d_turns].push_back(id++);
+        info.mapNumTurn2DialogId[d_turns].push_back(id++);
+    }
+    for (auto p : info.mapNumTurn2DialogId)
+    {
+        info.vNumTurns.push_back(p.first);
     }
     return info; 
 }
