@@ -9,10 +9,18 @@ You need the [development version of the Eigen library](https://bitbucket.org/ei
 
 #### Building
 
-First you need to fetch the dependent libraries
+First clone cnn 
+   
+    git clone https://github.com/kaishengyao/cnn
+    cd cnn
 
+
+Then you need to fetch the dependent libraries
+    
     git submodule init
     git submodule update
+
+If you use Windows, jump to the later section for Building on Windows
 
 In `src`, you need to first use [`cmake`](http://www.cmake.org/) to generate the makefiles
 
