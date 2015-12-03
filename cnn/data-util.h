@@ -55,6 +55,13 @@ vector<vector<Expression>> pack_obs(FCorpusPointers raw, size_t mbsize, Computat
 /// [s00 s01 s02 s10 s11 s12] where s1 is the second speaker, and s0 is the firest speaker
 vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, size_t mbsize, ComputationGraph& cg, const vector<size_t>& rand_stt);
 
+/// read one line of word embeddings
+/// dataformat is as follows
+/// the 0.418 0.24968 -0.41242 0.1217 0.34527 -0.044457 -0.49688 -0.17862 -0.00066023 -0.6566 0.27843 -0.14767 -0.55677 
+/// return an expression and also an index value of this word according to a dictionary sd
+vector<cnn::real> read_embedding(const string& line, Dict& sd, int & index);
+Expression vec2exp(const vector<cnn::real>& v_data, ComputationGraph& cg);
+
 /// return the index of the selected dialogues
 vector<int> get_same_length_dialogues(Corpus corp, int nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, PDialogue& selected, NumTurn2DialogId& info);
 
