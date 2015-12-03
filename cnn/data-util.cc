@@ -636,3 +636,42 @@ int read_one_line_facebook_qa(const std::string& line, std::vector<int>& v, Dict
     return boost::lexical_cast<int, string>(turnid);
 }
 
+Expression vec2exp(const vector<cnn::real>& v_data, ComputationGraph& cg)
+{
+    Expression iv;
+    iv = input(cg, { long(v_data.size()) }, &v_data);
+
+    return iv;
+}
+
+vector<cnn::real> read_embedding(const string& line, Dict& sd, int & index)
+{
+    std::istringstream in(line);
+    std::string word;
+
+    size_t i = 0;
+    int id = -1;
+    vector<cnn::real> v_data;
+
+    while (in) {
+        in >> word;
+        trim(word);
+        if (!in) break;
+
+        if (i == 0)
+        {
+            if (sd.Contains(word))
+                id = sd.Convert(word);
+            else
+                break;
+        }
+        else
+        {
+            v_data.push_back(boost::lexical_cast<cnn::real>(word));
+        }
+        i++;
+    }
+
+    index = id;
+    return v_data;
+}
