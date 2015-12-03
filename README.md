@@ -22,6 +22,10 @@ Then you need to fetch the dependent libraries
 
 If you use Windows, jump to the later section for Building on Windows
 
+Install boost
+
+sudo apt-get install libboost-all-dev
+
 In `src`, you need to first use [`cmake`](http://www.cmake.org/) to generate the makefiles
 
     mkdir build
