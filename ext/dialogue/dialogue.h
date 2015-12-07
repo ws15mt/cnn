@@ -300,6 +300,12 @@ public:
 
     }
 
+    /**
+    assign observation to the hidden latent varaible
+
+    @v_last_cxt_s [parameter_index][values vector for this parameter]. this is to the context or intention network
+    @v_last_decoder_s [parameter_index][values vector for this parameter]. this is to the decoder network
+    */
     virtual void assign_cxt(ComputationGraph &cg, size_t nutt,
         vector<vector<cnn::real>>& v_last_cxt_s, 
         vector<vector<cnn::real>>& v_last_decoder_s)

@@ -120,22 +120,6 @@ private:
 };
 
 /**
-The higher level training process for reinforcement learning
-*/
-template <class Proc>
-class RLTrainProcess : public TrainProcess<Proc>{
-public:
-
-    RLTrainProcess()
-    {
-    }
-
-    void train(Model &model, Proc&am, Corpus &training, Corpus &devel,
-        Trainer &sgd, string out_file, bool curriculum, int max_epochs, int min_diag_id,
-        bool bcharlevel = false);
-};
-
-/**
 this is fake experiment as the user side is known and supposedly respond correctly to the agent side
 */
 template <class AM_t>
