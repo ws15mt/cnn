@@ -161,40 +161,55 @@ Expression GRUBuilder::add_input_impl(const std::vector<Expression> & prev_histo
     vector<Expression>& ht = h.back();
     Expression in = x;
 
-    if (prev_history.size() != num_h0_components())
-    {
-        cerr << "GRU prevhistory has wrong dimension. it should have the same number of elements as the number of layers" << endl;
-        throw("GRU prevhistory has wrong dimension. it should have the same number of elements as the number of layers");
-    }
-
     for (unsigned i = 0; i < layers; ++i) {
         const vector<Expression>& vars = param_vars[i];
         Expression h_tprev;
         // prev_zero means that h_tprev should be treated as 0
         bool prev_zero = false;
-        h_tprev = prev_history[i];
 
         // update gate
         Expression zt;
-        zt = affine_transform({ biases[i][0], vars[X2Z], in, vars[H2Z], h_tprev });
+        if (prev_history.size() > 0)
+        {
+            h_tprev = prev_history[i];
+            zt = affine_transform({ biases[i][0], vars[X2Z], in, vars[H2Z], h_tprev });
+        }
+        else
+            zt = affine_transform({ biases[i][0], vars[X2Z], in });
         zt = logistic(zt);
         // forget
         Expression ft = 1.f - zt;
         // reset gate
         Expression rt;
-        rt = affine_transform({ biases[i][1], vars[X2R], in, vars[X2R], h_tprev });
+        if (prev_history.size() > 0)
+            rt = affine_transform({ biases[i][1], vars[X2R], in, vars[X2R], h_tprev });
+        else
+            rt = affine_transform({ biases[i][1], vars[X2R], in });
 
         rt = logistic(rt);
 
         // candidate activation
         Expression ct;
-        Expression ght = cwise_multiply(rt, h_tprev);
-        ct = affine_transform({ biases[i][2], vars[X2H], in, vars[H2H], ght });
+        if (prev_history.size() > 0)
+        {
+            Expression ght = cwise_multiply(rt, h_tprev);
+            ct = affine_transform({ biases[i][2], vars[X2H], in, vars[H2H], ght });
+        }
+        else
+        {
+            ct = affine_transform({ biases[i][2], vars[X2H], in });
+        }
 
         ct = tanh(ct);
         Expression nwt = cwise_multiply(zt, ct);
-        Expression crt = cwise_multiply(ft, h_tprev);
-        in = ht[i] = crt + nwt;
+        Expression crt;
+        if (prev_history.size() > 0)
+        {
+            crt = cwise_multiply(ft, h_tprev);
+            in = ht[i] = crt + nwt;
+        }
+        else
+            in = ht[i] = nwt;
     }
     return ht.back();
 }

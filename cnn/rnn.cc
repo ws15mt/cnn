@@ -132,11 +132,6 @@ Expression SimpleRNNBuilder::add_input_impl(const vector<Expression>& prev_histo
 
         if (prev_history.size() == layers)
             y = y + vars[1] * prev_history[i];
-        else
-        {
-            cerr << "wrong dimension for prev history in RNN" << endl;
-            throw("wrong dimension for prev history in RNN");
-        }
 
         x = h[t][i] = tanh(y);
     }

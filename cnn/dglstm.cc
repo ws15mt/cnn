@@ -318,12 +318,6 @@ Expression DGLSTMBuilder::add_input_impl(const std::vector<Expression>& prev_his
     Expression in = x;
     Expression in_stb;
 
-    if (prev_history.size() != num_h0_components())
-    {
-        cerr << "LSTM prevhistory has wrong dimension. it should have the same number of elements as the number of layers" << endl;
-        throw("LSTM prevhistory has wrong dimension. it should have the same number of elements as the number of layers");
-    }
-
     int nutt = data_in_parallel();
 
     for (unsigned i = 0; i < layers; ++i) {
@@ -331,15 +325,21 @@ Expression DGLSTMBuilder::add_input_impl(const std::vector<Expression>& prev_his
         Expression i_stabilizer = biases[i][6];
         Expression i_v_stab = concatenate_cols(vector<Expression>(nutt, i_stabilizer));
         in_stb = cwise_multiply(i_v_stab, in);
-        Expression i_h_tm1, i_c_tm1;
 
-        i_h_tm1 = prev_history[i+layers];
-        i_c_tm1 = prev_history[i];
+        Expression i_h_tm1, i_c_tm1;
+        if (prev_history.size() > 0)
+        {
+            i_h_tm1 = prev_history[i + layers];
+            i_c_tm1 = prev_history[i];
+        }
 
         // input
         Expression i_ait;
         Expression bimb = biases[i][0];
-        i_ait = affine_transform({ bimb, vars[X2I], in_stb, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
+        if (prev_history.size() > 0)
+            i_ait = affine_transform({ bimb, vars[X2I], in_stb, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
+        else
+            i_ait = affine_transform({ bimb, vars[X2I], in_stb});
 
         Expression i_it = logistic(i_ait);
 
@@ -360,15 +360,23 @@ Expression DGLSTMBuilder::add_input_impl(const std::vector<Expression>& prev_his
         // write memory cell
         Expression bcmb = biases[i][1];
         Expression i_awt;
-        i_awt = affine_transform({ bcmb, vars[X2C], in_stb, vars[H2C], i_h_tm1 });
+        if (prev_history.size() > 0)
+            i_awt = affine_transform({ bcmb, vars[X2C], in_stb});
+        else
+            i_awt = affine_transform({ bcmb, vars[X2C], in_stb, vars[H2C], i_h_tm1 });
 
         Expression i_wt = tanh(i_awt);
 
         // output
         Expression i_before_add_with_lower_linearly;
         Expression i_nwt = cwise_multiply(i_it, i_wt);
-        Expression i_crt = cwise_multiply(i_ft, i_c_tm1);
-        i_before_add_with_lower_linearly = i_crt + i_nwt;
+        if (prev_history.size() > 0)
+        {
+            Expression i_crt = cwise_multiply(i_ft, i_c_tm1);
+            i_before_add_with_lower_linearly = i_crt + i_nwt;
+        }
+        else
+            i_before_add_with_lower_linearly = i_nwt;
 
         /// add lower layer memory cell
         Expression i_k_t;
@@ -381,15 +389,21 @@ Expression DGLSTMBuilder::add_input_impl(const std::vector<Expression>& prev_his
         }
 
         Expression q2kmb = biases[i][5];
-        i_k_t = logistic(i_k_lowerc + vars[X2K] * in_stb + cwise_multiply(q2kmb, i_c_tm1));
+        if (prev_history.size() > 0)
+            i_k_t = logistic(i_k_lowerc + vars[X2K] * in_stb + cwise_multiply(q2kmb, i_c_tm1));
+        else
+            i_k_t = logistic(i_k_lowerc + vars[X2K] * in_stb );
 
         ct[i] = i_before_add_with_lower_linearly + cwise_multiply(i_k_t, (i == 0) ? vars[X2K0] * lower_layer_c : lower_layer_c);
 
 
         Expression i_aot;
         Expression bomb = biases[i][2];
-        i_aot = affine_transform({ bomb, vars[X2O], in_stb, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
- 
+        if (prev_history.size() == 0)
+            i_aot = affine_transform({ bomb, vars[X2O], in_stb, vars[C2O], ct[i] });
+        else
+            i_aot = affine_transform({ bomb, vars[X2O], in_stb, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
+
         Expression i_ot = logistic(i_aot);
         Expression ph_t = tanh(ct[i]);
         in = ht[i] = cwise_multiply(i_ot, ph_t);

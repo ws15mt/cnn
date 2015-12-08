@@ -128,12 +128,6 @@ Expression LSTMBuilder::add_input_impl(const vector<Expression>& prev_history, c
     vector<Expression>& ct = c.back();
     Expression in = x;
 
-    if (prev_history.size() != num_h0_components())
-    {
-        cerr << "LSTM prevhistory has wrong dimension. it should have the same number of elements as the number of layers" << endl;
-        throw("LSTM prevhistory has wrong dimension. it should have the same number of elements as the number of layers");
-    }
-
     for (unsigned i = 0; i < layers; ++i) {
         const vector<Expression>& vars = param_vars[i];
         Expression i_h_tm1, i_c_tm1;
@@ -143,7 +137,10 @@ Expression LSTMBuilder::add_input_impl(const vector<Expression>& prev_history, c
         // input
         Expression i_ait;
         Expression bimb = biases[i][0];
-        i_ait = affine_transform({ bimb, vars[X2I], in, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
+        if (prev_history.size() > 0)
+            i_ait = affine_transform({ bimb, vars[X2I], in, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
+        else
+            i_ait = affine_transform({ bimb, vars[X2I], in});
 
         Expression i_it = logistic(i_ait);
         // forget
@@ -152,17 +149,28 @@ Expression LSTMBuilder::add_input_impl(const vector<Expression>& prev_history, c
         // write memory cell
         Expression i_awt;
         Expression bcmb = biases[i][1];
-        i_awt = affine_transform({ bcmb, vars[X2C], in, vars[H2C], i_h_tm1 });
+        if (prev_history.size() > 0)
+            i_awt = affine_transform({ bcmb, vars[X2C], in, vars[H2C], i_h_tm1 });
+        else
+            i_awt = affine_transform({ bcmb, vars[X2C], in });
 
         Expression i_wt = tanh(i_awt);
         // output
         Expression i_nwt = cwise_multiply(i_it, i_wt);
-        Expression i_crt = cwise_multiply(i_ft, i_c_tm1);
-        ct[i] = i_crt + i_nwt;
+        if (prev_history.size() > 0)
+        {
+            Expression i_crt = cwise_multiply(i_ft, i_c_tm1);
+            ct[i] = i_crt + i_nwt;
+        }
+        else
+            ct[i] = i_nwt;
 
         Expression i_aot;
         Expression bomb = biases[i][2];
-        i_aot = affine_transform({ bomb, vars[X2O], in, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
+        if (prev_history.size() > 0)
+            i_aot = affine_transform({ bomb, vars[X2O], in, vars[C2O], ct[i] });
+        else
+            i_aot = affine_transform({ bomb, vars[X2O], in, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
 
         Expression i_ot = logistic(i_aot);
         Expression ph_t = tanh(ct[i]);
