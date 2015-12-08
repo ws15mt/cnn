@@ -386,16 +386,16 @@ std::vector<int> AttentionWithIntention<Builder>::sample(const std::vector<int> 
         Expression i_scores = add_input(target.back(), t, cg);
         Expression ydist = softmax(i_scores);
 
-	// in rnnlm.cc there's a loop around this block -- why? can incremental_forward fail?
+	    // in rnnlm.cc there's a loop around this block -- why? can incremental_forward fail?
         auto dist = as_vector(cg.incremental_forward());
-	double p = rand01();
+	    double p = rand01();
         unsigned w = 0;
         for (; w < dist.size(); ++w) {
-	    p -= dist[w];
-	    if (p < 0) break;
+	        p -= dist[w];
+	        if (p < 0) break;
         }
-	// this shouldn't happen
-	if (w == dist.size()) w = eos_sym;
+	    // this shouldn't happen
+    	if (w == dist.size()) w = eos_sym;
 
         std::cerr << " " << tdict.Convert(w) << " [p=" << dist[w] << "]";
         t += 1;

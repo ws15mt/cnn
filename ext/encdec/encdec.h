@@ -8,8 +8,11 @@
 #include "cnn/dglstm.h"
 #include "cnn/gru.h"
 #include <algorithm>
+#include <random>
 #include <stack>
 #include "cnn/data-util.h"
+#include <boost/random/random_device.hpp>
+#include <boost/random/normal_distribution.hpp>
 
 using namespace cnn::expr;
 using namespace std;
@@ -23,6 +26,8 @@ class Model;
 #define DECODER_LAYER 2  
 #define ALIGN_LAYER 3
 
+enum { X2Mean = 0, X2MeanBias, X2LogVar, X2LogVarBias };
+
 // interface for constructing an encoder
 template<class Builder>
 class EncModel{
@@ -30,6 +35,9 @@ protected:
     LookupParameters* p_cs;
     Parameters* p_bias;
     Parameters* p_R;  // for affine transformation after decoder
+
+    vector<Parameters*> p_parameters;
+    vector<Expression> v_parameters_exp;
 
     /// context dimension to decoder dimension
     Parameters* p_cxt2dec_w;
@@ -77,7 +85,7 @@ public:
 
 public:
     EncModel() {};
-    EncModel(cnn::Model& model, int vocab_size_src, int layers, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, float iscale = 1.0) :
+    EncModel(cnn::Model& model, int layers, int vocab_size_src, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, float iscale = 1.0) :
         layers(layers),
         encoder_fwd(layers, hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
         encoder_bwd(layers, hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
@@ -94,8 +102,16 @@ public:
         }
 
         p_cs = model.add_lookup_parameters(long(vocab_size_src), { long(hidden_dim[ENCODER_LAYER]) }, iscale);
+
+        p_parameters = {};
         p_R = model.add_parameters({ long(vocab_size_src), long(hidden_dim[DECODER_LAYER]) }, iscale);
         p_bias = model.add_parameters({ long(vocab_size_src) }, iscale);
+
+        /// parameter for prediction mean/variance
+        p_parameters.push_back(model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_dim[DECODER_LAYER]) * 2 }, iscale));
+        p_parameters.push_back(model.add_parameters({ long(hidden_dim[DECODER_LAYER]) }, iscale));
+        p_parameters.push_back(model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_dim[DECODER_LAYER]) * 2 }, iscale));
+        p_parameters.push_back(model.add_parameters({ long(hidden_dim[DECODER_LAYER]) }, iscale));
 
         p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(2 * hidden_dim[ENCODER_LAYER]) }, iscale);
 
@@ -126,6 +142,8 @@ public:
         v_errs.clear();
         src_words = 0;
         tgt_words = 0;
+
+        v_parameters_exp.clear();
     }
 
     virtual void assign_cxt(ComputationGraph &cg, size_t nutt)
@@ -205,38 +223,28 @@ public:
 
         Expression q_m = concatenate(to);
 
-        cg.incremental_forward();
-
         return concatenate(to); 
     };
 
-    std::vector<Expression> build_graph(const std::vector<std::vector<int>> &source, ComputationGraph &cg){
+    std::vector<Expression> build_graph(const std::vector<std::vector<int>> &source, ComputationGraph &cg)
+    {
         size_t nutt;
-        Expression encoded_source = start_new_instance(source, cg);
-
         vector<Expression> outputs;
 
-        Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
-        Expression i_bias = parameter(cg, p_bias);  // word bias
+        if (v_parameters_exp.size() == 0){
+            for (auto &p : p_parameters)
+            {
+                v_parameters_exp.push_back(parameter(cg, p));
+            }
+        }
 
-        nutt = source.size();
+        Expression encoded_source = start_new_instance(source, cg);
 
-        Expression i_bias_mb = concatenate_cols(vector<Expression>(nutt, i_bias));
-
-        /// for context
-        vector<Expression> to;
-        /// take the top layer from decoder, take its final h
-        to.push_back(v_encoder_fwd.back()->final_h()[layers - 1]);
-        to.push_back(v_encoder_bwd.back()->final_h()[layers - 1]);
-
-        Expression q_m = concatenate(to);
-        Expression mu = i_R * tanh(i_R * tanh(i_R * q_m + i_bias) + i_bias) + i_bias;
-        Expression log_sigma = i_R * tanh(i_R * tanh(i_R * q_m + i_bias) + i_bias) + i_bias;
-
-        cg.incremental_forward();
+        Expression mu = v_parameters_exp[X2Mean] * encoded_source + v_parameters_exp[X2MeanBias];
+        Expression std = exp(0.5 * (v_parameters_exp[X2LogVar] * encoded_source + v_parameters_exp[X2LogVarBias]));
 
         outputs.push_back(mu);
-        outputs.push_back(log_sigma);
+        outputs.push_back(std);
 
         turnid++;
         return outputs;
@@ -251,10 +259,30 @@ public:
     /**
     generate data using mean and variance 
     */
-    vector<vector<cnn::real>> sample(vector<Expression> & mean_var)
+    vector<vector<cnn::real>> sample(vector<Expression> & mean_var, ComputationGraph& cg, size_t nsamples = 1)
     {
         assert(mean_var.size() == 2); /// only generates from Gaussian distribution [mu, log(sigma)]
         vector<vector<cnn::real>> samples;
+        vector<cnn::real> vmean = get_value(mean_var[0], cg);
+        vector<cnn::real> vstd  = get_value(mean_var[1], cg);
+        size_t dim = vmean.size();
+        vector<cnn::real> vec;
+
+        boost::random::random_device rng;
+        boost::random::normal_distribution<cnn::real> generator(0, 1.0);
+
+        for (size_t k = 0; k < nsamples; k++)
+        {
+            /// generate random sample given mean and variance
+            vec.resize(dim);
+            for (size_t l = 0; l < dim; l ++)
+            {
+                vec[l] = generator(rng) * vstd[l];
+                vec[l] += vmean[l];
+            }
+
+            samples.push_back(vec);
+        }
 
         return samples;
     }
