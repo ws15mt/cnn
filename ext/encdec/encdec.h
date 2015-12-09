@@ -47,9 +47,7 @@ protected:
 
     size_t layers;
     Builder encoder_fwd, encoder_bwd; /// for encoder at each turn
-
-    /// for different slices
-    vector<Builder*> v_encoder_fwd, v_encoder_bwd;
+    /// don't need to have Builder for differet slices as the Builder is just a logic description of the network and the physical network is on cg
 
     /// for alignment to source
     Parameters* p_U;
@@ -134,9 +132,6 @@ public:
     {
         turnid = 0;
 
-        v_encoder_bwd.clear();
-        v_encoder_fwd.clear();
-
         i_h0.clear();
 
         v_errs.clear();
@@ -154,10 +149,6 @@ public:
             reset();
             return;
         }
-
-        /// prepare for the next run
-        v_encoder_bwd.clear();
-        v_encoder_fwd.clear();
 
         i_h0.clear();
         v_errs.clear();
@@ -177,10 +168,6 @@ public:
             return;
         }
 
-        /// prepare for the next run
-        v_encoder_bwd.clear();
-        v_encoder_fwd.clear();
-
         i_h0.clear();
         v_errs.clear();
         tgt_words = 0;
@@ -198,28 +185,25 @@ public:
 
         std::vector<Expression> source_embeddings;
 
-        v_encoder_fwd.push_back(new Builder(encoder_fwd));
-        v_encoder_bwd.push_back(new Builder(encoder_bwd));
+        encoder_fwd.new_graph(cg);
+        encoder_fwd.set_data_in_parallel(nutt);
+        encoder_fwd.start_new_sequence();
 
-        v_encoder_fwd.back()->new_graph(cg);
-        v_encoder_fwd.back()->set_data_in_parallel(nutt);
-        v_encoder_fwd.back()->start_new_sequence();
-
-        v_encoder_bwd.back()->new_graph(cg);
-        v_encoder_bwd.back()->set_data_in_parallel(nutt);
-        v_encoder_bwd.back()->start_new_sequence();
+        encoder_bwd.new_graph(cg);
+        encoder_bwd.set_data_in_parallel(nutt);
+        encoder_bwd.start_new_sequence();
 
         /// the source sentence has to be approximately the same length
         src_len = each_sentence_length(source);
-        src_fwd = bidirectional<Builder>(slen, source, cg, p_cs, zero, v_encoder_fwd.back(), v_encoder_bwd.back(), hidden_dim[ENCODER_LAYER]);
+        src_fwd = bidirectional<Builder>(slen, source, cg, p_cs, zero, &encoder_fwd, &encoder_bwd, hidden_dim[ENCODER_LAYER]);
 
         v_src = shuffle_data(src_fwd, (size_t)nutt, (size_t)2 * hidden_dim[ENCODER_LAYER], src_len);
 
         /// for contet
         vector<Expression> to;
         /// take the top layer from decoder, take its final h
-        to.push_back(v_encoder_fwd.back()->final_h()[layers - 1]);
-        to.push_back(v_encoder_bwd.back()->final_h()[layers - 1]);
+        to.push_back(encoder_fwd.final_h()[layers - 1]);
+        to.push_back(encoder_bwd.final_h()[layers - 1]);
 
         Expression q_m = concatenate(to);
 
@@ -228,7 +212,7 @@ public:
 
     std::vector<Expression> build_graph(const std::vector<std::vector<int>> &source, ComputationGraph &cg)
     {
-        size_t nutt;
+        size_t nutt = source.size();
         vector<Expression> outputs;
 
         if (v_parameters_exp.size() == 0){
@@ -240,12 +224,12 @@ public:
 
         Expression encoded_source = start_new_instance(source, cg);
 
-        Expression mu = v_parameters_exp[X2Mean] * encoded_source + v_parameters_exp[X2MeanBias];
-        Expression std = exp(0.5 * (v_parameters_exp[X2LogVar] * encoded_source + v_parameters_exp[X2LogVarBias]));
+        Expression mu = v_parameters_exp[X2Mean] * encoded_source + concatenate_cols(vector<Expression>(nutt, v_parameters_exp[X2MeanBias]));
+        Expression std = exp(0.5 * (v_parameters_exp[X2LogVar] * encoded_source + concatenate_cols(vector<Expression>(nutt, v_parameters_exp[X2LogVarBias]))));
 
         outputs.push_back(mu);
         outputs.push_back(std);
-        for (size_t k = 0; k < layers; k++)
+        for (size_t k = 1; k < layers; k++)
         {
             outputs.push_back(tanh(outputs[outputs.size() - 2])); /// higher layer mean
             outputs.push_back(std);  /// variance is tied
