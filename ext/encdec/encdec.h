@@ -108,10 +108,10 @@ public:
         p_bias = model.add_parameters({ long(vocab_size_src) }, iscale);
 
         /// parameter for prediction mean/variance
-        p_parameters.push_back(model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_dim[DECODER_LAYER]) * 2 }, iscale));
-        p_parameters.push_back(model.add_parameters({ long(hidden_dim[DECODER_LAYER]) }, iscale));
-        p_parameters.push_back(model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_dim[DECODER_LAYER]) * 2 }, iscale));
-        p_parameters.push_back(model.add_parameters({ long(hidden_dim[DECODER_LAYER]) }, iscale));
+        p_parameters.push_back(model.add_parameters({ long(hidden_dim[INTENTION_LAYER]), long(hidden_dim[DECODER_LAYER]) * 2 }, iscale));
+        p_parameters.push_back(model.add_parameters({ long(hidden_dim[INTENTION_LAYER]) }, iscale));
+        p_parameters.push_back(model.add_parameters({ long(hidden_dim[INTENTION_LAYER]), long(hidden_dim[DECODER_LAYER]) * 2 }, iscale));
+        p_parameters.push_back(model.add_parameters({ long(hidden_dim[INTENTION_LAYER]) }, iscale));
 
         p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(2 * hidden_dim[ENCODER_LAYER]) }, iscale);
 
@@ -245,6 +245,11 @@ public:
 
         outputs.push_back(mu);
         outputs.push_back(std);
+        for (size_t k = 0; k < layers; k++)
+        {
+            outputs.push_back(tanh(outputs[outputs.size() - 2])); /// higher layer mean
+            outputs.push_back(std);  /// variance is tied
+        }
 
         turnid++;
         return outputs;
@@ -258,32 +263,37 @@ public:
 
     /**
     generate data using mean and variance 
+    [layer][nutt][dim]
     */
-    vector<vector<cnn::real>> sample(vector<Expression> & mean_var, ComputationGraph& cg, size_t nsamples = 1)
+    vector<vector<vector<cnn::real>>> sample(vector<Expression> & mean_var, ComputationGraph& cg, size_t nsamples = 1)
     {
-        assert(mean_var.size() == 2); /// only generates from Gaussian distribution [mu, log(sigma)]
-        vector<vector<cnn::real>> samples;
-        vector<cnn::real> vmean = get_value(mean_var[0], cg);
-        vector<cnn::real> vstd  = get_value(mean_var[1], cg);
-        size_t dim = vmean.size();
-        vector<cnn::real> vec;
-
+        vector<vector<vector<cnn::real>>> samples;
         boost::random::random_device rng;
         boost::random::normal_distribution<cnn::real> generator(0, 1.0);
 
-        for (size_t k = 0; k < nsamples; k++)
+        for (size_t k = 0; k < mean_var.size(); k += 2)
         {
-            /// generate random sample given mean and variance
-            vec.resize(dim);
-            for (size_t l = 0; l < dim; l ++)
+            vector<vector<cnn::real>> this_layer_samples;
+            vector<cnn::real> vmean = get_value(mean_var[k], cg);
+            vector<cnn::real> vstd = get_value(mean_var[k+1], cg);
+            size_t dim = vmean.size();
+            vector<cnn::real> vec;
+
+            for (size_t k = 0; k < nsamples; k++)
             {
-                vec[l] = generator(rng) * vstd[l];
-                vec[l] += vmean[l];
+                /// generate random sample given mean and variance
+                vec.resize(dim);
+                for (size_t l = 0; l < dim; l++)
+                {
+                    vec[l] = generator(rng) * vstd[l];
+                    vec[l] += vmean[l];
+                }
+
+                this_layer_samples.push_back(vec);
             }
 
-            samples.push_back(vec);
+            samples.push_back(this_layer_samples);
         }
-
         return samples;
     }
 };

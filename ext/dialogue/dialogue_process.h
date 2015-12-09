@@ -120,6 +120,13 @@ namespace cnn {
             s2tmodel.assign_cxt(cg, nutt, v_cxt_s, v_decoder_s);
         }
 
+        void assign_cxt(ComputationGraph& cg, size_t nutt, vector<vector<vector<cnn::real>>>& v_cxt_s)
+        {
+            twords = 0;
+            swords = 0;
+            s2tmodel.assign_cxt(cg, nutt, v_cxt_s);
+        }
+
         void serialise_cxt(ComputationGraph& cg)
         {
             s2tmodel.serialise_context(cg);

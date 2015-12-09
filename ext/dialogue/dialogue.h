@@ -352,6 +352,11 @@ public:
 
     }
 
+    virtual void assign_cxt(ComputationGraph &cg, size_t nutt,
+        std::vector<std::vector<std::vector<cnn::real>>>& v_last_cxt_s)
+    {
+    }
+
     std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict)
     {
         const int sos_sym = tdict.Convert("<s>");
