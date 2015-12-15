@@ -38,7 +38,7 @@ protected:
     Parameters* p_cxt2dec_w;
     Expression i_cxt2dec_w;
 
-    size_t layers;
+    vector<size_t> layers;
     Builder decoder;  // for decoder at each turn
     Builder encoder_fwd, encoder_bwd; /// for encoder at each turn
     Builder context; // for contexter
@@ -91,13 +91,13 @@ public:
 
 public:
     DialogueBuilder() {};
-    DialogueBuilder(cnn::Model& model, int vocab_size_src, int layers, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, float iscale = 1.0) :
+    DialogueBuilder(cnn::Model& model, int vocab_size_src, const vector<size_t>& layers, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, float iscale = 1.0) :
         layers(layers), 
-        decoder(layers, hidden_dims[DECODER_LAYER] + decoder_use_additional_input * hidden_dims[ENCODER_LAYER], hidden_dims[DECODER_LAYER], &model, iscale),
-        encoder_fwd(layers, hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
-        encoder_bwd(layers, hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
+        decoder(layers[DECODER_LAYER], hidden_dims[DECODER_LAYER] + decoder_use_additional_input * hidden_dims[ENCODER_LAYER], hidden_dims[DECODER_LAYER], &model, iscale),
+        encoder_fwd(layers[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
+        encoder_bwd(layers[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
         decoder_use_additional_input(decoder_use_additional_input),
-        context(layers, layers * hidden_replicates * hidden_dims[ENCODER_LAYER], hidden_dims[INTENTION_LAYER], &model, iscale),
+        context(layers[INTENTION_LAYER], layers[ENCODER_LAYER] * hidden_replicates * hidden_dims[ENCODER_LAYER], hidden_dims[INTENTION_LAYER], &model, iscale),
         vocab_size(vocab_size_src), 
         rep_hidden(hidden_replicates)
     {
@@ -115,7 +115,7 @@ public:
 
         p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(2 * hidden_dim[ENCODER_LAYER]) }, iscale);
 
-        for (size_t i = 0; i < layers * rep_hidden; i++)
+        for (size_t i = 0; i < layers[ENCODER_LAYER] * rep_hidden; i++)
         {
             p_h0.push_back(model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale));
             p_h0.back()->reset_to_zero();
@@ -357,6 +357,16 @@ public:
     {
     }
 
+    virtual void assign_cxt(ComputationGraph &cg,
+        const vector<vector<int>>& v_last_cxt_s)
+    {}
+
+    Expression process_query(const std::vector<std::vector<int>>& query, ComputationGraph &cg){
+        Expression ex;
+        throw("not implemented for process_query");
+        return ex;
+    }
+
     std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict)
     {
         const int sos_sym = tdict.Convert("<s>");
@@ -593,8 +603,8 @@ public:
          /// for contet
          vector<Expression> to;
          /// take the top layer from decoder, take its final h
-         to.push_back(encoder_fwd->final_h()[layers - 1]);
-         to.push_back(encoder_bwd->final_h()[layers - 1]);
+         to.push_back(encoder_fwd->final_h()[layers[ENCODER_LAYER] - 1]);
+         to.push_back(encoder_bwd->final_h()[layers[ENCODER_LAYER] - 1]);
 
          Expression q_m = concatenate(to);
 
@@ -697,8 +707,8 @@ public:
          /// for context
          vector<Expression> to;
          /// take the top layer from decoder, take its final h
-         to.push_back(v_encoder_fwd.back()->final_h()[layers - 1]);
-         to.push_back(v_encoder_bwd.back()->final_h()[layers - 1]);
+         to.push_back(v_encoder_fwd.back()->final_h()[layers[ENCODER_LAYER] - 1]);
+         to.push_back(v_encoder_bwd.back()->final_h()[layers[ENCODER_LAYER] - 1]);
 
          Expression q_m = concatenate(to);
 
@@ -717,6 +727,13 @@ public:
          turnid++;
          return -i_nerr;
      };
+
+     Expression build_graph(const std::vector<std::vector<int>> &source,
+         const std::vector<std::vector<int>>& osent,
+         const std::vector<std::vector<int>> &additional_input,
+         ComputationGraph &cg)
+     {
+     }
 
      /*
      Expression build_graph_target_source(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
