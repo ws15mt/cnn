@@ -26,7 +26,36 @@ typedef vector<SentencePair> Dialogue;
 typedef vector<Dialogue> Corpus;
 
 /// for parallel processing of data
-typedef pair<Sentence, Sentence> SentencePair;
+typedef vector<SentencePair> PTurn;  /// a turn consits of sentences pairs from difference utterances
+typedef vector<PTurn> PDialogue;  /// a dialogue consists of many turns
+typedef vector<PDialogue> PCorpus; /// a parallel corpus consists of many parallel dialogues
+
+template<class T>
+struct triplet
+{
+    T first;
+    T middle;
+    T last;
+};
+
+template<class T>
+triplet<T> make_triplet(const T &m1, const T &m2, const T &m3)
+{
+    triplet<T> ans;
+    ans.first = m1;
+    ans.middle = m2;
+    ans.last = m3;
+    return ans;
+};
+
+typedef triplet<Sentence> SentenceTuple;
+
+typedef vector<SentenceTuple> TupleDialogue;
+typedef vector<TupleDialogue> TupleCorpus;
+
+SentenceTuple make_triplet_sentence(const Sentence& m1, const Sentence& m2, const Sentence& m3);
+
+/// for parallel processing of data
 typedef vector<SentencePair> PTurn;  /// a turn consits of sentences pairs from difference utterances
 typedef vector<PTurn> PDialogue;  /// a dialogue consists of many turns
 typedef vector<PDialogue> PCorpus; /// a parallel corpus consists of many parallel dialogues
@@ -78,7 +107,17 @@ read sentence pair in one line, with seperaotr |||
 */
 int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool appendSBandSE = false, int kSRC_SOS = -1, int kSRC_EOS = -1, bool bcharacter = false);
 
+/**
+read corpus with triplet
+user input ||| answer ||| intention/question
+*/
+TupleCorpus read_tuple_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS, Dict& td, int kTGT_SOS, int kTGT_EOS, int maxSentLength);
+int MultiTurnsReadSentence(const std::string& line,
+    vector<std::vector<int>*> s,
+    vector<Dict*> sd);
+
 NumTurn2DialogId get_numturn2dialid(Corpus corp);
+NumTurn2DialogId get_numturn2dialid(TupleCorpus corp);
 
 /// shuffle the data from 
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
