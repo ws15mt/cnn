@@ -42,7 +42,7 @@ namespace cnn {
         Expression s2txent;
 
         DialogueProcessInfo(cnn::Model& model,
-            unsigned layers,
+            const vector<size_t>& layers,
             unsigned vocab_size_src,
             const vector<unsigned>& hidden_dim,
             unsigned hidden_replicates, 
@@ -63,6 +63,12 @@ namespace cnn {
         // return Expression of total loss
         // only has one pair of sentence so far
         virtual Expression build_graph(const Dialogue& prv_sentence, const Dialogue& cur_sentence, ComputationGraph& cg) = 0;
+
+        // return Expression of total loss
+        // only has one pair of sentence so far
+        virtual Expression build_graph(const TupleDialogue& cur_sentence, ComputationGraph& cg) = 0; 
+
+        virtual Expression build_graph(const TupleDialogue& prv_sentence, const TupleDialogue& cur_sentence, ComputationGraph& cg) = 0;
 
 #ifdef INPUT_UTF8
         virtual std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict<std::wstring> &tdict)
@@ -354,7 +360,7 @@ namespace cnn {
     class HREDModel : public DialogueProcessInfo<DBuilder>{
     public:
         HREDModel(cnn::Model& model,
-            unsigned layers,
+            const vector<size_t>& layers,
             unsigned vocab_size_src,
             const vector<unsigned>& hidden_dim,
             unsigned hidden_replicates,
@@ -424,6 +430,22 @@ namespace cnn {
             s2txent = object_cur_s2cur_t;
             return object_cur_s2cur_t + object_prv_t2cur_s;
         }
+
+        Expression build_graph(const vector<SentenceTuple> & cur_sentence, ComputationGraph& cg) override
+        {
+            Expression object;
+            throw("not implemented");
+            return object;
+        }
+
+        // return Expression of total loss
+        // only has one pair of sentence so far
+        Expression build_graph(const vector<SentenceTuple>& prv_sentence, const vector<SentenceTuple>& cur_sentence, ComputationGraph& cg) override
+        {
+            Expression object;
+            throw("not implemented");
+            return object;
+        }
     };
 
 
@@ -479,7 +501,7 @@ namespace cnn {
         size_t align_dim;
     public:
         explicit AttentionWithIntentionModel(cnn::Model& model,
-            unsigned layers,
+            const vector<size_t>& layers,
             unsigned vocab_size_src,
             const vector<unsigned>& hidden_dim,
             unsigned hidden_replicates,
@@ -533,6 +555,66 @@ namespace cnn {
                 swords += p.first.size() - 1;
             }
 
+            s2txent = s2tmodel.build_graph(insent, osent, cg);
+
+            assert(twords == s2tmodel.tgt_words);
+            assert(swords == s2tmodel.src_words);
+
+            return s2txent;
+        }
+
+        // return Expression of total loss
+        // only has one pair of sentence so far
+        Expression build_graph(const TupleDialogue & cur_sentence, ComputationGraph& cg) override
+        {
+            Expression object;
+
+            twords = 0;
+            swords = 0;
+            nbr_turns = 1;
+            vector<Sentence> insent, osent, intention;
+            for (auto p : cur_sentence)
+            {
+                insent.push_back(p.first);
+                osent.push_back(p.middle);
+                intention.push_back(p.last);
+
+                twords += p.middle.size() - 1;
+                swords += p.first.size() - 1;
+            }
+
+            s2tmodel.reset();
+            s2tmodel.assign_cxt(cg, intention);
+            if (intention.size())
+                s2tmodel.process_query(intention, cg);
+            object = s2tmodel.build_graph(insent, osent, cg);
+
+            s2txent = object;
+            assert(twords == s2tmodel.tgt_words);
+            assert(swords == s2tmodel.src_words);
+
+            return object;
+        }
+
+        /// for all speakers with history
+        Expression build_graph(const TupleDialogue & prv_sentence, const TupleDialogue & cur_sentence, ComputationGraph& cg) override
+        {
+            vector<Sentence> insent, osent, intention;
+            nbr_turns++;
+
+            for (auto p : cur_sentence)
+            {
+                insent.push_back(p.first);
+                osent.push_back(p.middle);
+                intention.push_back(p.last);
+
+                twords += p.middle.size() - 1;
+                swords += p.first.size() - 1;
+            }
+
+            s2tmodel.assign_cxt(cg, intention);
+            if (intention.size())
+                s2tmodel.process_query(intention, cg);
             s2txent = s2tmodel.build_graph(insent, osent, cg);
 
             assert(twords == s2tmodel.tgt_words);
