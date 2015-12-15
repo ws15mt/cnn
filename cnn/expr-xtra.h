@@ -105,7 +105,8 @@ Expression bidirectional(unsigned & slen, const vector<int>& source, Computation
 std::vector<std::vector<Expression>> rnn_h0_for_each_utt(std::vector<Expression> v_h0, size_t nutt, size_t feat_dim);
 
 /**
-now need to process the data so that the output is
+data in return has the following format
+the index 0,1,2,3,and 4 below are the sentence indices
 [0 1 2 x x;
  0 1 2 3 x;
  0 1 2 3 4]
