@@ -63,6 +63,7 @@ unsigned min_diag_id = 0;
 size_t g_train_on_turns = 1; 
 
 cnn::Dict sd;
+cnn::Dict td;
 
 int kSRC_SOS;
 int kSRC_EOS;
@@ -99,6 +100,7 @@ public:
     void train(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, int max_epochs, int min_diag_id,
         bool bcharlevel = false, bool nosplitdialogue = false);
+    void train(Model &model, Proc &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs);
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo, const string& score_embedding_fn);
     void dialogue(Model &model, Proc &am, string out_file, Dict & td);
 
@@ -695,6 +697,139 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, Corpus &training, Corpus 
 }
 
 /**
+Training process on tuple corpus
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::train(Model &model, AM_t &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs)
+{
+    double best = 9e+99;
+    unsigned report_every_i = 50;
+    unsigned dev_every_i_reports = 1000;
+    unsigned si = training.size(); /// number of dialgoues in training
+    boost::mt19937 rng;                 // produces randomness out of thin air
+
+    vector<unsigned> order(training.size());
+    for (unsigned i = 0; i < order.size(); ++i) order[i] = i;
+
+    bool first = true;
+    int report = 0;
+    unsigned lines = 0;
+    int epoch = 0;
+
+    ofstream out(out_file, ofstream::out);
+    boost::archive::text_oarchive oa(out);
+    oa << model;
+    out.close();
+
+    reset_smoothed_ppl();
+
+    int prv_epoch = -1;
+    vector<bool> v_selected(training.size(), false);  /// track if a dialgoue is used
+    size_t i_stt_diag_id = 0;
+
+    while (sgd.epoch < max_epochs) {
+        Timer iteration("completed in");
+        double dloss = 0;
+        double dchars_s = 0;
+        double dchars_t = 0;
+        double dchars_tt = 0;
+
+        for (unsigned iter = 0; iter < report_every_i; ++iter) {
+
+            if (si == training.size()) {
+                si = 0;
+                if (first) { first = false; }
+                else { sgd.update_epoch(); }
+            }
+
+            if (si % order.size() == 0) {
+                cerr << "**SHUFFLE\n";
+                shuffle(order.begin(), order.end(), *rndeng);
+                i_stt_diag_id = 0;
+                v_selected = vector<bool>(training.size(), false);
+            }
+
+            // build graph for this instance
+            auto& spair = training[order[si % order.size()]];
+
+            if (verbose)
+                cerr << "diag = " << order[si % order.size()] << endl;
+
+            /// find portion to train
+            bool b_trained = false;
+            // see random number distributions
+            auto rng = std::bind(std::uniform_int_distribution<int>(0, spair.size() - 1), *rndeng);
+            int i_turn_to_train = rng();
+
+            vector<SentenceTuple> prv_turn;
+            size_t turn_id = 0;
+
+            size_t i_init_turn = 0;
+
+            /// train on two segments of a dialogue
+            do{
+                ComputationGraph cg;
+
+                if (i_init_turn > 0)
+                    am.assign_cxt(cg, 1);
+                for (size_t t = i_init_turn; t <= std::min(i_init_turn + i_turn_to_train, spair.size() - 1); t++)
+                {
+                    SentenceTuple turn = spair[t];
+                    vector<SentenceTuple> i_turn(1, turn);
+                    if (turn_id == 0)
+                    {
+                        am.build_graph(i_turn, cg);
+                    }
+                    else
+                    {
+                        am.build_graph(prv_turn, i_turn, cg);
+                    }
+                    cg.incremental_forward();
+                    turn_id++;
+
+                    if (verbose)
+                    {
+                        display_value(am.s2txent, cg);
+                        float tcxtent = as_scalar(cg.get_value(am.s2txent));
+                        cerr << "xent = " << tcxtent << " nobs = " << am.twords << " PPL = " << exp(tcxtent / am.twords) << endl;
+                    }
+
+                    prv_turn = i_turn;
+                    if (t == i_init_turn + i_turn_to_train || (t == spair.size() - 1)){
+
+                        dloss += as_scalar(cg.get_value(am.s2txent.i));
+
+                        dchars_s += am.swords;
+                        dchars_t += am.twords;
+
+                        cg.backward();
+                        sgd.update(am.twords);
+
+                        am.serialise_cxt(cg);
+                        i_init_turn = t + 1;
+                        i_turn_to_train = spair.size() - i_init_turn;
+                        break;
+                    }
+                }
+            } while (i_init_turn < spair.size());
+
+            ++si;
+            lines++;
+        }
+        sgd.status();
+        cerr << "\n***Train [epoch=" << (lines / (double)training.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
+
+        if ((int)sgd.epoch % 5 == 0)
+        {
+            sgd.eta0 *= 0.5; /// reduce learning rate
+            sgd.eta *= 0.5; /// reduce learning rate
+        }
+
+        prv_epoch = floor(sgd.epoch);
+    }
+}
+
+/**
 collect sample responses
 */
 template <class AM_t>
@@ -1073,7 +1208,13 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
         dims[INTENTION_LAYER] = HIDDEN_DIM;
     else
         dims[INTENTION_LAYER] = (unsigned)vm["intentiondim"].as<int>();
-    rnn_t hred(model, LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
+
+
+    std::vector<size_t> layers;
+    layers.resize(4, LAYERS);
+    if (!vm.count("intentionlayers"))
+        layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();
+    rnn_t hred(model, layers, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
     prt_model_info<rnn_t, TrainProc>(LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
 
     if (vm.count("initialise"))
@@ -1138,6 +1279,220 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
         ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, test_numturn2did, vm["scoreembeddingfn"].as<string>());
     }
 
+    delete sgd;
+    delete ptrTrainer;
+
+    return EXIT_SUCCESS;
+}
+
+/**
+training on triplet dataset
+*/
+template <class rnn_t, class TrainProc>
+int tuple_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_input_to = 0, size_t mem_slots = MEM_SIZE)
+{
+#ifdef INPUT_UTF8
+    kSRC_SOS = sd.Convert(L"<s>");
+    kSRC_EOS = sd.Convert(L"</s>");
+#else
+    kSRC_SOS = sd.Convert("<s>");
+    kSRC_EOS = sd.Convert("</s>");
+#endif
+    verbose = vm.count("verbose");
+    g_train_on_turns = vm["turns"].as<int>();
+
+    typedef vector<int> Sentence;
+    typedef pair<Sentence, Sentence> SentencePair;
+    TupleCorpus training, devel, testcorpus;
+    string line;
+
+    TrainProc  * ptrTrainer = nullptr;
+
+    if (vm.count("readdict"))
+    {
+        string fname = vm["readdict"].as<string>();
+#ifdef INPUT_UTF8
+        wifstream in(fname, wifstream::in);
+        boost::archive::text_wiarchive ia(in);
+#else
+        ifstream in(fname, ifstream::in);
+        boost::archive::text_iarchive ia(in);
+#endif
+        ia >> sd;
+        sd.Freeze();
+    }
+
+    if (vm.count("train") > 0)
+    {
+        cerr << "Reading training data from " << vm["train"].as<string>() << "...\n";
+        training = read_tuple_corpus(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS, td, kTGT_SOS, kTGT_EOS, vm["mbsize"].as<int>());
+        sd.Freeze(); // no new word types allowed
+        td.Freeze();
+
+        training_numturn2did = get_numturn2dialid(training);
+
+        if (vm.count("writesrcdict"))
+        {
+            string fname = vm["writesrcdict"].as<string>();
+            ofstream on(fname);
+            boost::archive::text_oarchive oa(on);
+            oa << sd;
+        }
+        if (vm.count("writetgtdict"))
+        {
+            string fname = vm["writetgtdict"].as<string>();
+            ofstream on(fname);
+            boost::archive::text_oarchive oa(on);
+            oa << td;
+        }
+    }
+    else
+    {
+        if (vm.count("readtgtdict") == 0 || vm.count("readsrcdict") == 0)
+        {
+            cerr << "must have either training corpus or dictionary" << endl;
+            abort();
+        }
+    }
+
+    LAYERS = vm["layers"].as<int>();
+    HIDDEN_DIM = vm["hidden"].as<int>();
+    ALIGN_DIM = vm["align"].as<int>();
+
+    string flavour = "RNN";
+    if (vm.count("lstm"))
+    {
+        flavour = "LSTM";
+        repnumber = 2;
+    }
+    else if (vm.count("gru"))
+    {
+        flavour = "GRU";
+        repnumber = 1;
+    }
+    else if (vm.count("dglstm"))
+    {
+        flavour = "DGLSTM";
+        repnumber = 2;
+    }
+
+    VOCAB_SIZE_SRC = sd.size();
+    nparallel = vm["nparallel"].as<int>();
+    mbsize = vm["mbsize"].as < int >();
+
+    if (vm.count("beamsearchdecode"))
+    {
+        beam_search_decode = vm["beamsearchdecode"].as<int>();
+    }
+
+    if (vm.count("devel")) {
+        cerr << "Reading dev data from " << vm["devel"].as<string>() << "...\n";
+        unsigned min_dev_id = 0;
+        devel = read_tuple_corpus(vm["devel"].as<string>(), sd, kSRC_SOS, kSRC_EOS, td, kTGT_SOS, kTGT_EOS, vm["mbsize"].as<int>());
+        devel_numturn2did = get_numturn2dialid(devel);
+    }
+
+    if (vm.count("testcorpus")) {
+        cerr << "Reading test corpus from " << vm["testcorpus"].as<string>() << "...\n";
+        unsigned min_dev_id = 0;
+        testcorpus = read_tuple_corpus(vm["testcorpus"].as<string>(), sd, kSRC_SOS, kSRC_EOS, td, kTGT_SOS, kTGT_EOS, vm["mbsize"].as<int>());
+        test_numturn2did = get_numturn2dialid(testcorpus);
+    }
+
+    string fname;
+    if (vm.count("parameters")) {
+        fname = vm["parameters"].as<string>();
+    }
+    else {
+        ostringstream os;
+        os << "attentionwithintention"
+            << '_' << LAYERS
+            << '_' << HIDDEN_DIM
+            << '_' << flavour
+            << "-pid" << getpid() << ".params";
+        fname = os.str();
+    }
+    cerr << "Parameters will be written to: " << fname << endl;
+
+    Model model;
+    Trainer* sgd = nullptr;
+    if (vm["trainer"].as<string>() == "momentum")
+        sgd = new MomentumSGDTrainer(&model, 1e-6, vm["eta"].as<float>());
+    if (vm["trainer"].as<string>() == "sgd")
+        sgd = new SimpleSGDTrainer(&model, 1e-6, vm["eta"].as<float>());
+    if (vm["trainer"].as<string>() == "adagrad")
+        sgd = new AdagradTrainer(&model, 1e-6, vm["eta"].as<float>());
+    sgd->clip_threshold = vm["clip"].as<float>();
+
+    cerr << "%% Using " << flavour << " recurrent units" << endl;
+
+    std::vector<unsigned> dims;
+    dims.resize(4);
+    if (!vm.count("hidden"))
+        dims[ENCODER_LAYER] = HIDDEN_DIM;
+    else
+        dims[ENCODER_LAYER] = (unsigned)vm["hidden"].as<int>();
+    dims[DECODER_LAYER] = dims[ENCODER_LAYER]; /// if not specified, encoder and decoder have the same dimension
+
+    if (!vm.count("align"))
+        dims[ALIGN_LAYER] = ALIGN_DIM;
+    else
+        dims[ALIGN_LAYER] = (unsigned)vm["align"].as<int>();
+    if (!vm.count("intentiondim"))
+        dims[INTENTION_LAYER] = HIDDEN_DIM;
+    else
+        dims[INTENTION_LAYER] = (unsigned)vm["intentiondim"].as<int>();
+
+
+    std::vector<size_t> layers;
+    layers.resize(4, LAYERS);
+    if (!vm.count("intentionlayers"))
+        layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();
+    rnn_t hred(model, layers, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
+    prt_model_info<rnn_t, TrainProc>(LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
+
+    if (vm.count("initialise"))
+    {
+        string fname = vm["initialise"].as<string>();
+        ifstream in(fname, ifstream::in);
+        if (in.is_open())
+        {
+            boost::archive::text_iarchive ia(in);
+            ia >> model;
+        }
+    }
+
+    ptrTrainer = new TrainProc();
+
+/*
+if (vm.count("dialogue"))
+    {
+        if (vm.count("outputfile") == 0)
+        {
+            cerr << "missing recognition output file" << endl;
+            abort();
+        }
+        ptrTrainer->dialogue(model, hred, vm["outputfile"].as<string>(), sd);
+    }
+    if (vm.count("nparallel") && !vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
+    {
+        ptrTrainer->batch_train(model, hred, training, devel, *sgd, fname, vm["epochs"].as<int>(), vm["nparallel"].as<int>());
+    }
+    else if (!vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
+    */
+    {
+        ptrTrainer->train(model, hred, training, *sgd, fname, vm["epochs"].as<int>());
+    }
+/*    else if (vm.count("testcorpus"))
+    {
+        if (vm.count("outputfile") == 0)
+        {
+            cerr << "missing recognition output file" << endl;
+            abort();
+        }
+        ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, test_numturn2did, vm["scoreembeddingfn"].as<string>());
+    }
+    */
     delete sgd;
     delete ptrTrainer;
 
