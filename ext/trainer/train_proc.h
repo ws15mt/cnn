@@ -57,6 +57,7 @@ unsigned LAYERS = 2;
 unsigned HIDDEN_DIM = 50;  // 1024
 unsigned ALIGN_DIM = 25;  // 1024
 unsigned VOCAB_SIZE_SRC = 0;
+unsigned VOCAB_SIZE_TGT = 0;
 long nparallel = -1;
 long mbsize = -1;
 unsigned min_diag_id = 0;
@@ -767,51 +768,37 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, TupleCorpus &training, Tr
             size_t i_init_turn = 0;
 
             /// train on two segments of a dialogue
+            ComputationGraph cg;
+            size_t t = 0;
             do{
-                ComputationGraph cg;
-
                 if (i_init_turn > 0)
                     am.assign_cxt(cg, 1);
-                for (size_t t = i_init_turn; t <= std::min(i_init_turn + i_turn_to_train, spair.size() - 1); t++)
+
+                SentenceTuple turn = spair[t];
+                vector<SentenceTuple> i_turn(1, turn);
+                if (turn_id == 0)
                 {
-                    SentenceTuple turn = spair[t];
-                    vector<SentenceTuple> i_turn(1, turn);
-                    if (turn_id == 0)
-                    {
-                        am.build_graph(i_turn, cg);
-                    }
-                    else
-                    {
-                        am.build_graph(prv_turn, i_turn, cg);
-                    }
-                    cg.incremental_forward();
-                    turn_id++;
-
-                    if (verbose)
-                    {
-                        display_value(am.s2txent, cg);
-                        float tcxtent = as_scalar(cg.get_value(am.s2txent));
-                        cerr << "xent = " << tcxtent << " nobs = " << am.twords << " PPL = " << exp(tcxtent / am.twords) << endl;
-                    }
-
-                    prv_turn = i_turn;
-                    if (t == i_init_turn + i_turn_to_train || (t == spair.size() - 1)){
-
-                        dloss += as_scalar(cg.get_value(am.s2txent.i));
-
-                        dchars_s += am.swords;
-                        dchars_t += am.twords;
-
-                        cg.backward();
-                        sgd.update(am.twords);
-
-                        am.serialise_cxt(cg);
-                        i_init_turn = t + 1;
-                        i_turn_to_train = spair.size() - i_init_turn;
-                        break;
-                    }
+                    am.build_graph(i_turn, cg);
                 }
-            } while (i_init_turn < spair.size());
+                else
+                {
+                    am.build_graph(prv_turn, i_turn, cg);
+                }
+                
+                cg.incremental_forward();
+                turn_id++;
+
+                t++;
+                prv_turn = i_turn;
+            } while (t < spair.size());
+
+            dloss += as_scalar(cg.get_value(am.s2txent.i));
+
+            dchars_s += am.swords;
+            dchars_t += am.twords;
+
+            cg.backward();
+            sgd.update(am.twords);
 
             ++si;
             lines++;
@@ -1143,6 +1130,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     }
 
     VOCAB_SIZE_SRC = sd.size();
+    VOCAB_SIZE_TGT = sd.size(); /// use the same dictionary
     nparallel = vm["nparallel"].as<int>();
     mbsize = vm["mbsize"].as < int >();
 
@@ -1214,7 +1202,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     layers.resize(4, LAYERS);
     if (!vm.count("intentionlayers"))
         layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();
-    rnn_t hred(model, layers, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
+    rnn_t hred(model, layers, VOCAB_SIZE_SRC, VOCAB_SIZE_TGT, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
     prt_model_info<rnn_t, TrainProc>(LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
 
     if (vm.count("initialise"))
@@ -1377,6 +1365,7 @@ int tuple_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_addi
     }
 
     VOCAB_SIZE_SRC = sd.size();
+    VOCAB_SIZE_TGT = td.size();
     nparallel = vm["nparallel"].as<int>();
     mbsize = vm["mbsize"].as < int >();
 
@@ -1448,7 +1437,7 @@ int tuple_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_addi
     layers.resize(4, LAYERS);
     if (!vm.count("intentionlayers"))
         layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();
-    rnn_t hred(model, layers, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
+    rnn_t hred(model, layers, VOCAB_SIZE_SRC, VOCAB_SIZE_TGT, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
     prt_model_info<rnn_t, TrainProc>(LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
 
     if (vm.count("initialise"))
