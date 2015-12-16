@@ -1926,7 +1926,7 @@ public:
         if (fact_encoder_state.size() > 0)
             encoder_fwd.start_new_sequence(fact_encoder_state.back());
         else
-            encoder_fwd.start_new_sequence();
+            encoder_fwd.start_new_sequence(i_h0);
 
         /// the source sentence has to be approximately the same length
         src_len = each_sentence_length(source);
@@ -2037,6 +2037,13 @@ public:
 
         Expression input = concatenate_cols(v_x_t);
         return decoder.add_input(input);
+    }
+
+    void reset()
+    {
+        DialogueBuilder::reset();
+        query_obs.clear();
+        fact_encoder_state.clear();
     }
 };
 

@@ -582,8 +582,10 @@ namespace cnn {
                 osent.push_back(p.middle);
                 intention.push_back(p.last);
 
-                twords += p.middle.size() - 1;
-                swords += p.first.size() - 1;
+                if (p.middle.size() > 0)
+                    twords += p.middle.size() - 1;
+                if (p.first.size() > 0)
+                    swords += p.first.size() - 1;
             }
 
             s2tmodel.reset();
@@ -612,8 +614,10 @@ namespace cnn {
                 osent.push_back(p.middle);
                 intention.push_back(p.last);
 
-                twords += p.middle.size() - 1;
-                swords += p.first.size() - 1;
+                if (p.middle.size() > 0)
+                    twords += p.middle.size() - 1;
+                if (p.first.size() > 0)
+                    swords += p.first.size() - 1;
             }
 
             s2tmodel.assign_cxt(cg, intention);
