@@ -806,7 +806,7 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, TupleCorpus &training, Tr
         sgd.status();
         cerr << "\n***Train [epoch=" << (lines / (double)training.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
 
-        if ((int)sgd.epoch % 5 == 0)
+        if (sgd.epoch > 1 && (int)sgd.epoch % 10 == 0)
         {
             sgd.eta0 *= 0.5; /// reduce learning rate
             sgd.eta *= 0.5; /// reduce learning rate
