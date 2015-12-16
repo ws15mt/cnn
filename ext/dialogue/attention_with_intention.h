@@ -32,8 +32,8 @@ namespace cnn {
 #define MEM_SIZE 10
 #define REASONING_STEPS 7
 
-template <class Builder>
-struct AttentionWithIntention : DialogueBuilder<Builder>{
+template <class Builder, class Decoder>
+struct AttentionWithIntention : DialogueBuilder<Builder, Decoder>{
     explicit AttentionWithIntention(Model& model,
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
         const vector<unsigned> & hidden_dim, unsigned hidden_replicates, int additional_input = 0, int mem_slots = 0, float iscale = 1.0);
@@ -50,11 +50,11 @@ struct AttentionWithIntention : DialogueBuilder<Builder>{
         ComputationGraph& cg);
 
     Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
-        return DialogueBuilder<Builder>::build_graph(source, osent, cg);
+        return DialogueBuilder<Builder, Decoder>::build_graph(source, osent, cg);
     };
 
     Expression build_graph_target_source(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
-        return DialogueBuilder<Builder>::build_graph_target_source(source, osent, cg);
+        return DialogueBuilder<Builder, Decoder>::build_graph_target_source(source, osent, cg);
     }
 
 #ifdef INPUT_UTF8
@@ -78,7 +78,7 @@ protected:
     void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg) override
     {
 
-        DialogueBuilder<Builder>::start_new_instance(source, cg);
+        DialogueBuilder<Builder, Decoder>::start_new_instance(source, cg);
 
         i_Wa = parameter(cg, p_Wa);
         i_va = parameter(cg, p_va);
@@ -89,9 +89,9 @@ protected:
     void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg,
         Builder* encoder_fwd, Builder* encoder_bwd,
         Builder * context,
-        Builder *decoder) override
+        Decoder *decoder) override
     {
-        DialogueBuilder<Builder>::start_new_instance(source, cg, encoder_fwd, encoder_bwd, context, decoder);
+        DialogueBuilder<Builder, Decoder>::start_new_instance(source, cg, encoder_fwd, encoder_bwd, context, decoder);
 
         i_Wa = parameter(cg, p_Wa);
         i_va = parameter(cg, p_va);
@@ -110,17 +110,17 @@ protected:
 
 };
 
-template <class Builder>
-AttentionWithIntention<Builder>::AttentionWithIntention(cnn::Model& model,
+template<class Builder, class Decoder>
+AttentionWithIntention<Builder, Decoder>::AttentionWithIntention(cnn::Model& model,
     unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers, const vector<unsigned>& hidden_dim, unsigned hidden_replicates, int additional_input, int mem_slots = 0, float iscale = 1.0)
-    : DialogueBuilder<Builder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
+    : DialogueBuilder<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
 {
     /// default uses the same hidden dimenion for alignment dimension
     setAlignDim(model, hidden_dim[ALIGN_LAYER], iscale);
 }
 
-template <class Builder>
-void AttentionWithIntention<Builder>::setAlignDim(cnn::Model& model, unsigned alignd, float iscale)
+template<class Builder, class Decoder>
+void AttentionWithIntention<Builder, Decoder>::setAlignDim(cnn::Model& model, unsigned alignd, float iscale)
 {
     unsigned align_dim = alignd;
     p_Wa = model.add_parameters({ long(align_dim), long(layers[DECODER_LAYER] * hidden_dim[DECODER_LAYER]) }, iscale);
@@ -129,33 +129,33 @@ void AttentionWithIntention<Builder>::setAlignDim(cnn::Model& model, unsigned al
 }
 
 
-template<class Builder>
-void AttentionWithIntention<Builder>::assign_cxt(ComputationGraph &cg, size_t nutt){
+template<class Builder, class Decoder>
+void AttentionWithIntention<Builder, Decoder>::assign_cxt(ComputationGraph &cg, size_t nutt){
     i_U = parameter(cg, p_U);
     i_Wa = parameter(cg, p_Wa);
     i_va = parameter(cg, p_va);
 
-    DialogueBuilder<Builder>::assign_cxt(cg, nutt);
+    DialogueBuilder<Builder, Decoder>::assign_cxt(cg, nutt);
 
     if (turnid == 0)
         return;
 }
 
-template<class Builder>
-void AttentionWithIntention<Builder>::assign_cxt(ComputationGraph &cg, size_t nutt,
+template<class Builder, class Decoder>
+void AttentionWithIntention<Builder, Decoder>::assign_cxt(ComputationGraph &cg, size_t nutt,
     vector<vector<cnn::real>>& v_last_s, vector<vector<cnn::real>>& v_decoder_s){
     i_U = parameter(cg, p_U);
     i_Wa = parameter(cg, p_Wa);
     i_va = parameter(cg, p_va);
 
-    DialogueBuilder<Builder>::assign_cxt(cg, nutt, v_last_s, v_decoder_s);
+    DialogueBuilder<Builder, Decoder>::assign_cxt(cg, nutt, v_last_s, v_decoder_s);
 
     if (turnid == 0)
         return;
 }
 
-template <class Builder>
-Expression AttentionWithIntention<Builder>::build_graph(const std::vector<int> &source, const std::vector<int>& osent, ComputationGraph &cg)
+template<class Builder, class Decoder>
+Expression AttentionWithIntention<Builder, Decoder>::build_graph(const std::vector<int> &source, const std::vector<int>& osent, ComputationGraph &cg)
 {
 
     start_new_instance(source, cg);
@@ -187,16 +187,16 @@ Expression AttentionWithIntention<Builder>::build_graph(const std::vector<int> &
     return -i_nerr;
 }
 
-template<class Builder>
-Expression AttentionWithIntention<Builder>::attention(int trg_tok, ComputationGraph& cg)
+template<class Builder, class Decoder>
+Expression AttentionWithIntention<Builder, Decoder>::attention(int trg_tok, ComputationGraph& cg)
 {
     vector<int> vi(1, trg_tok);
 
     return decoder_step(vi, cg); 
 }
 
-template<class Builder>
-Expression AttentionWithIntention<Builder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
+template<class Builder, class Decoder>
+Expression AttentionWithIntention<Builder, Decoder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
 {
     Expression i_c_t;
     size_t nutt = trg_tok.size();
@@ -230,8 +230,8 @@ Expression AttentionWithIntention<Builder>::decoder_step(vector<int> trg_tok, Co
     return v_decoder[v_decoder.size() - 1]->add_input(input);
 }
 
-template<class Builder>
-Expression AttentionWithIntention<Builder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg, Builder* decoder)
+template<class Builder, class Decoder>
+Expression AttentionWithIntention<Builder, Decoder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg, Builder* decoder)
 {
     Expression i_c_t;
     size_t nutt = trg_tok.size();
@@ -265,8 +265,8 @@ Expression AttentionWithIntention<Builder>::decoder_step(vector<int> trg_tok, Co
     return decoder->add_input(input);
 }
 
-template<class Builder>
-std::vector<int> AttentionWithIntention<Builder>::beam_decode(const std::vector<int> &source, ComputationGraph& cg, int beam_width,
+template<class Builder, class Decoder>
+std::vector<int> AttentionWithIntention<Builder, Decoder>::beam_decode(const std::vector<int> &source, ComputationGraph& cg, int beam_width,
     cnn::Dict &tdict)
 {
     const int sos_sym = tdict.Convert("<s>");
@@ -364,20 +364,11 @@ std::vector<int> AttentionWithIntention<Builder>::beam_decode(const std::vector<
     return best;
 }
 
-template <class Builder>
-#ifdef INPUT_UTF8
-std::vector<int> AttentionWithIntention<Builder>::sample(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict<std::wstring> &tdict)
-#else
-std::vector<int> AttentionWithIntention<Builder>::sample(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict &tdict)
-#endif
+template<class Builder, class Decoder>
+std::vector<int> AttentionWithIntention<Builder, Decoder>::sample(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict &tdict)
 {
-#ifdef INPUT_UTF8
-    const int sos_sym = tdict.Convert(L"<s>");
-    const int eos_sym = tdict.Convert(L"</s>");
-#else
     const int sos_sym = tdict.Convert("<s>");
     const int eos_sym = tdict.Convert("</s>");
-#endif
 
     std::vector<int> target;
     target.push_back(sos_sym); 
@@ -410,8 +401,8 @@ std::vector<int> AttentionWithIntention<Builder>::sample(const std::vector<int> 
     return target;
 }
 
-template <class Builder>
-struct GatedAttention: public AttentionWithIntention<Builder>{
+template <class Builder, class Decoder>
+struct GatedAttention : public AttentionWithIntention<Builder, Decoder>{
     explicit GatedAttention(Model& model,
     unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, int additional_input, int mem_slots = 0, float iscale = 1.0)
@@ -426,7 +417,7 @@ protected:
     {
         size_t nutt = source.size();
 
-        AttentionWithIntention<Builder>::start_new_instance(source, cg);
+        AttentionWithIntention<Builder, Decoder>::start_new_instance(source, cg);
 
         i_att_gate_A = parameter(cg, p_att_gate_A);
         i_att_gate_b = parameter(cg, p_att_gate_b);
@@ -437,11 +428,11 @@ protected:
     void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg,
         Builder* encoder_fwd, Builder* encoder_bwd,
         Builder * context,
-        Builder *decoder) override
+        Decoder*decoder) override
     {
         size_t nutt = source.size();
 
-        AttentionWithIntention<Builder>::start_new_instance(source, cg, encoder_fwd, encoder_bwd, context, decoder);
+        AttentionWithIntention<Builder, Decoder>::start_new_instance(source, cg, encoder_fwd, encoder_bwd, context, decoder);
 
         i_att_gate_A = parameter(cg, p_att_gate_A);
         i_att_gate_b = parameter(cg, p_att_gate_b);
@@ -459,15 +450,15 @@ protected:
 
 };
 
-template<class Builder>
-Expression GatedAttention<Builder>::attention_gate(Expression i_h_tm1)
+template<class Builder, class Decoder>
+Expression GatedAttention<Builder, Decoder>::attention_gate(Expression i_h_tm1)
 {
     Expression att = logistic(i_att_gate_A * i_h_tm1 + v_att_gate_b);
     return att;
 }
 
-template<class Builder>
-Expression GatedAttention<Builder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
+template<class Builder, class Decoder>
+Expression GatedAttention<Builder, Decoder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
 {
     Expression i_c_t;
     size_t nutt = trg_tok.size();
@@ -501,8 +492,8 @@ Expression GatedAttention<Builder>::decoder_step(vector<int> trg_tok, Computatio
     return decoder.add_input(input);
 }
 
-template<class Builder>
-Expression GatedAttention<Builder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg, Builder * decoder)
+template<class Builder, class Decoder>
+Expression GatedAttention<Builder, Decoder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg, Builder * decoder)
 {
     Expression i_c_t;
     size_t nutt = trg_tok.size();
@@ -537,19 +528,12 @@ Expression GatedAttention<Builder>::decoder_step(vector<int> trg_tok, Computatio
     return decoder->add_input(input);
 }
 
-template <class Builder>
-struct AWI : public AttentionWithIntention< Builder > {
-    explicit AWI(Model& model,
-        unsigned vocab_size_src, const vector<size_t>& layers,
-        const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, float iscale = 1.0)
-        : AttentionWithIntention<Builder>(model, vocab_size_src, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
-    {
-        p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(hidden_dim[ENCODER_LAYER]) }, iscale);
-    }
+template <class Builder, class Decoder>
+struct AWI : public AttentionWithIntention< Builder, Decoder> {
     explicit AWI(Model& model,
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, float iscale = 1.0)
-        : AttentionWithIntention<Builder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
+        : AttentionWithIntention<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
     {
         p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(hidden_dim[ENCODER_LAYER]) }, iscale);
     }
@@ -786,7 +770,7 @@ protected:
         vector<Expression> vcxt;
         for (auto p : context.final_s())
             vcxt.push_back(i_cxt2dec_w * p);
-        v_decoder.push_back(new Builder(decoder));
+        v_decoder.push_back(new Decoder(decoder));
         v_decoder.back()->new_graph(cg);
         v_decoder.back()->set_data_in_parallel(nutt);
         v_decoder.back()->start_new_sequence(vcxt);  /// get the intention
@@ -799,8 +783,8 @@ protected:
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg) override;
 };
 
-template<class Builder>
-Expression AWI<Builder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
+template<class Builder, class Decoder>
+Expression AWI<Builder, Decoder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
 {
     Expression i_c_t;
     size_t nutt = trg_tok.size();
@@ -843,12 +827,12 @@ Expression AWI<Builder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     return v_decoder.back()->add_input(input);
 }
 
-template <class Builder>
-struct AWI_Bilinear : public AWI< Builder > {
+template <class Builder, class Decoder>
+struct AWI_Bilinear : public AWI< Builder , Decoder> {
     explicit AWI_Bilinear(Model& model,
     unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
     const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, float iscale = 1.0)
-    : AWI<Builder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
+    : AWI<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
     {
         if (hidden_dim[ENCODER_LAYER] != hidden_dim[ALIGN_LAYER])
         {
@@ -971,7 +955,7 @@ struct AWI_Bilinear : public AWI< Builder > {
         vector<Expression> vcxt;
         for (auto p : context.final_s())
             vcxt.push_back(i_cxt2dec_w * p);
-        v_decoder.push_back(new Builder(decoder));
+        v_decoder.push_back(new Decoder(decoder));
         v_decoder.back()->new_graph(cg);
         v_decoder.back()->set_data_in_parallel(nutt);
         v_decoder.back()->start_new_sequence(vcxt);  /// get the intention
@@ -985,8 +969,8 @@ struct AWI_Bilinear : public AWI< Builder > {
 
 };
 
-template<class Builder>
-Expression AWI_Bilinear<Builder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
+template<class Builder, class Decoder>
+Expression AWI_Bilinear<Builder, Decoder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
 {
     Expression i_c_t;
     size_t nutt = trg_tok.size();
@@ -1029,12 +1013,12 @@ Expression AWI_Bilinear<Builder>::decoder_step(vector<int> trg_tok, ComputationG
     return v_decoder.back()->add_input(input);
 }
 
-template <class Builder>
-struct AWI_Bilinear_Simpler : public AWI_Bilinear < Builder > {
+template <class Builder, class Decoder>
+struct AWI_Bilinear_Simpler : public AWI_Bilinear < Builder, Decoder> {
     explicit AWI_Bilinear_Simpler(Model& model,
     unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
     const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, float iscale = 1.0)
-    : AWI_Bilinear<Builder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
+    : AWI_Bilinear<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
     {
     }
 
@@ -1130,7 +1114,7 @@ struct AWI_Bilinear_Simpler : public AWI_Bilinear < Builder > {
         vector<Expression> vcxt;
         for (auto p : context.final_s())
             vcxt.push_back(i_cxt2dec_w * p);
-        v_decoder.push_back(new Builder(decoder));
+        v_decoder.push_back(new Decoder(decoder));
         v_decoder.back()->new_graph(cg);
         v_decoder.back()->set_data_in_parallel(nutt);
         v_decoder.back()->start_new_sequence(vcxt);  /// get the intention
@@ -1141,12 +1125,12 @@ struct AWI_Bilinear_Simpler : public AWI_Bilinear < Builder > {
 No attention for comparison
 use hirearchical process, with an intention network, encoder network and decoder network. however, no attention to encoder output is used when computing decoder network. this is just for comparison to AWI_Bilinear_Simpler, as this simplified model is not the right model to pursue.
 */
-template <class Builder>
-struct HirearchicalEncDec: public AWI_Bilinear_Simpler< Builder > {
+template<class Builder, class Decoder>
+struct HirearchicalEncDec : public AWI_Bilinear_Simpler< Builder, Decoder > {
     explicit HirearchicalEncDec(Model& model,
     unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, float iscale = 1.0)
-        : AWI_Bilinear_Simpler<Builder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
+        : AWI_Bilinear_Simpler<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
     {
     }
 
@@ -1179,12 +1163,12 @@ struct HirearchicalEncDec: public AWI_Bilinear_Simpler< Builder > {
 
 /// + autoencoding 
 /// the intention vector needs to generate the original source side sentence
-template <class Builder>
-struct AWI_Bilinear_Simpler_AE : public AWI_Bilinear_Simpler< Builder > {
+template<class Builder, class Decoder>
+struct AWI_Bilinear_Simpler_AE : public AWI_Bilinear_Simpler< Builder, Decoder > {
     explicit AWI_Bilinear_Simpler_AE(Model& model,
     unsigned vocab_size_src, const vector<size_t>& layers,
     const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, float iscale = 1.0)
-    : AWI_Bilinear_Simpler<Builder>(model, vocab_size_src, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
+    : AWI_Bilinear_Simpler<Builder, Decoder>(model, vocab_size_src, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
     {
     }
 
@@ -1278,7 +1262,7 @@ struct AWI_Bilinear_Simpler_AE : public AWI_Bilinear_Simpler< Builder > {
         vector<Expression> vcxt;
         for (auto p : context.final_s())
             vcxt.push_back(i_cxt2dec_b + i_cxt2dec_w * p);
-        v_decoder.push_back(new Builder(decoder));
+        v_decoder.push_back(new Decoder(decoder));
         v_decoder.back()->new_graph(cg);
         v_decoder.back()->set_data_in_parallel(nutt);
         v_decoder.back()->start_new_sequence(vcxt);  /// get the intention
@@ -1763,8 +1747,8 @@ protected:
 
 */
 
-template <class Builder>
-struct DynamicMemoryNetDialogue : public AWI_Bilinear_Simpler<Builder>{
+template <class Builder, class Decoder>
+struct DynamicMemoryNetDialogue : public AWI_Bilinear_Simpler<Builder, Decoder>{
 private:
     vector<Expression> query_obs;  /// the observed context/query
     vector<vector<Expression>> fact_encoder_state;  /// [number_of_facts][number_of_hidden_states]
@@ -1794,7 +1778,7 @@ public:
     explicit DynamicMemoryNetDialogue(Model& model,
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, float iscale = 1.0)
-        : AWI_Bilinear_Simpler<Builder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
+        : AWI_Bilinear_Simpler<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
     {
         p_fact_encoder_state = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]), long(hidden_dim[ENCODER_LAYER] * encoder_fwd.num_h0_components()) }, iscale);
         p_fact_encoder_state_bias = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale);
@@ -1811,7 +1795,7 @@ public:
         p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(hidden_dim[ENCODER_LAYER]) }, iscale);
 
         unsigned align_dim = hidden_dim[ALIGN_LAYER];
-        p_Wa = model.add_parameters({ long(align_dim), long(hidden_replicates * hidden_dim[INTENTION_LAYER]) }, iscale);
+        p_Wa = model.add_parameters({ long(align_dim), long(hidden_replicates * layers[INTENTION_LAYER] * hidden_dim[INTENTION_LAYER]) }, iscale);
         p_va = model.add_parameters({ long(align_dim) }, iscale);
         p_Q = model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_replicates * hidden_dim[DECODER_LAYER]) }, iscale);
     }
@@ -1824,6 +1808,13 @@ public:
     void assign_cxt(ComputationGraph& cg, size_t nutt)
     {
         throw("not implemented");
+    }
+    
+    void assign_cxt(ComputationGraph &cg,
+        const vector<int>& query)
+    {
+        vector<Sentence> vs(1, query);
+        assign_cxt(cg, vs);
     }
     
     void assign_cxt(ComputationGraph &cg,
@@ -1894,7 +1885,13 @@ public:
         }
     }
 
-    void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg) 
+    void start_new_instance(const Sentence &source, ComputationGraph &cg)
+    {
+        vector<Sentence> vs(1, source);
+        start_new_instance(vs, cg);
+    }
+
+    void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg)
     {
         nutt = source.size();
         std::vector<Expression> v_tgt2enc;
@@ -2025,11 +2022,84 @@ public:
         return v_errs;
     };
 
+    std::vector<int> decode(const Sentence&source, ComputationGraph& cg, cnn::Dict  &tdict)
+    {
+        vector<int> vres;
+        throw("not implemented");
+        return vres;
+    }
+
+    std::vector<int> decode_tuple(const SentenceTuple&source, ComputationGraph& cg, cnn::Dict  &sdict, cnn::Dict  &tdict)
+    {
+        const int sos_sym = tdict.Convert("<s>");
+        const int eos_sym = tdict.Convert("</s>");
+
+        std::vector<int> target;
+
+        int t = 0;
+
+        start_new_instance(source.first, cg);
+
+        if (source.last.size() == 0)  /// no query
+            return target;
+
+        assign_cxt(cg, source.last);
+
+        Expression i_bias = parameter(cg, p_bias);
+        Expression i_R = parameter(cg, p_R);
+
+        decoder.new_graph(cg);
+        decoder.set_data_in_parallel(nutt);
+        vector<Expression> v_to_dec;
+        for (auto p : context.final_s())
+            v_to_dec.push_back(i_cxt_to_decoder * p + i_cxt_to_decoder_bias);
+        decoder.start_new_sequence(v_to_dec);
+
+        v_decoder_context.clear();
+        target.push_back(sos_sym);
+
+        while (target.back() != eos_sym)
+        {
+            Expression i_y_t = decoder_step(target.back(), cg);
+            Expression i_r_t = i_bias + i_R * i_y_t;
+            Expression ydist = softmax(i_r_t);
+
+            // find the argmax next word (greedy)
+            unsigned w = 0;
+            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto pr_w = dist[w];
+            for (unsigned x = 1; x < dist.size(); ++x) {
+                if (dist[x] > pr_w) {
+                    w = x;
+                    pr_w = dist[x];
+                }
+            }
+
+            // break potential infinite loop
+            if (t > 100) {
+                w = eos_sym;
+                pr_w = dist[w];
+            }
+
+            t += 1;
+            target.push_back(w);
+        }
+
+        turnid++;
+
+        return target;
+    }
+
+    Expression decoder_step(int  trg_tok, ComputationGraph& cg)
+    {
+        vector<int> vt(1, trg_tok);
+        return decoder_step(vt, cg);
+    }
+        
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
         size_t nutt = trg_tok.size();
-        Expression i_h_tm1 = concatenate(decoder.final_h());
 
         vector<Expression> v_x_t;
         for (auto p : trg_tok)

@@ -3,6 +3,7 @@
 
 #include "cnn/nodes.h"
 #include "cnn/cnn.h"
+#include "cnn/dnn.h"
 #include "cnn/training.h"
 #include "cnn/timing.h"
 #include "cnn/rnn.h"
@@ -103,6 +104,7 @@ public:
         bool bcharlevel = false, bool nosplitdialogue = false);
     void train(Model &model, Proc &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs);
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo, const string& score_embedding_fn);
+    void test(Model &model, Proc &am, TupleCorpus &devel, string out_file, Dict & sd, Dict & td);
     void dialogue(Model &model, Proc &am, string out_file, Dict & td);
 
     void collect_sample_responses(Proc& am, Corpus &training);
@@ -197,6 +199,78 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
 
         delete ptr_evaluate;
     }
+
+    of.close();
+}
+
+/**
+Test on the tuple corpus 
+output recognition results for each test
+not using perplexity to report progresses
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::test(Model &model, AM_t &am, TupleCorpus &devel, string out_file, Dict & sd, Dict & td)
+{
+    unsigned lines = 0;
+    float dloss = 0;
+    float dchars_s = 0;
+    float dchars_t = 0;
+
+    ofstream of(out_file);
+
+    unsigned si = devel.size(); /// number of dialgoues in training
+
+    Timer iteration("completed in");
+    double ddloss = 0;
+    double ddchars_s = 0;
+    double ddchars_t = 0;
+
+    for (auto diag : devel){
+
+        SentenceTuple prv_turn;
+        size_t turn_id = 0;
+
+        /// train on two segments of a dialogue
+        ComputationGraph cg;
+        for (auto spair : diag){
+
+            SentenceTuple turn = spair;
+            vector<int> res;
+
+            if (turn_id == 0)
+                res = am.decode_tuple(turn, cg, sd, td);
+            else
+                res = am.decode_tuple(prv_turn, turn, cg, sd, td);
+
+            if (turn.first.size() > 0)
+            {
+                for (auto p : turn.first){
+                    cout << sd.Convert(p) << " ";
+                }
+                cout << endl;
+            }
+
+            if (turn.last.size() > 0)
+            {
+                for (auto p : turn.last){
+                    cout << sd.Convert(p) << " ";
+                }
+                cout << endl;
+            }
+
+            if (res.size() > 0)
+            {
+                for (auto p : res){
+                    cout << td.Convert(p) << " ";
+                }
+                cout << endl;
+            }
+
+            turn_id++;
+            prv_turn = turn;
+        } 
+    }
+
 
     of.close();
 }
@@ -1275,6 +1349,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
 
 /**
 training on triplet dataset
+decoder_t : the type for decoder network, can be RNN or DNN
 */
 template <class rnn_t, class TrainProc>
 int tuple_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_input_to = 0, size_t mem_slots = MEM_SIZE)
@@ -1340,6 +1415,20 @@ int tuple_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_addi
         {
             cerr << "must have either training corpus or dictionary" << endl;
             abort();
+        }
+        if (vm.count("readsrcdict"))
+        {
+            string fname = vm["readsrcdict"].as<string>();
+            ifstream in(fname);
+            boost::archive::text_iarchive ia(in);
+            ia >> sd;
+        }
+        if (vm.count("readtgtdict"))
+        {
+            string fname = vm["readtgtdict"].as<string>();
+            ifstream in(fname);
+            boost::archive::text_iarchive ia(in);
+            ia >> td;
         }
     }
 
@@ -1467,21 +1556,21 @@ if (vm.count("dialogue"))
     {
         ptrTrainer->batch_train(model, hred, training, devel, *sgd, fname, vm["epochs"].as<int>(), vm["nparallel"].as<int>());
     }
-    else if (!vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
     */
+    if (!vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
     {
         ptrTrainer->train(model, hred, training, *sgd, fname, vm["epochs"].as<int>());
     }
-/*    else if (vm.count("testcorpus"))
+    else if (vm.count("testcorpus"))
     {
         if (vm.count("outputfile") == 0)
         {
             cerr << "missing recognition output file" << endl;
             abort();
         }
-        ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, test_numturn2did, vm["scoreembeddingfn"].as<string>());
+        ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, td);
     }
-    */
+    
     delete sgd;
     delete ptrTrainer;
 

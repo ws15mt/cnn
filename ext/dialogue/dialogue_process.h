@@ -113,6 +113,17 @@ namespace cnn {
             return iret;
         }
 
+        std::vector<int> decode_tuple(const SentenceTuple &source, ComputationGraph& cg, cnn::Dict  &sdict, cnn::Dict  &tdict)
+        {
+            s2tmodel.reset();  /// reset network
+            return s2tmodel.decode_tuple(source, cg, sdict, tdict);
+        }
+
+        std::vector<int> decode_tuple(const SentenceTuple &source, const SentenceTuple &cursource, ComputationGraph& cg, cnn::Dict  &sdict, cnn::Dict  &tdict)
+        {
+            return s2tmodel.decode_tuple(cursource, cg, sdict, tdict);
+        }
+
         void assign_cxt(ComputationGraph& cg, size_t nutt)
         {
             twords = 0;

@@ -27,7 +27,7 @@ class Model;
 #define ALIGN_LAYER 3
 
 // interface for constructing an a dialogue 
-template<class Builder>
+template<class Builder, class Decoder>
 class DialogueBuilder{
 protected:
     LookupParameters* p_cs;
@@ -39,13 +39,13 @@ protected:
     Expression i_cxt2dec_w;
 
     vector<size_t> layers;
-    Builder decoder;  // for decoder at each turn
+    Decoder decoder;  // for decoder at each turn
     Builder encoder_fwd, encoder_bwd; /// for encoder at each turn
     Builder context; // for contexter
 
     /// for different slices
     vector<Builder*> v_encoder_fwd, v_encoder_bwd;
-    vector<Builder*> v_decoder;
+    vector<Decoder*> v_decoder;
 
     /// for alignment to source
     Parameters* p_U;
@@ -488,6 +488,13 @@ public:
         return target;
     }
 
+    std::vector<int> decode_tuple(const SentenceTuple&source, ComputationGraph& cg, cnn::Dict  &sdict, cnn::Dict  &tdict)
+    {
+        vector<int> vres;
+        throw("not implemented");
+        return vres;
+    };
+
  protected:
      /// run in batch with multiple sentences
      /// source [utt][data stream] is utterance first and then its content
@@ -515,7 +522,7 @@ public:
 
          v_encoder_fwd.push_back(new Builder(encoder_fwd));
          v_encoder_bwd.push_back(new Builder(encoder_bwd));
-         v_decoder.push_back(new Builder(decoder));
+         v_decoder.push_back(new Decoder(decoder));
 
          n_turns = v_encoder_fwd.size(); 
 
@@ -558,7 +565,7 @@ public:
      virtual void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg,
          Builder* encoder_fwd, Builder* encoder_bwd, 
          Builder * context, 
-         Builder *decoder) 
+         Decoder *decoder) 
      {
          nutt = source.size();
 
@@ -634,7 +641,7 @@ public:
          Builder * encoder_fwd, 
          Builder * encoder_bwd,
          Builder * context,
-         Builder * decoder)
+         Decoder* decoder)
      {
          std::vector<std::vector<int>> source(1, src);
          return start_new_instance(source, cg, encoder_fwd, encoder_bwd, context, decoder);
