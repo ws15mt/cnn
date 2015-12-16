@@ -54,6 +54,7 @@ protected:
     Model model;
 
     int vocab_size;
+    int vocab_size_tgt;
     vector<unsigned> hidden_dim;
     int rep_hidden;
     int decoder_use_additional_input;
@@ -91,14 +92,14 @@ public:
 
 public:
     DialogueBuilder() {};
-    DialogueBuilder(cnn::Model& model, int vocab_size_src, const vector<size_t>& layers, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, float iscale = 1.0) :
-        layers(layers), 
+    DialogueBuilder(cnn::Model& model, int vocab_size_src, int vocab_size_tgt, const vector<size_t>& layers, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, float iscale = 1.0) :
+        layers(layers),
         decoder(layers[DECODER_LAYER], hidden_dims[DECODER_LAYER] + decoder_use_additional_input * hidden_dims[ENCODER_LAYER], hidden_dims[DECODER_LAYER], &model, iscale),
         encoder_fwd(layers[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
         encoder_bwd(layers[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
         decoder_use_additional_input(decoder_use_additional_input),
         context(layers[INTENTION_LAYER], layers[ENCODER_LAYER] * hidden_replicates * hidden_dims[ENCODER_LAYER], hidden_dims[INTENTION_LAYER], &model, iscale),
-        vocab_size(vocab_size_src), 
+        vocab_size(vocab_size_src), vocab_size_tgt(vocab_size_tgt),
         rep_hidden(hidden_replicates)
     {
         hidden_dim = hidden_dims;
@@ -110,8 +111,8 @@ public:
         }
 
         p_cs = model.add_lookup_parameters(long(vocab_size_src), { long(hidden_dim[ENCODER_LAYER]) }, iscale);
-        p_R = model.add_parameters({ long(vocab_size_src), long(hidden_dim[DECODER_LAYER]) }, iscale);
-        p_bias = model.add_parameters({ long(vocab_size_src) },iscale);
+        p_R = model.add_parameters({ long(vocab_size_tgt), long(hidden_dim[DECODER_LAYER]) }, iscale);
+        p_bias = model.add_parameters({ long(vocab_size_tgt) }, iscale);
 
         p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(2 * hidden_dim[ENCODER_LAYER]) }, iscale);
 
@@ -360,12 +361,6 @@ public:
     virtual void assign_cxt(ComputationGraph &cg,
         const vector<vector<int>>& v_last_cxt_s)
     {}
-
-    Expression process_query(const std::vector<std::vector<int>>& query, ComputationGraph &cg){
-        Expression ex;
-        throw("not implemented for process_query");
-        return ex;
-    }
 
     std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict)
     {
@@ -733,6 +728,16 @@ public:
          const std::vector<std::vector<int>> &additional_input,
          ComputationGraph &cg)
      {
+     }
+
+     public:
+     vector<Expression> build_comp_graph(const std::vector<std::vector<int>> &source,
+         const std::vector<std::vector<int>>& osent,
+         ComputationGraph &cg)
+     {
+         vector<Expression> verr;
+         throw("not implemented");
+         return verr;
      }
 
      /*
