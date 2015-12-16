@@ -44,12 +44,13 @@ namespace cnn {
         DialogueProcessInfo(cnn::Model& model,
             const vector<size_t>& layers,
             unsigned vocab_size_src,
+            unsigned vocab_size_tgt,
             const vector<unsigned>& hidden_dim,
             unsigned hidden_replicates, 
             unsigned additional_input,
             unsigned mem_slots = MEM_SIZE,
             float iscale = 1.0)
-            : s2tmodel(model, vocab_size_src, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
+            : s2tmodel(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
         {
             swords = 0;
             twords = 0;
@@ -362,12 +363,13 @@ namespace cnn {
         HREDModel(cnn::Model& model,
             const vector<size_t>& layers,
             unsigned vocab_size_src,
+            unsigned vocab_size_tgt,
             const vector<unsigned>& hidden_dim,
             unsigned hidden_replicates,
             unsigned decoder_additional_input = 0,
             unsigned mem_slots = MEM_SIZE,
             float iscale = 1.0)
-            : DialogueProcessInfo<DBuilder>(model, layers, vocab_size_src, hidden_dim, hidden_replicates, decoder_additional_input, mem_slots, iscale)
+            : DialogueProcessInfo<DBuilder>(model, layers, vocab_size_src, vocab_size_tgt, hidden_dim, hidden_replicates, decoder_additional_input, mem_slots, iscale)
         {
         }
 
@@ -503,12 +505,13 @@ namespace cnn {
         explicit AttentionWithIntentionModel(cnn::Model& model,
             const vector<size_t>& layers,
             unsigned vocab_size_src,
+            unsigned vocab_size_tgt,
             const vector<unsigned>& hidden_dim,
             unsigned hidden_replicates,
             unsigned decoder_additional_input = 0,
             unsigned mem_slots = MEM_SIZE,
             float iscale = 1.0)
-            : DialogueProcessInfo<DBuilder>(model, layers, vocab_size_src, hidden_dim, hidden_replicates, decoder_additional_input, mem_slots, iscale)
+            : DialogueProcessInfo<DBuilder>(model, layers, vocab_size_src, vocab_size_tgt, hidden_dim, hidden_replicates, decoder_additional_input, mem_slots, iscale)
         {}
 
         // return Expression of total loss
@@ -585,14 +588,15 @@ namespace cnn {
 
             s2tmodel.reset();
             s2tmodel.assign_cxt(cg, intention);
-            if (intention.size())
-                s2tmodel.process_query(intention, cg);
-            object = s2tmodel.build_graph(insent, osent, cg);
+            vector<Expression> obj = s2tmodel.build_comp_graph(insent, osent, cg);
+            if (obj.size() > 0)
+            {
+                object = sum(obj);
 
-            s2txent = object;
-            assert(twords == s2tmodel.tgt_words);
-            assert(swords == s2tmodel.src_words);
-
+                s2txent = object;
+                assert(twords == s2tmodel.tgt_words);
+                assert(swords == s2tmodel.src_words);
+            }
             return object;
         }
 
@@ -613,12 +617,13 @@ namespace cnn {
             }
 
             s2tmodel.assign_cxt(cg, intention);
-            if (intention.size())
-                s2tmodel.process_query(intention, cg);
-            s2txent = s2tmodel.build_graph(insent, osent, cg);
-
-            assert(twords == s2tmodel.tgt_words);
-            assert(swords == s2tmodel.src_words);
+            vector<Expression> obj = s2tmodel.build_comp_graph(insent, osent, cg);
+            if (obj.size() > 0)
+            {
+                s2txent = sum(obj);
+                assert(twords == s2tmodel.tgt_words);
+                assert(swords == s2tmodel.src_words);
+            }
 
             return s2txent;
         }
@@ -677,12 +682,13 @@ namespace cnn {
         RLAttentionWithIntentionModel(cnn::Model& model,
             unsigned layers,
             unsigned vocab_size_src,
+            unsigned vocab_size_tgt,
             const vector<unsigned>& hidden_dim,
             unsigned hidden_replicates,
             unsigned additional_input,
             unsigned mem_slots = MEM_SIZE,
             float iscale = 1.0)
-            : AttentionWithIntentionModel(model, layers, vocab_size_src, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
+            : AttentionWithIntentionModel(model, layers, vocab_size_src, vocab_size_tgt, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
         {
         }
 
