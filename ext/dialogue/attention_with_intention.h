@@ -1807,6 +1807,13 @@ public:
 
         p_cxt_to_decoder = model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_dim[INTENTION_LAYER]) }, iscale);
         p_cxt_to_decoder_bias = model.add_parameters({ long(hidden_dim[DECODER_LAYER]) }, iscale);
+
+        p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(hidden_dim[ENCODER_LAYER]) }, iscale);
+
+        unsigned align_dim = hidden_dim[ALIGN_LAYER];
+        p_Wa = model.add_parameters({ long(align_dim), long(hidden_replicates * hidden_dim[INTENTION_LAYER]) }, iscale);
+        p_va = model.add_parameters({ long(align_dim) }, iscale);
+        p_Q = model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_replicates * hidden_dim[DECODER_LAYER]) }, iscale);
     }
 
     void assign_cxt(ComputationGraph& cg, size_t nutt, vector<vector<cnn::real>>& v_cxt_s, vector<vector<cnn::real>>& v_decoder_s)
