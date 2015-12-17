@@ -555,6 +555,7 @@ namespace cnn {
         }
 
         /// for all speakers with history
+        /// for feedforward network
         Expression build_graph(const Dialogue& prv_sentence, const Dialogue& cur_sentence, ComputationGraph& cg) override
         {
             vector<Sentence> insent, osent;
@@ -593,10 +594,9 @@ namespace cnn {
                 osent.push_back(p.middle);
                 intention.push_back(p.last);
 
-                if (p.middle.size() > 0)
-                    twords += p.middle.size() - 1;
-                if (p.first.size() > 0)
-                    swords += p.first.size() - 1;
+                /// no recurrent
+                twords += p.middle.size();
+                swords += p.first.size();
             }
 
             s2tmodel.reset();
@@ -625,10 +625,9 @@ namespace cnn {
                 osent.push_back(p.middle);
                 intention.push_back(p.last);
 
-                if (p.middle.size() > 0)
-                    twords += p.middle.size() - 1;
-                if (p.first.size() > 0)
-                    swords += p.first.size() - 1;
+                /// no recurrent
+                twords += p.middle.size();
+                swords += p.first.size();
             }
 
             s2tmodel.assign_cxt(cg, intention);
