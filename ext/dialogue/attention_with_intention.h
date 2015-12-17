@@ -1748,7 +1748,7 @@ protected:
 */
 
 template <class Builder, class Decoder>
-struct DynamicMemoryNetDialogue : public AWI_Bilinear_Simpler<Builder, Decoder>{
+struct DynamicMemoryNetDialogue {
 private:
     vector<Expression> query_obs;  /// the observed context/query
     vector<vector<Expression>> fact_encoder_state;  /// [number_of_facts][number_of_hidden_states]
@@ -1773,13 +1773,85 @@ private:
     Expression i_cxt_to_decoder;
     Expression i_cxt_to_decoder_bias;  // for affine transformation of context to fact encoder
 
+protected:
+    LookupParameters* p_cs;
+    Parameters* p_bias;
+    Parameters* p_R;  // for affine transformation after decoder
+
+    vector<size_t> layers;
+    Decoder decoder;  // for decoder at each turn
+    Builder encoder_fwd, encoder_bwd; /// for encoder at each turn
+    Builder context; // for contexter
+
+    /// for alignment to source
+    Parameters* p_U;
+    Expression i_U;
+
+    Parameters* p_va, *p_Wa;
+    Parameters* p_Q;
+    Expression i_Wa, i_va, i_Q;
+
+    Model model;
+
+    int vocab_size;
+    int vocab_size_tgt;
+    vector<unsigned> hidden_dim;
+    int rep_hidden;
+    int decoder_use_additional_input;
+
+    // state variables used in the above two methods
+    vector<Expression> v_src;
+    Expression src;
+    Expression i_sm0;  // the first input to decoder, even before observed
+    std::vector<size_t> src_len;
+    Expression src_fwd;
+    unsigned slen;
+
+    // for initial hidden state
+    vector<Parameters*> p_h0;
+    vector<Expression> i_h0;
+
+    size_t turnid;
+
+    size_t nutt; // for multiple training utterance per inibatch
+    vector<cnn::real> zero;
+
+public:
+    /// for criterion
+    vector<Expression> v_errs;
+    size_t src_words;
+    size_t tgt_words;
+
 public:
 
     explicit DynamicMemoryNetDialogue(Model& model,
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, float iscale = 1.0)
-        : AWI_Bilinear_Simpler<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
+        :   layers(layers),
+            decoder(layers[DECODER_LAYER], hidden_replicates * layers[INTENTION_LAYER] * hidden_dim[INTENTION_LAYER], hidden_dim[DECODER_LAYER], &model, iscale),
+            encoder_fwd(layers[ENCODER_LAYER], hidden_dim[ENCODER_LAYER], hidden_dim[ENCODER_LAYER], &model, iscale),
+            encoder_bwd(layers[ENCODER_LAYER], hidden_dim[ENCODER_LAYER], hidden_dim[ENCODER_LAYER], &model, iscale),
+            decoder_use_additional_input(decoder_use_additional_input),
+            context(layers[INTENTION_LAYER], layers[ENCODER_LAYER] * hidden_replicates * hidden_dim[ENCODER_LAYER], hidden_dim[INTENTION_LAYER], &model, iscale),
+            vocab_size(vocab_size_src), vocab_size_tgt(vocab_size_tgt),
+            hidden_dim(hidden_dim),
+            rep_hidden(hidden_replicates)
     {
+        p_cs = model.add_lookup_parameters(long(vocab_size_src), { long(hidden_dim[ENCODER_LAYER]) }, iscale);
+        p_R = model.add_parameters({ long(vocab_size_tgt), long(hidden_dim[DECODER_LAYER]) }, iscale);
+        p_bias = model.add_parameters({ long(vocab_size_tgt) }, iscale);
+
+        p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(2 * hidden_dim[ENCODER_LAYER]) }, iscale);
+
+        for (size_t i = 0; i < layers[ENCODER_LAYER] * rep_hidden; i++)
+        {
+            p_h0.push_back(model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale));
+            p_h0.back()->reset_to_zero();
+        }
+        zero.resize(hidden_dim[ENCODER_LAYER], 0);  /// for the no obs observation
+
+        i_h0.clear();
+
         p_fact_encoder_state = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]), long(hidden_dim[ENCODER_LAYER] * encoder_fwd.num_h0_components()) }, iscale);
         p_fact_encoder_state_bias = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale);
 
@@ -1946,7 +2018,14 @@ public:
         fact_encoder_state.push_back(to);
     }
 
-    vector<Expression> build_comp_graph(const std::vector<std::vector<int>> &source, 
+    Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
+    {
+        Expression exp;
+        throw("not implemented");
+        return exp;
+    }
+
+    vector<Expression> build_comp_graph(const std::vector<std::vector<int>> &source,
         const std::vector<std::vector<int>>& osent, 
         ComputationGraph &cg)
     {
@@ -1975,44 +2054,21 @@ public:
         for (auto p : context.final_s())
             v_to_dec.push_back(i_cxt_to_decoder * p + i_cxt_to_decoder_bias);
         decoder.start_new_sequence(v_to_dec);
-        for (int t = 0; t < oslen; t++) {
-            vector<int> vobs;
-            for (auto p : osent)
-            {
-                if (t < p.size()){
-                    vobs.push_back(p[t]);
-                }
-                else
-                    vobs.push_back(-1);
-            }
-            Expression i_y_t = decoder_step(vobs, cg);
-            Expression i_r_t = i_bias_mb + i_R * i_y_t;
 
-            Expression x_r_t = reshape(i_r_t, { (long)vocab_size_tgt * (long)nutt });
-            for (size_t i = 0; i < nutt; i++)
-            {
-                if (t < osent[i].size() - 1)
-                {
-                    /// only compute errors on with output labels
-                    Expression r_r_t = pickrange(x_r_t, i * vocab_size_tgt, (i + 1)*vocab_size_tgt);
-                    Expression i_ydist = log_softmax(r_r_t);
-                    errs.push_back(pick(i_ydist, osent[i][t + 1]));
-                    tgt_words++;
-                }
-                else if (t == osent[i].size() - 1)
-                {
-                    /// get the last hidden state to decode the i-th utterance
-                    vector<Expression> v_t;
-                    for (auto p : decoder.final_s())
-                    {
-                        Expression i_tt = reshape(p, { (long)(nutt * hidden_dim[DECODER_LAYER]) });
-                        int stt = i * hidden_dim[DECODER_LAYER];
-                        int stp = stt + hidden_dim[DECODER_LAYER];
-                        Expression i_t = pickrange(i_tt, stt, stp);
-                        v_t.push_back(i_t);
-                    }
-                }
-            }
+        /// the task is classification
+        assert(oslen == 1);
+        Expression i_frm_cxt = concatenate(context.final_s());
+
+        Expression i_y_t = decoder.add_input(i_frm_cxt);
+        Expression i_r_t = i_bias_mb + i_R * i_y_t;
+
+        Expression x_r_t = reshape(i_r_t, { (long)vocab_size_tgt * (long)nutt });
+        for (size_t i = 0; i < nutt; i++)
+        {
+            /// only compute errors on with output labels
+            Expression r_r_t = pickrange(x_r_t, i * vocab_size_tgt, (i + 1)*vocab_size_tgt);
+            Expression i_ydist = log_softmax(r_r_t);
+            errs.push_back(pick(i_ydist, osent[i][0]));
         }
 
         Expression i_nerr = -sum(errs);
@@ -2055,33 +2111,21 @@ public:
             v_to_dec.push_back(i_cxt_to_decoder * p + i_cxt_to_decoder_bias);
         decoder.start_new_sequence(v_to_dec);
 
-        v_decoder_context.clear();
         target.push_back(sos_sym);
 
-        while (target.back() != eos_sym)
-        {
-            Expression i_y_t = decoder_step(target.back(), cg);
-            Expression i_r_t = i_bias + i_R * i_y_t;
-            Expression ydist = softmax(i_r_t);
+        Expression i_y_t = decoder.add_input(concatenate(context.final_s())); 
+        Expression i_r_t = i_bias + i_R * i_y_t;
+        Expression ydist = softmax(i_r_t);
 
-            // find the argmax next word (greedy)
-            unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
-            auto pr_w = dist[w];
-            for (unsigned x = 1; x < dist.size(); ++x) {
-                if (dist[x] > pr_w) {
-                    w = x;
-                    pr_w = dist[x];
-                }
+        // find the argmax next word (greedy)
+        unsigned w = 0;
+        auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+        auto pr_w = dist[w];
+        for (unsigned x = 1; x < dist.size(); ++x) {
+            if (dist[x] > pr_w) {
+                w = x;
+                pr_w = dist[x];
             }
-
-            // break potential infinite loop
-            if (t > 100) {
-                w = eos_sym;
-                pr_w = dist[w];
-            }
-
-            t += 1;
             target.push_back(w);
         }
 
@@ -2090,38 +2134,31 @@ public:
         return target;
     }
 
-    Expression decoder_step(int  trg_tok, ComputationGraph& cg)
+    void serialise_context(ComputationGraph& cg,
+        vector<vector<cnn::real>>& v_last_cxt_s,
+        vector<vector<cnn::real>>& v_last_decoder_s)
     {
-        vector<int> vt(1, trg_tok);
-        return decoder_step(vt, cg);
-    }
-        
-    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
-    {
-        Expression i_c_t;
-        size_t nutt = trg_tok.size();
-
-        vector<Expression> v_x_t;
-        for (auto p : trg_tok)
-        {
-            Expression i_x_x;
-            if (p >= 0)
-                i_x_x = lookup(cg, p_cs, p);
-            else
-                i_x_x = input(cg, { (long)hidden_dim[DECODER_LAYER] }, &zero);
-            v_x_t.push_back(i_x_x);
-        }
-
-        Expression input = concatenate_cols(v_x_t);
-        return decoder.add_input(input);
     }
 
+    void serialise_context(ComputationGraph& cg)
+    {
+    }
+
+    /// for context
     void reset()
     {
-        DialogueBuilder::reset();
+        turnid = 0;
+
+        i_h0.clear();
+
+        v_errs.clear();
+        src_words = 0;
+        tgt_words = 0;
+
         query_obs.clear();
         fact_encoder_state.clear();
     }
+
 };
 
 
