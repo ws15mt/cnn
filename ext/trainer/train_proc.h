@@ -880,10 +880,20 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, TupleCorpus &training, Tr
         sgd.status();
         cerr << "\n***Train [epoch=" << (lines / (double)training.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
 
-        if (sgd.epoch > 1 && (int)sgd.epoch % 10 == 0)
+        cnn::real i_ppl = smoothed_ppl(exp(dloss / dchars_t));
+        if (best > i_ppl)
         {
-            sgd.eta0 *= 0.5; /// reduce learning rate
-            sgd.eta *= 0.5; /// reduce learning rate
+            best = i_ppl;
+
+            ofstream out(out_file, ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
+        }
+        else
+        {
+            sgd.eta0 *= 0.5;
+            sgd.eta *= 0.5;
         }
 
         prv_epoch = floor(sgd.epoch);
@@ -1186,23 +1196,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     HIDDEN_DIM = vm["hidden"].as<int>();
     ALIGN_DIM = vm["align"].as<int>();
 
-    string flavour = "RNN";
-    if (vm.count("lstm"))
-    {
-        flavour = "LSTM";
-        repnumber = 2;
-    }
-    else if (vm.count("gru"))
-    {
-        flavour = "GRU";
-        repnumber = 1;
-    }
-    else if (vm.count("dglstm"))
-    {
-        flavour = "DGLSTM";
-        repnumber = 2;
-    }
-
+    string flavour = builder_flavour(vm); 
     VOCAB_SIZE_SRC = sd.size();
     VOCAB_SIZE_TGT = sd.size(); /// use the same dictionary
     nparallel = vm["nparallel"].as<int>();
@@ -1436,23 +1430,7 @@ int tuple_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_addi
     HIDDEN_DIM = vm["hidden"].as<int>();
     ALIGN_DIM = vm["align"].as<int>();
 
-    string flavour = "RNN";
-    if (vm.count("lstm"))
-    {
-        flavour = "LSTM";
-        repnumber = 2;
-    }
-    else if (vm.count("gru"))
-    {
-        flavour = "GRU";
-        repnumber = 1;
-    }
-    else if (vm.count("dglstm"))
-    {
-        flavour = "DGLSTM";
-        repnumber = 2;
-    }
-
+    string flavour = builder_flavour(vm);
     VOCAB_SIZE_SRC = sd.size();
     VOCAB_SIZE_TGT = td.size();
     nparallel = vm["nparallel"].as<int>();
