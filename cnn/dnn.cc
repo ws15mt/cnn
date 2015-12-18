@@ -4,7 +4,7 @@
 #include <cassert>
 #include <vector>
 #include <iostream>
-
+#include <boost/lexical_cast.hpp>
 #include "cnn/nodes.h"
 #include "cnn/expr-xtra.h"
 
@@ -29,7 +29,8 @@ namespace cnn {
         unsigned input_dim,
         unsigned hidden_dim,
         Model* model,
-        float iscale) 
+        float iscale,
+        string name) 
     {
         layers = ilayers;
         long layer_input_dim = input_dim;
@@ -38,8 +39,13 @@ namespace cnn {
         for (unsigned i = 0; i < layers; ++i) {
             input_dims[i] = layer_input_dim;
 
-            Parameters* p_x2h = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
-            Parameters* p_x2hb = model->add_parameters({ long(hidden_dim) }, iscale);
+            string i_name = "";
+            if (name.size() > 0)
+                i_name = name + "p_x2h" + boost::lexical_cast<string>(i);
+            Parameters* p_x2h = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+            if (name.size() > 0)
+                i_name = name + "p_x2hb" + boost::lexical_cast<string>(i);
+            Parameters* p_x2hb = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
             vector<Parameters*> ps = { p_x2h, p_x2hb };
             params.push_back(ps);
             layer_input_dim = hidden_dim;

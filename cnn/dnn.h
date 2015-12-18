@@ -5,7 +5,9 @@
 this uses RNN interface but actually is deep network
 */
 #include "cnn/rnn.h"
+#include <string>
 
+using namespace std;
 using namespace cnn::expr;
 
 namespace cnn {
@@ -17,7 +19,8 @@ namespace cnn {
             unsigned input_dim,
             unsigned hidden_dim,
             Model* model,
-            float i_scale = 1.0);
+            float i_scale = 1.0, 
+            string name = "");
         /// for parameter sharing 
         DNNBuilder(const DNNBuilder& ref)
         {

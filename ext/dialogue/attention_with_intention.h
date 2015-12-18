@@ -1791,6 +1791,9 @@ protected:
     Parameters* p_Q;
     Expression i_Wa, i_va, i_Q;
 
+    Parameters* p_scale;
+    Expression i_scale;
+
     Model model;
 
     int vocab_size;
@@ -1828,48 +1831,50 @@ public:
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, float iscale = 1.0)
         :   layers(layers),
-            decoder(layers[DECODER_LAYER], hidden_replicates * layers[INTENTION_LAYER] * hidden_dim[INTENTION_LAYER], hidden_dim[DECODER_LAYER], &model, iscale),
-            encoder_fwd(layers[ENCODER_LAYER], hidden_dim[ENCODER_LAYER], hidden_dim[ENCODER_LAYER], &model, iscale),
-            encoder_bwd(layers[ENCODER_LAYER], hidden_dim[ENCODER_LAYER], hidden_dim[ENCODER_LAYER], &model, iscale),
+            decoder(layers[DECODER_LAYER], hidden_replicates * layers[INTENTION_LAYER] * hidden_dim[INTENTION_LAYER], hidden_dim[DECODER_LAYER], &model, iscale, "decoder"),
+            encoder_fwd(layers[ENCODER_LAYER], hidden_dim[ENCODER_LAYER], hidden_dim[ENCODER_LAYER], &model, iscale, "encoder_fwd"),
+            encoder_bwd(layers[ENCODER_LAYER], hidden_dim[ENCODER_LAYER], hidden_dim[ENCODER_LAYER], &model, iscale, "encoder_bwd"),
             decoder_use_additional_input(decoder_use_additional_input),
-            context(layers[INTENTION_LAYER], layers[ENCODER_LAYER] * hidden_replicates * hidden_dim[ENCODER_LAYER], hidden_dim[INTENTION_LAYER], &model, iscale),
+            context(layers[INTENTION_LAYER], layers[ENCODER_LAYER] * hidden_replicates * hidden_dim[ENCODER_LAYER], hidden_dim[INTENTION_LAYER], &model, iscale, "context"),
             vocab_size(vocab_size_src), vocab_size_tgt(vocab_size_tgt),
             hidden_dim(hidden_dim),
             rep_hidden(hidden_replicates)
     {
-        p_cs = model.add_lookup_parameters(long(vocab_size_src), { long(hidden_dim[ENCODER_LAYER]) }, iscale);
-        p_R = model.add_parameters({ long(vocab_size_tgt), long(hidden_dim[DECODER_LAYER]) }, iscale);
-        p_bias = model.add_parameters({ long(vocab_size_tgt) }, iscale);
+        p_cs = model.add_lookup_parameters(long(vocab_size_src), { long(hidden_dim[ENCODER_LAYER]) }, iscale, "p_cs");
+        p_R = model.add_parameters({ long(vocab_size_tgt), long(hidden_dim[DECODER_LAYER]) }, iscale, "p_R");
+        p_bias = model.add_parameters({ long(vocab_size_tgt) }, iscale , "p_bias");
 
-        p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(2 * hidden_dim[ENCODER_LAYER]) }, iscale);
+        p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(2 * hidden_dim[ENCODER_LAYER]) }, iscale, "p_U");
 
         for (size_t i = 0; i < layers[ENCODER_LAYER] * rep_hidden; i++)
         {
-            p_h0.push_back(model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale));
+            p_h0.push_back(model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale, "p_h0" + boost::lexical_cast<string>(i)));
             p_h0.back()->reset_to_zero();
         }
         zero.resize(hidden_dim[ENCODER_LAYER], 0);  /// for the no obs observation
 
         i_h0.clear();
 
-        p_fact_encoder_state = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]), long(hidden_dim[ENCODER_LAYER] * encoder_fwd.num_h0_components()) }, iscale);
-        p_fact_encoder_state_bias = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale);
+        p_fact_encoder_state = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]), long(hidden_dim[ENCODER_LAYER] * encoder_fwd.num_h0_components()) }, iscale, "p_fact_encoder_state");
+        p_fact_encoder_state_bias = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale, "p_fact_encoder_state_bias");
 
-        p_fact_encoder_state_to_cxt = model.add_parameters({ long(hidden_dim[ENCODER_LAYER] * encoder_fwd.num_h0_components()), long(hidden_dim[ENCODER_LAYER]) }, iscale);
-        p_fact_encoder_state_to_cxt_bias = model.add_parameters({ long(hidden_dim[ENCODER_LAYER] * encoder_fwd.num_h0_components()) }, iscale);
+        p_fact_encoder_state_to_cxt = model.add_parameters({ long(hidden_dim[ENCODER_LAYER] * encoder_fwd.num_h0_components()), long(hidden_dim[ENCODER_LAYER]) }, iscale, "p_fact_encoder_state_to_cxt");
+        p_fact_encoder_state_to_cxt_bias = model.add_parameters({ long(hidden_dim[ENCODER_LAYER] * encoder_fwd.num_h0_components()) }, iscale, "p_fact_encoder_state_to_cxt_bias");
 
-        p_cxt_to_encoder = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]), long(hidden_dim[INTENTION_LAYER]) }, iscale);
-        p_cxt_to_encoder_bias = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale);
+        p_cxt_to_encoder = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]), long(hidden_dim[INTENTION_LAYER]) }, iscale, "p_cxt_to_encoder");
+        p_cxt_to_encoder_bias = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale, "p_cxt_to_encoder_bias");
 
-        p_cxt_to_decoder = model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_dim[INTENTION_LAYER]) }, iscale);
-        p_cxt_to_decoder_bias = model.add_parameters({ long(hidden_dim[DECODER_LAYER]) }, iscale);
+        p_cxt_to_decoder = model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_dim[INTENTION_LAYER]) }, iscale, "p_cxt_to_decoder");
+        p_cxt_to_decoder_bias = model.add_parameters({ long(hidden_dim[DECODER_LAYER]) }, iscale, "p_cxt_to_decoder_bias");
 
-        p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(hidden_dim[ENCODER_LAYER]) }, iscale);
+        p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(hidden_dim[ENCODER_LAYER]) }, iscale , "p_U");
 
         unsigned align_dim = hidden_dim[ALIGN_LAYER];
-        p_Wa = model.add_parameters({ long(align_dim), long(hidden_replicates * layers[INTENTION_LAYER] * hidden_dim[INTENTION_LAYER]) }, iscale);
-        p_va = model.add_parameters({ long(align_dim) }, iscale);
-        p_Q = model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_replicates * hidden_dim[DECODER_LAYER]) }, iscale);
+        p_Wa = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]), long(hidden_replicates * layers[INTENTION_LAYER] * hidden_dim[INTENTION_LAYER]) }, iscale, "p_Wa");
+        p_va = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, 0, "p_va");
+        p_Q = model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_replicates * hidden_dim[DECODER_LAYER]) }, iscale, "p_Q");
+
+        p_scale = model.add_parameters({ long(1) }, 0.0, "p_scale");
     }
 
     void assign_cxt(ComputationGraph& cg, size_t nutt, vector<vector<cnn::real>>& v_cxt_s, vector<vector<cnn::real>>& v_decoder_s)
@@ -1947,8 +1952,12 @@ public:
 
             Expression i_h_tm1 = concatenate(i_cxt_final_s);
             vector<Expression> alpha;
-            vector<Expression> v_obs = attention_to_source_bilinear(v_facts, each_fact_len, i_va, i_Wa, i_h_tm1, hidden_dim[ALIGN_LAYER], nutt, alpha);
-
+            vector<Expression> v_obs = attention_using_bilinear(v_facts, each_fact_len, i_Wa, i_h_tm1, hidden_dim[ENCODER_LAYER], nutt, alpha, i_scale);
+            if (verbose)
+            {
+                display_value(concatenate_cols(alpha), cg, "attention weights");
+                display_value(i_scale, cg, "exponential coeff");
+            }
             Expression cxt_input = concatenate_cols(v_obs);
             context.add_input(i_fact_encoder_state_to_cxt * cxt_input + i_fact_encoder_state_to_cxt_bias);
 
@@ -1991,6 +2000,8 @@ public:
             i_cxt_to_encoder_bias = parameter(cg, p_cxt_to_encoder_bias);
             i_cxt_to_decoder = parameter(cg, p_cxt_to_decoder);
             i_cxt_to_decoder_bias = parameter(cg, p_cxt_to_decoder_bias);
+
+            i_scale = exp(parameter(cg, p_scale));
         }
 
         std::vector<Expression> source_embeddings;
@@ -2057,6 +2068,7 @@ public:
 
         /// the task is classification
         assert(oslen == 1);
+
         Expression i_frm_cxt = concatenate(context.final_s());
 
         Expression i_y_t = decoder.add_input(i_frm_cxt);
@@ -2069,6 +2081,8 @@ public:
             Expression r_r_t = pickrange(x_r_t, i * vocab_size_tgt, (i + 1)*vocab_size_tgt);
             Expression i_ydist = log_softmax(r_r_t);
             errs.push_back(pick(i_ydist, osent[i][0]));
+
+            tgt_words++;
         }
 
         Expression i_nerr = -sum(errs);
