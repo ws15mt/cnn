@@ -595,8 +595,8 @@ namespace cnn {
                 intention.push_back(p.last);
 
                 /// no recurrent
-                twords += p.middle.size();
-                swords += p.first.size();
+                twords += p.middle.size();  /// target doesn't have </s> so use the full observations
+                swords += (p.first.size()> 0)?(p.first.size()-1):0;
             }
 
             s2tmodel.reset();
@@ -626,8 +626,8 @@ namespace cnn {
                 intention.push_back(p.last);
 
                 /// no recurrent
-                twords += p.middle.size();
-                swords += p.first.size();
+                twords += p.middle.size();  /// target doesn't have </s> so use the full observations
+                swords += (p.first.size()> 0) ? (p.first.size() - 1) : 0;
             }
 
             s2tmodel.assign_cxt(cg, intention);
