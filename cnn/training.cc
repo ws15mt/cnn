@@ -2,6 +2,8 @@
 
 #include "cnn/gpu-ops.h"
 
+extern int verbose;
+
 namespace cnn {
 
 using namespace std;
@@ -69,6 +71,10 @@ void MomentumSGDTrainer::update(real nutt, real scale) {
     Tensor& v = vp[pi++].h;
     auto reg = *p->values * lambda;
     (*v) = momentum * (*v) - (eta * scale * gscale*nutt_scale) * (*p->g);
+    if (verbose)
+    {
+        cout << "name= " << p->name << " v= " << p->values.v[0] << " g= " << p->g.v[0] << " dv=" << v.v[0] << endl;
+    }
     *p->values += *v - reg;
     p->clear();
   }

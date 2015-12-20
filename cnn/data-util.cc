@@ -810,3 +810,19 @@ vector<cnn::real> read_embedding(const string& line, Dict& sd, int & index)
     index = id;
     return v_data;
 }
+
+string builder_flavour(variables_map vm)
+{
+    string flavour = "rnn";
+    if (vm.count("lstm"))	flavour = "lstm";
+    else if (vm.count("gru"))	flavour = "gru";
+    else if (vm.count("dglstm"))	flavour = "dglstm";
+    else if (vm.count("dglstm-dnn")) flavour = "dnn";
+    else if (vm.count("builder")>0)
+    {
+        flavour = vm["builder"].as<string>();
+    }
+
+    return flavour;
+}
+

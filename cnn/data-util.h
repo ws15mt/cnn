@@ -11,9 +11,11 @@
 #include "cnn/dglstm.h"
 #include "cnn/dict.h"
 #include "cnn/expr.h"
+#include <boost/program_options/variables_map.hpp>
 
 using namespace cnn;
 using namespace std;
+using namespace boost::program_options;
 
 typedef vector<cnn::real> FVector;
 typedef vector<FVector>   FMatrix;
@@ -139,3 +141,8 @@ std::string wstring_to_utf8(const std::wstring& str);
 /// utiles to read facebook data
 int read_one_line_facebook_qa(const std::string& line, std::vector<int>& v, Dict& sd);
 FBCorpus read_facebook_qa_corpus(const string &filename, size_t & diag_id, Dict& sd);
+
+/**
+return flavour of a builder in string
+*/
+string builder_flavour(variables_map vm);
