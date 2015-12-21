@@ -1249,7 +1249,9 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
         sgd = new SimpleSGDTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
     if (vm["trainer"].as<string>() == "adagrad")
         sgd = new AdagradTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
-    sgd->clip_threshold = vm["clip"].as<cnn::real>();
+    if (vm["trainer"].as<string>() == "adadelta")
+        sgd = new AdadeltaTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
+    sgd->clip_threshold = vm["clip"].as<float>();
 
     cerr << "%% Using " << flavour << " recurrent units" << endl;
 
