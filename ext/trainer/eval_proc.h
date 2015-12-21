@@ -66,7 +66,7 @@ public:
     Expression score(const vector<int>& ref, const vector<int>& res, ComputationGraph& cg);
     cnn::real score(Expression er, ComputationGraph& cg);
 
-    int scoreInEmbeddingSpace(Proc &am, Dialogue &v_v_dialogues, Dict& td, double &dloss, double & dchars_s, double & dchars_t);
+    int scoreInEmbeddingSpace(Proc &am, Dialogue &v_v_dialogues, Dict& td, cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t);
 };
 
 template<class Proc>
@@ -132,7 +132,7 @@ cnn::real EvaluateProcess<Proc>::score(Expression er, ComputationGraph& cg)
 }
 
 template <class AM_t>
-int EvaluateProcess<AM_t>::scoreInEmbeddingSpace(AM_t &am, Dialogue &v_v_dialogues, Dict& td, double &dloss, double & dchars_s, double & dchars_t)
+int EvaluateProcess<AM_t>::scoreInEmbeddingSpace(AM_t &am, Dialogue &v_v_dialogues, Dict& td, cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t)
 {
     size_t i_turns = 0;
     size_t turn_id = 0;

@@ -30,7 +30,7 @@ DGLSTMBuilder::DGLSTMBuilder(unsigned ilayers,
     unsigned input_dim,
     unsigned hidden_dim,
     Model* model,
-    float iscale, 
+    cnn::real iscale, 
     string name) 
 {
     string i_name;

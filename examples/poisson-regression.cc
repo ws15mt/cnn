@@ -132,7 +132,7 @@ int main(int argc, char** argv) {
      << "-pid" << getpid() << ".params";
   const string fname = os.str();
   cerr << "Parameters will be written to: " << fname << endl;
-  double best = 9e+99;
+  cnn::real best = 9e+99;
 
   Model model;
   Trainer* sgd = nullptr;
@@ -156,7 +156,7 @@ int main(int argc, char** argv) {
   unsigned lines = 0;
   while(1) {
     Timer iteration("completed in");
-    double loss = 0;
+    cnn::real loss = 0;
     unsigned chars = 0;
     for (unsigned i = 0; i < report_every_i; ++i) {
       if (si == training.size()) {
@@ -183,7 +183,7 @@ int main(int argc, char** argv) {
     // show score on dev data?
     report++;
     if (report % dev_every_i_reports == 0) {
-      double dloss = 0;
+      cnn::real dloss = 0;
       int dchars = 0;
       for (auto& sent : dev) {
         ComputationGraph cg;
@@ -197,7 +197,7 @@ int main(int argc, char** argv) {
         boost::archive::text_oarchive oa(out);
         oa << model;
       }
-      cerr << "\n***DEV [epoch=" << (lines / (double)training.size()) << "] E = " << (dloss / dchars) << " ppl=" << exp(dloss / dchars) << ' ';
+      cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dloss / dchars) << " ppl=" << exp(dloss / dchars) << ' ';
     }
   }
   delete sgd;

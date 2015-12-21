@@ -92,7 +92,7 @@ public:
 
 public:
     DialogueBuilder() {};
-    DialogueBuilder(cnn::Model& model, int vocab_size_src, int vocab_size_tgt, const vector<size_t>& layers, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, float iscale = 1.0) :
+    DialogueBuilder(cnn::Model& model, int vocab_size_src, int vocab_size_tgt, const vector<size_t>& layers, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, cnn::real iscale = 1.0) :
         layers(layers),
         decoder(layers[DECODER_LAYER], hidden_dims[DECODER_LAYER] + decoder_use_additional_input * hidden_dims[ENCODER_LAYER], hidden_dims[DECODER_LAYER], &model, iscale),
         encoder_fwd(layers[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),

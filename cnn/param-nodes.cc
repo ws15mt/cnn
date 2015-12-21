@@ -49,9 +49,9 @@ Dim InputNode::dim_forward(const vector<Dim>& xs) const {
 void InputNode::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 0);
 #if HAVE_CUDA
-  cudaMemcpyAsync(fx.v, &pdata->front(), dim.size() * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpyAsync(fx.v, &pdata->front(), dim.size() * sizeof(cnn::real), cudaMemcpyHostToDevice);
 #else
-  memcpy(fx.v, &pdata->front(), dim.size() * sizeof(float));
+  memcpy(fx.v, &pdata->front(), dim.size() * sizeof(cnn::real));
 #endif
 }
 
@@ -71,13 +71,13 @@ string ScalarInputNode::as_string(const vector<string>& arg_names) const {
 }
 
 Dim ScalarInputNode::dim_forward(const vector<Dim>& xs) const {
-  return Dim({1});
+    return Dim({ (long)1 });
 }
 
 void ScalarInputNode::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 0);
 #if HAVE_CUDA
-  cudaMemcpyAsync(fx.v, pdata, 1 * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpyAsync(fx.v, pdata, 1 * sizeof(cnn::real), cudaMemcpyHostToDevice);
 #else
   fx.v[0] = *pdata;
 #endif

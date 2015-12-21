@@ -11,7 +11,7 @@
 using namespace std;
 using namespace cnn::expr;
 
-inline bool is_close(float a, float b) {
+inline bool is_close(cnn::real a, cnn::real b) {
     /// to-do use CNTK's isclose function
     return (fabs(a - b) < 1e-7);
 }

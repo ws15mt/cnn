@@ -18,7 +18,7 @@ enum { X2Z, H2Z, BZ, X2R, H2R, BR, X2H, H2H, BH };
 GRUBuilder::GRUBuilder(unsigned ilayers,
                        unsigned input_dim,
                        unsigned hidden_dim,
-                       Model* model, float iscale, 
+                       Model* model, cnn::real iscale, 
                        string name) : hidden_dim(hidden_dim) {
   layers = ilayers; 
   string i_name;

@@ -49,7 +49,7 @@ namespace cnn {
             unsigned hidden_replicates, 
             unsigned additional_input,
             unsigned mem_slots = MEM_SIZE,
-            float iscale = 1.0)
+            cnn::real iscale = 1.0)
             : s2tmodel(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
         {
             swords = 0;
@@ -379,7 +379,7 @@ namespace cnn {
             unsigned hidden_replicates,
             unsigned decoder_additional_input = 0,
             unsigned mem_slots = MEM_SIZE,
-            float iscale = 1.0)
+            cnn::real iscale = 1.0)
             : DialogueProcessInfo<DBuilder>(model, layers, vocab_size_src, vocab_size_tgt, hidden_dim, hidden_replicates, decoder_additional_input, mem_slots, iscale)
         {
         }
@@ -521,7 +521,7 @@ namespace cnn {
             unsigned hidden_replicates,
             unsigned decoder_additional_input = 0,
             unsigned mem_slots = MEM_SIZE,
-            float iscale = 1.0)
+            cnn::real iscale = 1.0)
             : DialogueProcessInfo<DBuilder>(model, layers, vocab_size_src, vocab_size_tgt, hidden_dim, hidden_replicates, decoder_additional_input, mem_slots, iscale)
         {}
 
@@ -701,7 +701,7 @@ namespace cnn {
             unsigned hidden_replicates,
             unsigned additional_input,
             unsigned mem_slots = MEM_SIZE,
-            float iscale = 1.0)
+            cnn::real iscale = 1.0)
             : AttentionWithIntentionModel(model, layers, vocab_size_src, vocab_size_tgt, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
         {
         }

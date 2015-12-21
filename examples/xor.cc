@@ -49,7 +49,7 @@ int main(int argc, char** argv) {
 
   // train the parameters
   for (unsigned iter = 0; iter < ITERATIONS; ++iter) {
-    double loss = 0;
+    cnn::real loss = 0;
     for (unsigned mi = 0; mi < 4; ++mi) {
       bool x1 = mi % 2;
       bool x2 = (mi / 2) % 2;

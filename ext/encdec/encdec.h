@@ -83,7 +83,7 @@ public:
 
 public:
     EncModel() {};
-    EncModel(cnn::Model& model, int layers, int vocab_size_src, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, float iscale = 1.0) :
+    EncModel(cnn::Model& model, int layers, int vocab_size_src, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, cnn::real iscale = 1.0) :
         layers(layers),
         encoder_fwd(layers, hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
         encoder_bwd(layers, hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),

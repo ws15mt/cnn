@@ -19,15 +19,15 @@
 namespace cnn {
 
 struct Hypothesis {
-    Hypothesis(RNNPointer state, int tgt, float cst, int _t)
+    Hypothesis(RNNPointer state, int tgt, cnn::real cst, int _t)
         : builder_state(state), target({tgt}), cost(cst), t(_t) {}
-    Hypothesis(RNNPointer state, int tgt, float cst, Hypothesis &last)
+    Hypothesis(RNNPointer state, int tgt, cnn::real cst, Hypothesis &last)
         : builder_state(state), target(last.target), cost(cst), t(last.t+1) {
         target.push_back(tgt);
     }
     RNNPointer builder_state;
     std::vector<int> target;
-    float cost;
+    cnn::real cost;
     int t;
 };
 

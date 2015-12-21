@@ -13,7 +13,7 @@ using namespace cnn;
 using namespace std;
 
 // Chris -- this should be a library function
-Expression arange(ComputationGraph &cg, unsigned begin, unsigned end, bool log_transform, std::vector<float> *aux_mem) 
+Expression arange(ComputationGraph &cg, unsigned begin, unsigned end, bool log_transform, std::vector<cnn::real> *aux_mem) 
 {
     aux_mem->clear();
     for (unsigned i = begin; i < end; ++i) 
@@ -22,7 +22,7 @@ Expression arange(ComputationGraph &cg, unsigned begin, unsigned end, bool log_t
 }
 
 // Chris -- this should be a library function
-Expression repeat(ComputationGraph &cg, unsigned num, float value, std::vector<float> *aux_mem) 
+Expression repeat(ComputationGraph &cg, unsigned num, cnn::real value, std::vector<cnn::real> *aux_mem) 
 {
     aux_mem->clear();
     aux_mem->resize(num, value);
@@ -30,7 +30,7 @@ Expression repeat(ComputationGraph &cg, unsigned num, float value, std::vector<f
 }
 
 // Chris -- this should be a library function
-Expression dither(ComputationGraph &cg, const Expression &expr, float pad_value, std::vector<float> *aux_mem)
+Expression dither(ComputationGraph &cg, const Expression &expr, cnn::real pad_value, std::vector<cnn::real> *aux_mem)
 {
     const auto& shape = cg.nodes[expr.i]->dim;
     aux_mem->clear();
@@ -49,18 +49,18 @@ Expression abs(const Expression &expr)
 }
 
 // binary boolean functions, is it better to use a sigmoid?
-Expression eq(const Expression &expr, float value, float epsilon) 
+Expression eq(const Expression &expr, cnn::real value, cnn::real epsilon) 
 {
     return min(rectify(expr - (value - epsilon)), rectify(-expr + (value + epsilon))) / epsilon; 
 }
 
-Expression geq(const Expression &expr, float value, Expression &one, float epsilon) 
+Expression geq(const Expression &expr, cnn::real value, Expression &one, cnn::real epsilon) 
 {
     return min(one, rectify(expr - (value - epsilon)) / epsilon);
         //rectify(1 - rectify(expr - (value - epsilon)));
 }
 
-Expression leq(const Expression &expr, float value, Expression &one, float epsilon) 
+Expression leq(const Expression &expr, cnn::real value, Expression &one, cnn::real epsilon) 
 {
     return min(one, rectify((value + epsilon) - expr) / epsilon);
     //return rectify(1 - rectify((value + epsilon) - expr));
@@ -167,14 +167,14 @@ bool similar_length(const vector<vector<int>>& source)
         imin = std::min<int>(p.size(), imin);
     }
 
-    return (fabs((float)(imax - imin)) < 3.0);
+    return (fabs((cnn::real)(imax - imin)) < 3.0);
 }
 
 /// src is without reduntent info
 /// v_src is without reduntent info
 vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, float fscale )
+    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, cnn::real fscale )
 {
     Expression i_c_t;
     Expression i_e_t;
@@ -220,7 +220,7 @@ vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<
 /// use bilinear model for attention
 vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, const vector<size_t>& v_slen,
     Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, const float fscale)
+    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, const cnn::real fscale)
 {
     Expression i_c_t;
     Expression i_e_t;
@@ -516,14 +516,14 @@ void display_value(const Expression &source, ComputationGraph &cg, string what_t
     cg.incremental_forward();
     const Tensor &a = cg.get_value(source.i);
 
-    float I = a.d.cols();
-    float J = a.d.rows();
+    cnn::real I = a.d.cols();
+    cnn::real J = a.d.rows();
 
     if (what_to_say.size() > 0)
         cout << what_to_say << endl;
     for (int j = 0; j < J; ++j) {
         for (int i = 0; i < I; ++i) {
-            float v = TensorTools::AccessElement(a, Dim(j, i));
+            cnn::real v = TensorTools::AccessElement(a, Dim(j, i));
             std::cout << v << ' ';
         }
         std::cout << endl;

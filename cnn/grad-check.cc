@@ -14,9 +14,9 @@ using namespace std;
 namespace cnn {
 
 void CheckGrad(Model& m, ComputationGraph& g) {
-  float alpha = GRADIENT_CHECK_PARAM_DELTA; /// change to this alpha, which then shows that the difference between numeric and error propagation is around 10e-5.
+  cnn::real alpha = GRADIENT_CHECK_PARAM_DELTA; /// change to this alpha, which then shows that the difference between numeric and error propagation is around 10e-5.
 
-  float E = as_scalar(g.forward());
+  cnn::real E = as_scalar(g.forward());
   g.backward();
 
   bool flag = false;
@@ -26,41 +26,43 @@ void CheckGrad(Model& m, ComputationGraph& g) {
     Parameters& p = *pp;
     size_t ts = p.dim.size();
     
-    for (size_t i = 0; i < ts; ++i) {
-        float old, newval;
+    size_t sample_step = ts / 10;
+    if (ts <= 10) sample_step = 10;
+    for (size_t i = 0; i < ts; i += sample_step) {
+        cnn::real old, newval;
 #if HAVE_CUDA
-        cudaMemcpy(&old, &p.values.v[i], sizeof(float), cudaMemcpyDeviceToHost);
+        cudaMemcpy(&old, &p.values.v[i], sizeof(cnn::real), cudaMemcpyDeviceToHost);
 #else
       old = p.values.v[i];
 #endif
 
       newval = old - alpha;
 #if HAVE_CUDA
-      cudaMemcpy(&p.values.v[i], &newval, sizeof(float), cudaMemcpyHostToDevice);
+      cudaMemcpy(&p.values.v[i], &newval, sizeof(cnn::real), cudaMemcpyHostToDevice);
 #else
       p.values.v[i] = newval;
 #endif
-      float E_left = as_scalar(g.forward());
+      cnn::real E_left = as_scalar(g.forward());
 
       newval = old + alpha;
 #if HAVE_CUDA
-      cudaMemcpy(&p.values.v[i] , &newval, sizeof(float), cudaMemcpyHostToDevice);
+      cudaMemcpy(&p.values.v[i] , &newval, sizeof(cnn::real), cudaMemcpyHostToDevice);
 #else
       p.values.v[i] = newval;
 #endif
-      float E_right = as_scalar(g.forward());
-      float g = (E_right - E_left) / (2*alpha);
+      cnn::real E_right = as_scalar(g.forward());
+      cnn::real g = (E_right - E_left) / (2*alpha);
 
-      float threshold;
-      float grd;
+      cnn::real threshold;
+      cnn::real grd;
 #if HAVE_CUDA
-      cudaMemcpy(&grd, &p.g.v[i], sizeof(float), cudaMemcpyDeviceToHost);
+      cudaMemcpy(&grd, &p.g.v[i], sizeof(cnn::real), cudaMemcpyDeviceToHost);
 #else
       grd = p.g.v[i];
 #endif
-      threshold = (float)pow(10.0,
-          max((float)0.0, ceil(log10(min(fabs(g), fabs(grd))))) - (int)GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL);
-      float diff = fabs(g - grd);
+      threshold = (cnn::real)pow(10.0,
+          max((cnn::real)0.0, ceil(log10(min(fabs(g), fabs(grd))))) - (int)GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL);
+      cnn::real diff = fabs(g - grd);
       bool wrong = (std::isnan(diff) || diff > threshold);
       
       if (diff > 0.2)
@@ -86,15 +88,15 @@ void CheckGrad(Model& m, ComputationGraph& g) {
       Tensor& v = p.values[j];
       Tensor& ag = p.grads[j];
       for (size_t i = 0; i < ts; ++i) {
-        float old = v.v[i];
+        cnn::real old = v.v[i];
         v.v[i] = old - alpha;
-        float E_left = as_scalar(g.forward());
+        cnn::real E_left = as_scalar(g.forward());
 
         v.v[i] = old + alpha;
-        float E_right = as_scalar(g.forward());
-        float g = (E_right - E_left) / (2 * alpha);
-        float f = fabs(g - ag.v[i]);
-        float m = max(fabs(g), fabs(ag.v[i]));
+        cnn::real E_right = as_scalar(g.forward());
+        cnn::real g = (E_right - E_left) / (2 * alpha);
+        cnn::real f = fabs(g - ag.v[i]);
+        cnn::real m = max<cnn::real>(fabs(g), fabs(ag.v[i]));
         if (f > 0.1) {
           if (m > 0.f) f /= m;
           if (f > 0.1) { flag = true; cerr << "*** "; }
@@ -113,17 +115,17 @@ void CheckGrad(Model& m, ComputationGraph& g) {
 }
 
 void UnitTest(Expression node, ComputationGraph& g) {
-    float alpha = GRADIENT_CHECK_PARAM_DELTA; /// change to this alpha, which then shows that the difference between numeric and error propagation is around 10e-5.
+    cnn::real alpha = GRADIENT_CHECK_PARAM_DELTA; /// change to this alpha, which then shows that the difference between numeric and error propagation is around 10e-5.
 
     VariableIndex iidx = node.i;
     Tensor ov;
 
     /// do forward pass to have everything initialized
-    float E0 = as_scalar(g.forward());
+    cnn::real E0 = as_scalar(g.forward());
 
     /// check only this node
     g.set_last_node_evaluated(iidx);
-    float E = as_scalar(g.incremental_forward());
+    cnn::real E = as_scalar(g.incremental_forward());
     ov = g.get_value(node);
 
     assert(E == E0);
@@ -136,7 +138,7 @@ void UnitTest(Expression node, ComputationGraph& g) {
     bool flag = false;
     {
         for (size_t i = 0; i < ivalue.size(); ++i) {
-            float old, newval;
+            cnn::real old, newval;
             old = ivalue[i];
 
             newval = old - alpha;
@@ -144,22 +146,22 @@ void UnitTest(Expression node, ComputationGraph& g) {
             tv.v[i] = newval;
             g.set_value(tv, node);
             g.set_last_node_evaluated(iidx);
-            float E_left = as_scalar(g.incremental_forward());
+            cnn::real E_left = as_scalar(g.incremental_forward());
 
             newval = old + alpha;
             tv = ov;
             tv.v[i] = newval;
             g.set_value(tv, node);
             g.set_last_node_evaluated(iidx);
-            float E_right = as_scalar(g.incremental_forward());
-            float g = (E_right - E_left) / (2 * alpha);
+            cnn::real E_right = as_scalar(g.incremental_forward());
+            cnn::real g = (E_right - E_left) / (2 * alpha);
 
-            float threshold;
-            float grd;
+            cnn::real threshold;
+            cnn::real grd;
             grd = grderr[i];
-            threshold = (float)pow(10.0,
-                max((float)0.0, ceil(log10(min(fabs(g), fabs(grd))))) - (int)GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL);
-            float diff = fabs(g - grd);
+            threshold = (cnn::real)pow(10.0,
+                max((cnn::real)0.0, ceil(log10(min(fabs(g), fabs(grd))))) - (int)GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL);
+            cnn::real diff = fabs(g - grd);
             bool wrong = (std::isnan(diff) || diff > threshold);
 
             if (diff > 0.2)

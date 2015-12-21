@@ -13,10 +13,10 @@ Trainer::~Trainer() {}
 /** 
 @scale : proportional to the number of samples trained in parallel 
 */
-float Trainer::clip_gradients(float samples) {
-  float gscale = 1;
+cnn::real Trainer::clip_gradients(cnn::real samples) {
+  cnn::real gscale = 1;
   if (clipping_enabled) {
-    float gg = model->gradient_l2_norm();
+    cnn::real gg = model->gradient_l2_norm();
     if (gg > clip_threshold * samples) {
       ++clips;
       gscale = (clip_threshold * samples) / gg;
@@ -25,13 +25,13 @@ float Trainer::clip_gradients(float samples) {
   return gscale;
 }
 
-void SimpleSGDTrainer::update(float nutt, real scale) {
+void SimpleSGDTrainer::update(cnn::real nutt, real scale) {
     update(model->lookup_parameters_list(), model->parameters_list(), nutt, scale);
 }
 
-void SimpleSGDTrainer::update(const std::vector<LookupParameters*> &lookup_params, const std::vector<Parameters*> &params, float samples, real scale) {
-  const float gscale = clip_gradients(samples);
-  float nutt_scale = 1.0 / samples;
+void SimpleSGDTrainer::update(const std::vector<LookupParameters*> &lookup_params, const std::vector<Parameters*> &params, cnn::real samples, real scale) {
+  const cnn::real gscale = clip_gradients(samples);
+  cnn::real nutt_scale = 1.0 / samples;
   for (auto p : params) {
 #if HAVE_CUDA
     gpu::sgd_update(p->values.d.size(), p->g.v, p->values.v, eta * scale * gscale * nutt_scale, lambda);
@@ -55,7 +55,7 @@ void SimpleSGDTrainer::update(const std::vector<LookupParameters*> &lookup_param
   ++updates;
 }
 
-void MomentumSGDTrainer::update(real nutt, real scale) {
+void MomentumSGDTrainer::update(cnn::real nutt, cnn::real scale) {
   // executed on the first iteration to create vectors to
   // store the velocity
   if (!velocity_allocated) {
@@ -64,8 +64,8 @@ void MomentumSGDTrainer::update(real nutt, real scale) {
     velocity_allocated = true;
   }
 
-  const float gscale = clip_gradients(nutt);
-  float nutt_scale = 1.0 / nutt;
+  const cnn::real gscale = clip_gradients(nutt);
+  cnn::real nutt_scale = 1.0 / nutt;
   unsigned pi = 0;
   for (auto p : model->parameters_list()) {
     Tensor& v = vp[pi++].h;
@@ -92,7 +92,7 @@ void MomentumSGDTrainer::update(real nutt, real scale) {
   ++updates;
 }
 
-void AdagradTrainer::update(real nsamples, real scale) {
+void AdagradTrainer::update(cnn::real nsamples, cnn::real scale) {
   unsigned pi;
   if (!shadow_params_allocated) {
     vp = AllocateShadowParameters(*model);
@@ -101,7 +101,7 @@ void AdagradTrainer::update(real nsamples, real scale) {
   }
 
   pi = 0;
-  const float gscale = clip_gradients(nsamples);
+  const cnn::real gscale = clip_gradients(nsamples);
   for (auto p : model->parameters_list()) {
     Tensor& v = vp[pi++].h;
     auto reg = (*p->values) * lambda;
@@ -129,7 +129,7 @@ void AdagradTrainer::update(real nsamples, real scale) {
   ++updates;
 }
 
-void AdadeltaTrainer::update(real nutt, real scale) {
+void AdadeltaTrainer::update(cnn::real nutt, cnn::real scale) {
   unsigned pi;
   if (!shadow_params_allocated) {
     hg = AllocateShadowParameters(*model);
@@ -158,8 +158,8 @@ void AdadeltaTrainer::update(real nutt, real scale) {
     shadow_params_allocated = true;
   }
 
-  const float gscale = clip_gradients(nutt);
-  float nutt_scale = 1.0 / nutt;
+  const cnn::real gscale = clip_gradients(nutt);
+  cnn::real nutt_scale = 1.0 / nutt;
   pi = 0;
   for (auto p : model->parameters_list()) {
     auto& g = (scale * gscale * nutt_scale) * *p->g;
@@ -216,8 +216,8 @@ void RmsPropTrainer::update(real nutt, real scale) {
     shadow_params_allocated = true;
   }
 
-  const float gscale = clip_gradients(nutt);
-  float nutt_scale = 1.0 / nutt;
+  const cnn::real gscale = clip_gradients(nutt);
+  cnn::real nutt_scale = 1.0 / nutt;
   pi = 0;
   for (auto p : model->parameters_list()) {
     real& d2 = hg[pi++];
@@ -243,7 +243,7 @@ void RmsPropTrainer::update(real nutt, real scale) {
   ++updates;
 }
 
-void AdamTrainer::update(real nutt, real scale) {
+void AdamTrainer::update(cnn::real nutt, cnn::real scale) {
   unsigned pi;
   if (!shadow_params_allocated) {
     m = AllocateShadowParameters(*model);
@@ -253,8 +253,8 @@ void AdamTrainer::update(real nutt, real scale) {
     shadow_params_allocated = true;
   }
 
-  const float gscale = clip_gradients();
-  float nutt_scale = 1.0 / nutt;
+  const cnn::real gscale = clip_gradients();
+  cnn::real nutt_scale = 1.0 / nutt;
   pi = 0;
   static unsigned t = 0;
   for (auto p : model->parameters_list()) {
@@ -266,8 +266,8 @@ void AdamTrainer::update(real nutt, real scale) {
     m_t = beta_1 * m_t + (1 - beta_1) * g_t;
     auto g2 = g_t.cwiseProduct(g_t);
     v_t = beta_2 * v_t + (1 - beta_2) * g2;
-    float s1 = 1 - pow(beta_1, t);
-    float s2 = 1 - pow(beta_2, t);
+    cnn::real s1 = 1 - pow(beta_1, t);
+    cnn::real s2 = 1 - pow(beta_2, t);
     auto mhat = m_t / s1;
     auto vhat = v_t / s2;
     auto delta = (-eta * mhat).cwiseQuotient((vhat.array().sqrt() + eps).matrix());
@@ -288,8 +288,8 @@ void AdamTrainer::update(real nutt, real scale) {
       auto reg = (*p->values[i]) * lambda;
       m_t = beta_1 * m_t + (1 - beta_1) * g_t;
       v_t = beta_2 * v_t + (1 - beta_2) * g2;
-      float s1 = 1 - pow(beta_1, t);
-      float s2 = 1 - pow(beta_2, t);
+      cnn::real s1 = 1 - pow(beta_1, t);
+      cnn::real s2 = 1 - pow(beta_2, t);
       auto mhat = m_t / s1;
       auto vhat = v_t / s2;
       auto delta = (-eta * mhat).cwiseQuotient((vhat.array().sqrt() + eps).matrix());

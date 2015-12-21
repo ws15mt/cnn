@@ -74,7 +74,7 @@ Dim FoldRows::dim_forward(const vector<Dim>& xs) const {
     cerr << "Bad input dimensions in FoldRows: " << xs << endl;
     throw std::invalid_argument("bad input dimensions in FoldRows");
   }
-  return Dim({orows, xs[0].cols()});
+  return Dim({orows, (long)xs[0].cols()});
 }
 
 void FoldRows::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
@@ -130,7 +130,7 @@ Dim Conv1DNarrow::dim_forward(const vector<Dim>& xs) const {
     cerr << "Bad input dimensions in Conv1DNarrow: " << xs << endl;
     throw std::invalid_argument("bad input dimensions in Conv1DNarrow");
   }
-  return Dim({xs[0].rows(), ocols});
+  return Dim({(long)xs[0].rows(), ocols});
 }
 
 void Conv1DNarrow::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
@@ -142,7 +142,7 @@ void Conv1DNarrow::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
       const unsigned fcols = f.cols();
       for (unsigned i = 0; i < rows; ++i) {
         for (unsigned j = 0; j < ycols; ++j) {
-          float t = 0;
+          cnn::real t = 0;
           for (unsigned k = 0; k < fcols; ++k)
             t += f(i, k) * x(i, j + k);
           y(i, j) = t;
@@ -198,7 +198,7 @@ Dim Conv1DWide::dim_forward(const vector<Dim>& xs) const {
     cerr << "Bad input dimensions in Conv1DWide: " << xs << endl;
     throw std::invalid_argument("bad input dimensions in Conv1DWide");
   }
-  return Dim({xs[0].rows(), ocols});
+  return Dim({(long)xs[0].rows(), ocols});
 }
 
 void Conv1DWide::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
@@ -226,7 +226,7 @@ void Conv1DWide::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
 
     for (unsigned i = 0; i < rows; ++i) {
         for (unsigned j = 0; j < xcols; ++j) {
-            const float xij = x(i, j);
+            const cnn::real xij = x(i, j);
             for (unsigned k = 0; k < fcols; ++k)
                 y(i, j + k) += f(i, k) * xij;
         }
@@ -273,7 +273,7 @@ void Conv1DWide::backward(const vector<const Tensor*>& xs,
     auto x = **xs[0];
     for (unsigned i = 0; i < rows; ++i) {
       for (unsigned j = 0; j < xcols; ++j) {
-        const float xij = x(i, j);
+        const cnn::real xij = x(i, j);
         for (unsigned k = 0; k < fcols; ++k)
           di(i, k) += xij * d(i, j + k);
       }
@@ -312,8 +312,8 @@ void KMaxPooling::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
 #else
   auto x = **xs[0];
   auto y=*fx;
-  boost::shared_ptr<float> shared_tmp(new float[x.cols()]); 
-  float * tmp = shared_tmp.get();
+  boost::shared_ptr<cnn::real> shared_tmp(new cnn::real[x.cols()]); 
+  cnn::real * tmp = shared_tmp.get();
 
   const unsigned rows = x.rows();
   const unsigned xcols = x.cols();
@@ -323,10 +323,10 @@ void KMaxPooling::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
     for (unsigned j=0; j < xcols; ++j)
       tmp[j] = -x(i,j);
     nth_element(tmp, tmp + (k-1), tmp + xcols);
-    const float c = -tmp[k-1];  // kth largest element in row i
+    const cnn::real c = -tmp[k-1];  // kth largest element in row i
     int tt = 0;
     for (unsigned j = 0; j < xcols; ++j) {
-      const float xij = x(i,j);
+      const cnn::real xij = x(i,j);
       if (xij >= c) {
         //cerr << xij << ' ';
         y(i,tt) = xij;

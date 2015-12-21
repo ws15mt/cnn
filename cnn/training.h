@@ -23,7 +23,7 @@ struct Trainer {
   /**
   @nutt: proportional to the number of utterances trained in parallel
   */
-  float clip_gradients(float nutt = 1.0);
+  cnn::real clip_gradients(cnn::real nutt = 1.0);
 
   // learning rates
   real eta0;
@@ -83,7 +83,7 @@ struct AdagradTrainer : public Trainer {
 struct AdadeltaTrainer : public Trainer {
   explicit AdadeltaTrainer(Model* m, real lam = 1e-6, real eps = 1e-6, real rho = 0.95) :
     Trainer(m, lam, 1.0), epsilon(eps), rho(rho), shadow_params_allocated(false) {}
-  void update(real nutt, real scale) override;
+  void update(cnn::real nutt, cnn::real scale) override;
 
   real epsilon;
   real rho;
@@ -107,14 +107,14 @@ struct RmsPropTrainer : public Trainer {
 };
 
 struct AdamTrainer : public Trainer {
-  explicit AdamTrainer(Model* m, float lambda = 1e-6, float alpha = 0.001, float beta_1 = 0.9, float beta_2 = 0.999, float eps = 1e-8) :
+  explicit AdamTrainer(Model* m, cnn::real lambda = 1e-6, cnn::real alpha = 0.001, cnn::real beta_1 = 0.9, cnn::real beta_2 = 0.999, cnn::real eps = 1e-8) :
     Trainer(m, lambda, alpha), beta_1(beta_1), beta_2(beta_2), eps(eps), shadow_params_allocated(false) {}
 
   void update(real nutt, real scale) override;
 
-  float beta_1;
-  float beta_2;
-  float eps;
+  cnn::real beta_1;
+  cnn::real beta_2;
+  cnn::real eps;
   bool shadow_params_allocated;
   std::vector<ShadowParameters> m; // History of gradients
   std::vector<ShadowLookupParameters> lm;

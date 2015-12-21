@@ -73,7 +73,7 @@ int kTGT_SOS;
 int kTGT_EOS;
 int verbose;
 int beam_search_decode;
-float lambda = 1e-6;
+cnn::real lambda = 1e-6;
 int repnumber;
 
 Sentence prv_response;
@@ -97,7 +97,7 @@ public:
     void batch_train(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, int max_epochs, int nparallel);
     void supervised_pretrain(Model &model, Proc &am, Corpus &training, Corpus &devel,
-        Trainer &sgd, string out_file, float target_ppl, int min_diag_id,
+        Trainer &sgd, string out_file, cnn::real target_ppl, int min_diag_id,
         bool bcharlevel = false, bool nosplitdialogue = false);
     void train(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, int max_epochs, int min_diag_id,
@@ -110,9 +110,9 @@ public:
     void collect_sample_responses(Proc& am, Corpus &training);
 
     void nosegmental_forward_backward(Model &model, Proc &am, PDialogue &v_v_dialogues, int nutt,
-        double &dloss, double & dchars_s, double & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr);
+        cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr);
     void segmental_forward_backward(Model &model, Proc &am, const PDialogue &v_v_dialogues, Trainer &sgd, bool bupdate, int nutt,
-        double &dloss, double & dchars_s, double & dchars_t);
+        cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t);
 
     cnn::real smoothed_ppl(cnn::real curPPL);
     void reset_smoothed_ppl(){
@@ -132,18 +132,18 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
     const string& score_embedding_fn)
 {
     unsigned lines = 0;
-    float dloss = 0;
-    float dchars_s  = 0;
-    float dchars_t = 0;
+    cnn::real dloss = 0;
+    cnn::real dchars_s  = 0;
+    cnn::real dchars_t = 0;
 
     ofstream of(out_file);
 
     unsigned si = devel.size(); /// number of dialgoues in training
 
     Timer iteration("completed in");
-    double ddloss = 0;
-    double ddchars_s = 0;
-    double ddchars_t = 0;
+    cnn::real ddloss = 0;
+    cnn::real ddchars_s = 0;
+    cnn::real ddchars_t = 0;
 
     {
         vector<bool> vd_selected(devel.size(), false);  /// track if a dialgoue is used
@@ -186,10 +186,10 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
         EvaluateProcess<AM_t> * ptr_evaluate = new EvaluateProcess<AM_t>();
         ptr_evaluate->readEmbedding(score_embedding_fn, td);
 
-        double emb_loss = 0;
-        double emb_chars_s = 0;
-        double emb_chars_t = 0;
-        double turns = 0;
+        cnn::real emb_loss = 0;
+        cnn::real emb_chars_s = 0;
+        cnn::real emb_chars_t = 0;
+        cnn::real turns = 0;
         for (auto & diag : devel)
         {
             turns += ptr_evaluate->scoreInEmbeddingSpace(am, diag, td, emb_loss, emb_chars_s, emb_chars_t);
@@ -212,18 +212,18 @@ template <class AM_t>
 void TrainProcess<AM_t>::test(Model &model, AM_t &am, TupleCorpus &devel, string out_file, Dict & sd, Dict & td)
 {
     unsigned lines = 0;
-    float dloss = 0;
-    float dchars_s = 0;
-    float dchars_t = 0;
+    cnn::real dloss = 0;
+    cnn::real dchars_s = 0;
+    cnn::real dchars_t = 0;
 
     ofstream of(out_file);
 
     unsigned si = devel.size(); /// number of dialgoues in training
 
     Timer iteration("completed in");
-    double ddloss = 0;
-    double ddchars_s = 0;
-    double ddchars_t = 0;
+    cnn::real ddloss = 0;
+    cnn::real ddchars_s = 0;
+    cnn::real ddchars_t = 0;
 
     for (auto diag : devel){
 
@@ -341,7 +341,7 @@ void TrainProcess<AM_t>::dialogue(Model &model, AM_t &am, string out_file, Dict 
 
 template <class AM_t>
 void TrainProcess<AM_t>::nosegmental_forward_backward(Model &model, AM_t &am, PDialogue &v_v_dialogues, int nutt,
-    double &dloss, double & dchars_s, double & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr)
+    cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr)
 {
     size_t turn_id = init_turn_id;
     size_t i_turns = 0;
@@ -398,7 +398,7 @@ Use multiple segments back-propagation
 */
 template <class AM_t>
 void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, const PDialogue &v_v_dialogues, Trainer &sgd, bool bupdate, int nutt,
-    double &dloss, double & dchars_s, double & dchars_t)
+    cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t)
 {
     size_t seg_len = 1; /// one turn 
     int turn_id = 0;
@@ -453,7 +453,7 @@ template <class AM_t>
 void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
     Trainer &sgd, string out_file, int max_epochs, int nparallel)
 {
-    double best = 9e+99;
+    cnn::real best = 9e+99;
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
     unsigned si = training.size(); /// number of dialgoues in training
@@ -476,10 +476,10 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
 
     while (sgd.epoch < max_epochs) {
         Timer iteration("completed in");
-        double dloss = 0;
-        double dchars_s = 0;
-        double dchars_t = 0;
-        double dchars_tt = 0;
+        cnn::real dloss = 0;
+        cnn::real dchars_s = 0;
+        cnn::real dchars_t = 0;
+        cnn::real dchars_tt = 0;
 
         for (unsigned iter = 0; iter < report_every_i;) {
 
@@ -526,14 +526,14 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             }
         }
         sgd.status();
-        cerr << "\n***Train [epoch=" << (lines / (double)training.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
+        cerr << "\n***Train [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
 
         // show score on dev data?
         report++;
-        if (floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0  || fmod(lines, (double)training.size()) == 0.0) {
-            double ddloss = 0;
-            double ddchars_s = 0;
-            double ddchars_t = 0;
+        if (floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0  || fmod(lines, (cnn::real)training.size()) == 0.0) {
+            cnn::real ddloss = 0;
+            cnn::real ddchars_s = 0;
+            cnn::real ddchars_t = 0;
 
             {
                 vector<bool> vd_selected(devel.size(), false);  /// track if a dialgoue is used
@@ -576,7 +576,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             else if (ddloss > best * 1.05){
                 sgd.eta *= 0.5; /// reduce learning rate
             }
-            cerr << "\n***DEV [epoch=" << (lines / (double)training.size()) << "] E = " << (ddloss / ddchars_t) << " ppl=" << exp(ddloss / ddchars_t) << ' ';
+            cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (ddloss / ddchars_t) << " ppl=" << exp(ddloss / ddchars_t) << ' ';
         }
 
         prv_epoch = floor(sgd.epoch);
@@ -591,7 +591,7 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, Corpus &training, Corpus 
     Trainer &sgd, string out_file, int max_epochs, int min_diag_id,
     bool bcharlevel = false, bool nosplitdialogue = false)
 {
-    double best = 9e+99;
+    cnn::real best = 9e+99;
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
     unsigned si = training.size(); /// number of dialgoues in training
@@ -618,10 +618,10 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, Corpus &training, Corpus 
 
     while (sgd.epoch < max_epochs) {
         Timer iteration("completed in");
-        double dloss = 0;
-        double dchars_s = 0;
-        double dchars_t = 0;
-        double dchars_tt = 0;
+        cnn::real dloss = 0;
+        cnn::real dchars_s = 0;
+        cnn::real dchars_t = 0;
+        cnn::real dchars_tt = 0;
 
         for (unsigned iter = 0; iter < report_every_i; ++iter) {
 
@@ -681,7 +681,7 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, Corpus &training, Corpus 
                     if (verbose)
                     {
                         display_value(am.s2txent, cg);
-                        float tcxtent = as_scalar(cg.get_value(am.s2txent));
+                        cnn::real tcxtent = as_scalar(cg.get_value(am.s2txent));
                         cerr << "xent = " << tcxtent << " nobs = " << am.twords << " PPL = " << exp(tcxtent / am.twords) << endl;
                     }
 
@@ -711,15 +711,15 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, Corpus &training, Corpus 
             lines++;
         }
         sgd.status();
-        cerr << "\n***Train [epoch=" << (lines / (double)training.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
+        cerr << "\n***Train [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
 
 
         // show score on dev data?
         report++;
-        if (floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0 || fmod(lines, (double)training.size()) == 0.0) {
-            double ddloss = 0;
-            double ddchars_s = 0;
-            double ddchars_t = 0;
+        if (floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0 || fmod(lines, (cnn::real)training.size()) == 0.0) {
+            cnn::real ddloss = 0;
+            cnn::real ddchars_s = 0;
+            cnn::real ddchars_t = 0;
 
             {
                 vector<bool> vd_selected(devel.size(), false);  /// track if a dialgoue is used
@@ -764,7 +764,7 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, Corpus &training, Corpus 
                 sgd.eta0 *= 0.5; /// reduce learning rate
                 sgd.eta *= 0.5; /// reduce learning rate
             }
-            cerr << "\n***DEV [epoch=" << (lines / (double)training.size()) << "] E = " << (ddloss / ddchars_t) << " ppl=" << exp(ddloss / ddchars_t) << ' ';
+            cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (ddloss / ddchars_t) << " ppl=" << exp(ddloss / ddchars_t) << ' ';
         }
 
         prv_epoch = floor(sgd.epoch);
@@ -777,7 +777,7 @@ Training process on tuple corpus
 template <class AM_t>
 void TrainProcess<AM_t>::train(Model &model, AM_t &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs)
 {
-    double best = 9e+99;
+    cnn::real best = 9e+99;
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
     unsigned si = training.size(); /// number of dialgoues in training
@@ -804,10 +804,10 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, TupleCorpus &training, Tr
 
     while (sgd.epoch < max_epochs) {
         Timer iteration("completed in");
-        double dloss = 0;
-        double dchars_s = 0;
-        double dchars_t = 0;
-        double dchars_tt = 0;
+        cnn::real dloss = 0;
+        cnn::real dchars_s = 0;
+        cnn::real dchars_t = 0;
+        cnn::real dchars_tt = 0;
 
         for (unsigned iter = 0; iter < report_every_i; ++iter) {
 
@@ -858,7 +858,7 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, TupleCorpus &training, Tr
                 {
                     am.build_graph(prv_turn, i_turn, cg);
                 }
-                
+
                 cg.incremental_forward();
                 turn_id++;
 
@@ -871,31 +871,36 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, TupleCorpus &training, Tr
             dchars_s += am.swords;
             dchars_t += am.twords;
 
+            //            CheckGrad(model, cg);
             cg.backward();
             sgd.update(am.twords);
 
+            if (verbose)
+                cerr << "\n***Train [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
             ++si;
             lines++;
         }
         sgd.status();
-        cerr << "\n***Train [epoch=" << (lines / (double)training.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
+        cerr << "\n***Train [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
 
-        cnn::real i_ppl = smoothed_ppl(exp(dloss / dchars_t));
-        if (best > i_ppl)
+        if (fmod(lines , (cnn::real)training.size()) == 0)
         {
-            best = i_ppl;
+            cnn::real i_ppl = smoothed_ppl(exp(dloss / dchars_t));
+            if (best > i_ppl)
+            {
+                best = i_ppl;
 
-            ofstream out(out_file, ofstream::out);
-            boost::archive::text_oarchive oa(out);
-            oa << model;
-            out.close();
+                ofstream out(out_file, ofstream::out);
+                boost::archive::text_oarchive oa(out);
+                oa << model;
+                out.close();
+            }
+            else
+            {
+                sgd.eta0 *= 0.5;
+                sgd.eta *= 0.5;
+            }
         }
-        else
-        {
-            sgd.eta0 *= 0.5;
-            sgd.eta *= 0.5;
-        }
-
         prv_epoch = floor(sgd.epoch);
     }
 }
@@ -946,7 +951,7 @@ void TrainProcess<AM_t>::supervised_pretrain(Model &model, AM_t &am, Corpus &tra
     Trainer &sgd, string out_file, cnn::real target_ppl, int min_diag_id,
     bool bcharlevel = false, bool nosplitdialogue = false)
 {
-    double best = 9e+99;
+    cnn::real best = 9e+99;
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
     unsigned si = training.size(); /// number of dialgoues in training
@@ -982,10 +987,10 @@ void TrainProcess<AM_t>::supervised_pretrain(Model &model, AM_t &am, Corpus &tra
 
     while (best > target_ppl && sgd.epoch < maxepoch) {
         Timer iteration("completed in");
-        double dloss = 0;
-        double dchars_s = 0;
-        double dchars_t = 0;
-        double dchars_tt = 0;
+        cnn::real dloss = 0;
+        cnn::real dchars_s = 0;
+        cnn::real dchars_t = 0;
+        cnn::real dchars_tt = 0;
 
         for (unsigned iter = 0; iter < report_every_i; ++iter) {
 
@@ -1045,7 +1050,7 @@ void TrainProcess<AM_t>::supervised_pretrain(Model &model, AM_t &am, Corpus &tra
                     if (verbose)
                     {
                         display_value(am.s2txent, cg);
-                        float tcxtent = as_scalar(cg.get_value(am.s2txent));
+                        cnn::real tcxtent = as_scalar(cg.get_value(am.s2txent));
                         cerr << "xent = " << tcxtent << " nobs = " << am.twords << " PPL = " << exp(tcxtent / am.twords) << endl;
                     }
 
@@ -1075,7 +1080,7 @@ void TrainProcess<AM_t>::supervised_pretrain(Model &model, AM_t &am, Corpus &tra
             lines++;
         }
         sgd.status();
-        cerr << "\n***Train [epoch=" << (lines / (double)order.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
+        cerr << "\n***Train [epoch=" << (lines / (cnn::real)order.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
 
         prv_epoch = floor(sgd.epoch);
 
@@ -1239,12 +1244,12 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     Model model;
     Trainer* sgd = nullptr;
     if (vm["trainer"].as<string>() == "momentum")
-        sgd = new MomentumSGDTrainer(&model, 1e-6, vm["eta"].as<float>());
+        sgd = new MomentumSGDTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
     if (vm["trainer"].as<string>() == "sgd")
-        sgd = new SimpleSGDTrainer(&model, 1e-6, vm["eta"].as<float>());
+        sgd = new SimpleSGDTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
     if (vm["trainer"].as<string>() == "adagrad")
-        sgd = new AdagradTrainer(&model, 1e-6, vm["eta"].as<float>());
-    sgd->clip_threshold = vm["clip"].as<float>();
+        sgd = new AdagradTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
+    sgd->clip_threshold = vm["clip"].as<cnn::real>();
 
     cerr << "%% Using " << flavour << " recurrent units" << endl;
 
@@ -1270,8 +1275,8 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     layers.resize(4, LAYERS);
     if (!vm.count("intentionlayers"))
         layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();
-    rnn_t hred(model, layers, VOCAB_SIZE_SRC, VOCAB_SIZE_TGT, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
-    prt_model_info<rnn_t, TrainProc>(LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
+    rnn_t hred(model, layers, VOCAB_SIZE_SRC, VOCAB_SIZE_TGT, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
+    prt_model_info<rnn_t, TrainProc>(LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
 
     if (vm.count("initialise"))
     {
@@ -1286,19 +1291,19 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
 
     ptrTrainer = new TrainProc();
 
-    if (vm["pretrain"].as<float>() > 0)
+    if (vm["pretrain"].as<cnn::real>() > 0)
     {
-        ptrTrainer->supervised_pretrain(model, hred, training, devel, *sgd, fname, vm["pretrain"].as<float>(), 1);
+        ptrTrainer->supervised_pretrain(model, hred, training, devel, *sgd, fname, vm["pretrain"].as<cnn::real>(), 1);
         delete sgd;
 
         /// reopen sgd
         if (vm["trainer"].as<string>() == "momentum")
-            sgd = new MomentumSGDTrainer(&model, 1e-6, vm["eta"].as<float>());
+            sgd = new MomentumSGDTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
         if (vm["trainer"].as<string>() == "sgd")
-            sgd = new SimpleSGDTrainer(&model, 1e-6, vm["eta"].as<float>());
+            sgd = new SimpleSGDTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
         if (vm["trainer"].as<string>() == "adagrad")
-            sgd = new AdagradTrainer(&model, 1e-6, vm["eta"].as<float>());
-        sgd->clip_threshold = vm["clip"].as<float>();
+            sgd = new AdagradTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
+        sgd->clip_threshold = vm["clip"].as<cnn::real>();
     }
 
     if (vm.count("sampleresponses"))
@@ -1473,14 +1478,14 @@ int tuple_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_addi
     Model model;
     Trainer* sgd = nullptr;
     if (vm["trainer"].as<string>() == "momentum")
-        sgd = new MomentumSGDTrainer(&model, 1e-6, vm["eta"].as<float>());
+        sgd = new MomentumSGDTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
     if (vm["trainer"].as<string>() == "sgd")
-        sgd = new SimpleSGDTrainer(&model, 1e-6, vm["eta"].as<float>());
+        sgd = new SimpleSGDTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
     if (vm["trainer"].as<string>() == "adagrad")
-        sgd = new AdagradTrainer(&model, 1e-6, vm["eta"].as<float>());
+        sgd = new AdagradTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
     if (vm["trainer"].as<string>() == "adadelta")
-        sgd = new AdadeltaTrainer(&model, 1e-6, vm["eta"].as<float>());
-    sgd->clip_threshold = vm["clip"].as<float>();
+        sgd = new AdadeltaTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
+    sgd->clip_threshold = vm["clip"].as<cnn::real>();
 
     cerr << "%% Using " << flavour << " recurrent units" << endl;
 
@@ -1506,8 +1511,8 @@ int tuple_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_addi
     layers.resize(4, LAYERS);
     if (!vm.count("intentionlayers"))
         layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();
-    rnn_t hred(model, layers, VOCAB_SIZE_SRC, VOCAB_SIZE_TGT, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
-    prt_model_info<rnn_t, TrainProc>(LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<float>());
+    rnn_t hred(model, layers, VOCAB_SIZE_SRC, VOCAB_SIZE_TGT, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
+    prt_model_info<rnn_t, TrainProc>(LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
 
     if (vm.count("initialise"))
     {

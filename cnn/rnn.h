@@ -135,7 +135,7 @@ struct SimpleRNNBuilder : public RNNBuilder {
                             unsigned input_dim,
                             unsigned hidden_dim,
                             Model* model,
-                            float i_scale = 1.0,
+                            cnn::real i_scale = 1.0,
                             string name = "",
                             bool support_lags=false);
   /// for parameter sharing 

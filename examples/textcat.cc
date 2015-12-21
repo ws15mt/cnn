@@ -22,7 +22,7 @@ long INPUT_DIM = 36;
 long OUTPUT_DIM = 36;
 long VOCAB_SIZE = 0;
 long LABEL_SIZE = 0;
-float pdropout = 0.5;
+cnn::real pdropout = 0.5;
 
 cnn::Dict d;
 cnn::Dict ld;
@@ -158,7 +158,7 @@ bool IsCurrentPredictionCorrection(ComputationGraph& cg, int y_true) {
   auto v = as_vector(cg.incremental_forward());
   assert(v.size() > 1);
   int besti = 0;
-  float best = v[0];
+  cnn::real best = v[0];
   for (unsigned i = 1; i < v.size(); ++i)
     if (v[i] > best) { best = v[i]; besti = i; }
   return (besti == y_true);
@@ -230,7 +230,7 @@ int main(int argc, char** argv) {
      << "-pid" << getpid() << ".params";
   const string fname = os.str();
   cerr << "Parameters will be written to: " << fname << endl;
-  double best = 9e+99;
+  cnn::real best = 9e+99;
 
   Model model;
   Trainer* sgd = nullptr;
@@ -251,7 +251,7 @@ int main(int argc, char** argv) {
   unsigned lines = 0;
   while(1) {
     Timer iteration("completed in");
-    double loss = 0;
+    cnn::real loss = 0;
     unsigned ttags = 0;
     unsigned correct = 0;
     for (unsigned i = 0; i < report_every_i; ++i) {
@@ -279,13 +279,13 @@ int main(int argc, char** argv) {
       ++ttags;
     }
     sgd->status();
-    cerr << " E = " << (loss / ttags) << " ppl=" << exp(loss / ttags) << " (acc=" << (correct / (double)ttags) << ") ";
+    cerr << " E = " << (loss / ttags) << " ppl=" << exp(loss / ttags) << " (acc=" << (correct / (cnn::real)ttags) << ") ";
     model.project_weights();
 
     // show score on dev data?
     report++;
     if (report % dev_every_i_reports == 0) {
-      double dloss = 0;
+      cnn::real dloss = 0;
       unsigned dtags = 0;
       unsigned dcorr = 0;
       for (auto& sent : dev) {
@@ -308,7 +308,7 @@ int main(int argc, char** argv) {
         boost::archive::text_oarchive oa(out);
         oa << model;
       }
-      cerr << "\n***DEV [epoch=" << (lines / (double)training.size()) << "] E = " << (dloss / dtags) << " ppl=" << exp(dloss / dtags) << " acc=" << (dcorr / (double)dtags) << ' ';
+      cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dloss / dtags) << " ppl=" << exp(dloss / dtags) << " acc=" << (dcorr / (cnn::real)dtags) << ' ';
     }
   }
   delete sgd;

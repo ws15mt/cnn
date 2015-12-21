@@ -64,7 +64,7 @@ struct CxtAttentionalModel{
     Builder context; // for contexter
     int vocab_size;
 
-    std::vector<float> *auxiliary_vector(); // memory management
+    std::vector<cnn::real> *auxiliary_vector(); // memory management
 
     // state variables used in the above two methods
     Expression src;
@@ -186,10 +186,10 @@ Expression CxtAttentionalModel<Builder>::add_input(int trg_tok, ComputationGraph
 }
 
 template <class Builder>
-std::vector<float>* CxtAttentionalModel<Builder>::auxiliary_vector()
+std::vector<cnn::real>* CxtAttentionalModel<Builder>::auxiliary_vector()
 {
     while (num_aux_vecs >= aux_vecs.size())
-        aux_vecs.push_back(new std::vector<float>());
+        aux_vecs.push_back(new std::vector<cnn::real>());
     // NB, we return the last auxiliary vector, AND increment counter
     return aux_vecs[num_aux_vecs++];
 }
@@ -303,15 +303,15 @@ CxtAttentionalModel<Builder>::decoder_greedy_search(const std::vector<int> &sour
 }
 
 struct Hypothesis {
-    Hypothesis(RNNPointer state, int tgt, float cst, int _t)
+    Hypothesis(RNNPointer state, int tgt, cnn::real cst, int _t)
         : builder_state(state), target({tgt}), cost(cst), t(_t) {}
-    Hypothesis(RNNPointer state, int tgt, float cst, Hypothesis &last)
+    Hypothesis(RNNPointer state, int tgt, cnn::real cst, Hypothesis &last)
         : builder_state(state), target(last.target), cost(cst), t(last.t+1) {
         target.push_back(tgt);
     }
     RNNPointer builder_state;
     std::vector<int> target;
-    float cost;
+    cnn::real cost;
     int t;
 };
 
@@ -445,7 +445,7 @@ CxtAttentionalModel<Builder>::sample(const std::vector<int> &source, Computation
 
 	// in rnnlm.cc there's a loop around this block -- why? can incremental_forward fail?
         auto dist = as_vector(cg.incremental_forward());
-	double p = rand01();
+	cnn::real p = rand01();
         unsigned w = 0;
         for (; w < dist.size(); ++w) {
 	    p -= dist[w];

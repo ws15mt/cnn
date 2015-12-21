@@ -43,16 +43,16 @@ namespace cnn {
 #define NOT_IMPLEMENTED {cerr << "not implemented" << endl; abort(); }
 
 size_t Min::aux_storage_size() const {
-  return dim.size() * sizeof(float);
+  return dim.size() * sizeof(cnn::real);
 }
 
 void Min::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto y = *fx;
   auto x1 = **xs[0];
   auto x2 = **xs[1];
-  Tensor t(fx.d, static_cast<float*>(aux_mem));
+  Tensor t(fx.d, static_cast<cnn::real*>(aux_mem));
   auto u = *t;
-  u = (x1.array() < x2.array()).matrix().cast<float>();
+  u = (x1.array() < x2.array()).matrix().cast<cnn::real>();
   y = x1.cwiseMin(x2);
 }
 
@@ -62,7 +62,7 @@ void Min::backward(const vector<const Tensor*>& xs,
                    unsigned i,
                    Tensor& dEdxi) const {
   assert(i < 2);
-  const Tensor t(dEdxi.d, static_cast<float*>(aux_mem));
+  const Tensor t(dEdxi.d, static_cast<cnn::real*>(aux_mem));
   if (i == 0) {
     *dEdxi += (*t).cwiseProduct(*dEdf);
   } else {
@@ -71,16 +71,16 @@ void Min::backward(const vector<const Tensor*>& xs,
 }
 
 size_t Max::aux_storage_size() const {
-  return dim.size() * sizeof(float);
+  return dim.size() * sizeof(cnn::real);
 }
 
 void Max::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto y = *fx;
   auto x1 = **xs[0];
   auto x2 = **xs[1];
-  Tensor t(fx.d, static_cast<float*>(aux_mem));
+  Tensor t(fx.d, static_cast<cnn::real*>(aux_mem));
   auto u = *t;
-  u = (x1.array() > x2.array()).matrix().cast<float>();
+  u = (x1.array() > x2.array()).matrix().cast<cnn::real>();
   y = x1.cwiseMax(x2);
 }
 
@@ -90,7 +90,7 @@ void Max::backward(const vector<const Tensor*>& xs,
                    unsigned i,
                    Tensor& dEdxi) const {
   assert(i < 2);
-  const Tensor t(dEdxi.d, static_cast<float*>(aux_mem));
+  const Tensor t(dEdxi.d, static_cast<cnn::real*>(aux_mem));
   if (i == 0) {
     *dEdxi += (*t).cwiseProduct(*dEdf);
   } else {
@@ -110,7 +110,7 @@ void TraceOfProduct::backward(const vector<const Tensor*>& xs,
                               unsigned i,
                               Tensor& dEdxi) const {
   assert(i < 2);
-  const float d = dEdf.v[0];
+  const cnn::real d = dEdf.v[0];
   auto xother = **xs[1 - i];
   *dEdxi += d * xother;
 }
@@ -301,11 +301,11 @@ void InnerProduct3D_1D::backward(const vector<const Tensor*>& xs,
 }
 
 size_t GaussianNoise::aux_storage_size() const {
-  return dim.size() * sizeof(float);
+  return dim.size() * sizeof(cnn::real);
 }
 
 void GaussianNoise::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  Tensor m(dim, (float*)aux_mem);
+  Tensor m(dim, (cnn::real*)aux_mem);
   TensorTools::RandomizeNormal(0, stddev, m);
   (*fx) = **xs[0] + *m;
 }
@@ -319,11 +319,11 @@ void GaussianNoise::backward(const vector<const Tensor*>& xs,
 };
 
 size_t Dropout::aux_storage_size() const {
-  return dim.size() * sizeof(float);
+  return dim.size() * sizeof(cnn::real);
 }
 
 void Dropout::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  Tensor m(dim, (float*)aux_mem);
+  Tensor m(dim, (cnn::real*)aux_mem);
   TensorTools::RandomBernoulli(m, (1.f-p), 1.f / (1.f-p));
   (*fx) = (**xs[0]).cwiseProduct(*m);
 }
@@ -333,24 +333,24 @@ void Dropout::backward(const vector<const Tensor*>& xs,
                        const Tensor& dEdf,
                        unsigned i,
                        Tensor& dEdxi) const {
-  Tensor m(dim, (float*)aux_mem);
+  Tensor m(dim, (cnn::real*)aux_mem);
   (*dEdxi) += (*dEdf).cwiseProduct(*m);
 }
 
 size_t BlockDropout::aux_storage_size() const {
   // we just need to remember whether this entire block is turned on (1.0) or off (0.0)
-  return 1 * sizeof(float);
+  return 1 * sizeof(cnn::real);
 }
 
 void BlockDropout::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   bernoulli_distribution distribution(1.0 - dropout_probability);
-  float block_multiplier = distribution(*rndeng)? 1.0 : 0.0;
+  cnn::real block_multiplier = distribution(*rndeng)? 1.0 : 0.0;
   block_multiplier = 
     dropout_probability == 1.0? 0.0 : block_multiplier / (1.0 - dropout_probability);
   if (dropout_probability > 1.0 || dropout_probability < 0.0) {
     assert(false && "dropout probability must be in the range [0, 1]");
   }
-  *(static_cast<float*>(aux_mem)) = block_multiplier;
+  *(static_cast<cnn::real*>(aux_mem)) = block_multiplier;
   (*fx) = **xs[0] * block_multiplier;
 }
 
@@ -359,7 +359,7 @@ void BlockDropout::backward(const vector<const Tensor*>& xs,
                             const Tensor& dEdf,
                             unsigned i,
                             Tensor& dEdxi) const {
-  float block_multiplier = *(static_cast<float*>(aux_mem));
+  cnn::real block_multiplier = *(static_cast<cnn::real*>(aux_mem));
   (*dEdxi) += (*dEdf) * block_multiplier;
 }
 
@@ -399,9 +399,9 @@ void ConstantMinusX::backward(const vector<const Tensor*>& xs,
 }
 
 template <class T>
-EIGEN_STRONG_INLINE float logsumexp(const T& x) {
-  const float m = x.maxCoeff();
-  float z = 0;
+EIGEN_STRONG_INLINE cnn::real logsumexp(const T& x) {
+  const cnn::real m = x.maxCoeff();
+  cnn::real z = 0;
   for (unsigned i = 0; i < x.rows(); ++i)
     z += expf(x(i,0) - m);
   return m + logf(z);
@@ -411,7 +411,7 @@ EIGEN_STRONG_INLINE float logsumexp(const T& x) {
 // if this is too small, just make it bigger
 #define MAX_LOG_SUM_EXP 65536
 size_t LogSumExp::aux_storage_size() const {
-  return MAX_LOG_SUM_EXP * sizeof(float);
+  return MAX_LOG_SUM_EXP * sizeof(cnn::real);
 }
 
 void LogSumExp::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
@@ -421,9 +421,9 @@ void LogSumExp::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
     return;
   }
   for (unsigned i = 0; i < xs.size(); ++i)
-    static_cast<float*>(aux_mem)[i] = (**xs[i])(0,0);
+    static_cast<cnn::real*>(aux_mem)[i] = (**xs[i])(0,0);
   Dim r = {(int)xs.size()};
-  Tensor v(r, static_cast<float*>(aux_mem));
+  Tensor v(r, static_cast<cnn::real*>(aux_mem));
   fx.v[0] = logsumexp(*v);
 }
 
@@ -514,10 +514,10 @@ void Average::backward(const vector<const Tensor*>& xs,
                      Tensor& dEdxi) const {
 
 #if HAVE_CUDA
-    float fscale = 1. / xs.size();
-    float *fdevptr;
-    CUDA_CHECK(cudaMalloc((void**)&fdevptr, sizeof(float)));
-    CUDA_CHECK(cudaMemcpy(fdevptr, &fscale, sizeof(float), cudaMemcpyHostToDevice));
+    cnn::real fscale = 1. / xs.size();
+    cnn::real *fdevptr;
+    CUDA_CHECK(cudaMalloc((void**)&fdevptr, sizeof(cnn::real)));
+    CUDA_CHECK(cudaMemcpy(fdevptr, &fscale, sizeof(cnn::real), cudaMemcpyHostToDevice));
     CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), fdevptr, dEdf.v, 1, dEdxi.v, 1));
     CUDA_CHECK(cudaFree(fdevptr));
 #else
@@ -646,7 +646,7 @@ void Concatenate::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
     size_t stt = ind;
     for (size_t k = 0; k < cols; k++) /// not efficient, unfortunately
     {
-        CUDA_CHECK(cudaMemcpyAsync(&fx.v[stt], &xi.v[k * cols], sizeof(float) * rows, cudaMemcpyDeviceToDevice));
+        CUDA_CHECK(cudaMemcpyAsync(&fx.v[stt], &xi.v[k * cols], sizeof(cnn::real) * rows, cudaMemcpyDeviceToDevice));
         stt += total_rows;
     }
 #else
@@ -697,7 +697,7 @@ void ConcatenateColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) co
     auto & xi = *xs[i];
     const unsigned rows = xi.d.rows();
     const unsigned cols = xi.d.cols();
-    CUDA_CHECK(cudaMemcpyAsync(&fx.v[rows*c], &xi.v[0], sizeof(float) * rows * cols, cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpyAsync(&fx.v[rows*c], &xi.v[0], sizeof(cnn::real) * rows * cols, cudaMemcpyDeviceToDevice));
     c += cols;
 #else
       static_cast<unsigned*>(aux_mem)[i] = c;
@@ -758,19 +758,19 @@ void PairwiseRankLoss::backward(const vector<const Tensor*>& xs,
 }
 
 size_t Hinge::aux_storage_size() const {
-  return dim.size() * sizeof(float);
+  return dim.size() * sizeof(cnn::real);
 }
 
 void Hinge::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 1);
   auto x = **xs[0];
   const unsigned rows = x.rows();
-  float y = 0;
-  float* eloss = static_cast<float*>(aux_mem);
+  cnn::real y = 0;
+  cnn::real* eloss = static_cast<cnn::real*>(aux_mem);
   const real mlystar = margin - x(*pelement);
   for (unsigned i = 0; i < rows; ++i) {
     if (*pelement != i) {
-      eloss[i] = max(0.f, mlystar + x(i));
+      eloss[i] = max<cnn::real>(0.f, mlystar + x(i));
       y += eloss[i];
     } else {
       eloss[i] = 0;
@@ -786,9 +786,9 @@ void Hinge::backward(const vector<const Tensor*>& xs,
                        Tensor& dEdxi) const {
   assert(i == 0);
   if (fx.v[0]) { // there was some loss
-    const float d = dEdf.v[0];
+    const cnn::real d = dEdf.v[0];
     const unsigned rows = dEdxi.d.rows();
-    const float* eloss = static_cast<const float*>(aux_mem);
+    const cnn::real* eloss = static_cast<const cnn::real*>(aux_mem);
     unsigned tne = 0;  // total number of errors
     for (unsigned i = 0; i < rows; ++i)
       if (eloss[i] > 0) {
@@ -882,14 +882,14 @@ void Softmax::backward(const vector<const Tensor*>& xs,
 #if HAVE_CUDA
     gpu::softmax_backward(fx.d.size(), fx.v, dEdf.v, dEdxi.v);
 #else
-  float off_diag_sum = -(*fx).cwiseProduct(*dEdf).sum();
+  cnn::real off_diag_sum = -(*fx).cwiseProduct(*dEdf).sum();
   *dEdxi += (*fx).binaryExpr(*dEdf, FSoftmaxBackward(off_diag_sum));
 #endif
 }
 
 void PickNegLogSoftmax::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   if (xs[0]->d.cols() == 1) {
-    logz = (float*)fxs->allocate(sizeof(float));
+    logz = (cnn::real*)fxs->allocate(sizeof(cnn::real));
 #if HAVE_CUDA
     gpu::pnlsoftmax(xs[0]->d.size(), *pval, xs[0]->v, fx.v, logz);
 #else
@@ -913,7 +913,7 @@ void PickNegLogSoftmax::backward(const vector<const Tensor*>& xs,
 #if HAVE_CUDA
     gpu::pnlsoftmax_backward(dEdxi.d.size(), elem, xs[0]->v, dEdf.v, logz, dEdxi.v);
 #else
-    const float err = dEdf.v[0];
+    const cnn::real err = dEdf.v[0];
     auto x = **xs[0];
     // logz is computed in the forward pass and cached
     *dEdxi += x.unaryExpr(FNegLogSoftmaxBackward(*logz, err));
@@ -950,11 +950,11 @@ void LogSoftmax::backward(const vector<const Tensor*>& xs,
 #if HAVE_CUDA
       gpu::logsoftmax_backward(xs[0]->d.size(), fx.v, dEdf.v, dEdxi.v);
 #else
-      float off_diag_sum = 0;
+      cnn::real off_diag_sum = 0;
       for (auto p : as_vector(dEdf))
           off_diag_sum += p;
       off_diag_sum *= -1;
-//      float off_diag_sum = -(*fx).binaryExpr(*dEdf, FWeightedError()).sum();
+//      cnn::real off_diag_sum = -(*fx).binaryExpr(*dEdf, FWeightedError()).sum();
       *dEdxi += (*fx).binaryExpr(*dEdf, FLogSoftmaxBackward(off_diag_sum));
 #endif
   } else {
@@ -996,7 +996,7 @@ void RestrictedLogSoftmax::backward(const vector<const Tensor*>& xs,
                             unsigned i,
                             Tensor& dEdxi) const {
   assert(i == 0);
-  float z = 0;
+  cnn::real z = 0;
   for (auto ind : denom)
     z += (*dEdf)(ind, 0);
   for (auto ind : denom)
@@ -1008,7 +1008,7 @@ void RestrictedLogSoftmax::backward(const vector<const Tensor*>& xs,
 void PickElement::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 1);
 #if HAVE_CUDA
-  CUDA_CHECK(cudaMemcpyAsync(&fx.v[0], &xs[0]->v[*pval], sizeof(float), cudaMemcpyDeviceToDevice));
+  CUDA_CHECK(cudaMemcpyAsync(&fx.v[0], &xs[0]->v[*pval], sizeof(cnn::real), cudaMemcpyDeviceToDevice));
 #else
   auto x = **xs[0];
   fx.v[0] = x(*pval);
@@ -1041,7 +1041,7 @@ void PickRange::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(start < end);
   assert(int(fx.d.rows()) == int(end-start));
 #if HAVE_CUDA
-  CUDA_CHECK(cudaMemcpyAsync(&fx.v[0], &xs[0]->v[start], sizeof(float) * (end-start), cudaMemcpyDeviceToDevice));
+  CUDA_CHECK(cudaMemcpyAsync(&fx.v[0], &xs[0]->v[start], sizeof(cnn::real) * (end-start), cudaMemcpyDeviceToDevice));
 #else
   (*fx) = x.block(start, 0, end-start, 1);
 #endif
@@ -1064,7 +1064,7 @@ void PickRange::backward(const vector<const Tensor*>& xs,
 }
 
 #if HAVE_CUDA
-inline void CUDAMatrixMultiply(const Tensor& l, const Tensor& r, Tensor& y, const float* acc_scalar) {
+inline void CUDAMatrixMultiply(const Tensor& l, const Tensor& r, Tensor& y, const cnn::real* acc_scalar) {
   if (r.d.ndims() == 1 || r.d.cols() == 1) {
     CUBLAS_CHECK(cublasSgemv(cublas_handle, CUBLAS_OP_N, l.d.rows(), l.d.cols(),
                kSCALAR_ONE, l.v, l.d.rows(), r.v, 1, acc_scalar, y.v, 1));
@@ -1291,7 +1291,7 @@ void HuberDistance::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto y = *xs[1];
   const FHuberForward fhf(d);
   const size_t s = x.d.size();
-  float dist = 0;
+  cnn::real dist = 0;
   for (size_t i = 0; i < s; ++i)
     dist += fhf(x.v[i] - y.v[i]);
   fx.v[0] = dist;
@@ -1413,7 +1413,7 @@ void BinaryLogLoss::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto y = *xs[1];
   FBinaryLogLoss bll;
   const size_t s = x.d.size();
-  float dist = 0;
+  cnn::real dist = 0;
   for (size_t i = 0; i < s; ++i)
     dist += bll(x.v[i], y.v[i]);
   fx.v[0] = dist;

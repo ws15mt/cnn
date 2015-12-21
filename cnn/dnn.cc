@@ -29,7 +29,7 @@ namespace cnn {
         unsigned input_dim,
         unsigned hidden_dim,
         Model* model,
-        float iscale,
+        cnn::real iscale,
         string name) 
     {
         layers = ilayers;

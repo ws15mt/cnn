@@ -28,7 +28,7 @@ int kTGT_SOS;
 int kTGT_EOS;
 bool verbose;
 
-float lambda;
+cnn::real lambda;
 
 typedef vector<int> Sentence;
 typedef pair<Sentence, Sentence> SentencePair;
@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
         ("bidirectional", "use bidirectional recurrent hidden states as source embeddings, rather than word embeddings")
         ("giza", "use GIZA++ style features in attentional components")
         ("curriculum", "use 'curriculum' style learning, focusing on easy problems in earlier epochs")
-        ("lambda", value<float>()->default_value(1e-6), "the L2 regularization coefficient; default 1e-6.")
+        ("lambda", value<cnn::real>()->default_value(1e-6), "the L2 regularization coefficient; default 1e-6.")
         ("swap", "swap roles of source and target, i.e., learn p(source|target)")
         ("verbose,v", "be extremely chatty")
     ;
@@ -97,7 +97,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    lambda = vm["lambda"].as<float>();
+    lambda = vm["lambda"].as<cnn::real>();
 
     if (vm.count("lstm"))
     	return main_body<LSTMBuilder>(vm, 2);
@@ -331,7 +331,7 @@ void test_rescore(Model &model, AM_t &am, string test_file, string out_file)
         ComputationGraph cg;
         am.BuildGraph(source, target, cg, nullptr);
 
-        double loss = as_scalar(cg.forward());
+        cnn::real loss = as_scalar(cg.forward());
 
 /*        cout << num << ' ';
         cout << "|||";
@@ -356,7 +356,7 @@ void test_rescore(Model &model, AM_t &am, string test_file, string out_file)
 template <class AM_t>
 void test(Model &model, AM_t &am, string test_file)
 {
-    double tloss = 0;
+    cnn::real tloss = 0;
     int tchars = 0;
     int lno = 0;
 
@@ -376,7 +376,7 @@ void test(Model &model, AM_t &am, string test_file)
 
 	ComputationGraph cg;
 	am.BuildGraph(source, target, cg);
-	double loss = as_scalar(cg.forward());
+	cnn::real loss = as_scalar(cg.forward());
 	cout << num << " |||";
 	for (auto &w: source)
 	    cout << " " << sd.Convert(w);
@@ -449,7 +449,7 @@ void test_kbest_arcs(Model &model, AM_t &am, string test_file, int top_k)
 			errs.push_back(i_err);
 		    }
 		    Expression i_nerr = sum(errs);
-		    double loss = as_scalar(cg.incremental_forward());
+		    cnn::real loss = as_scalar(cg.incremental_forward());
 
 		    cout << last_last_id << ":" << last_id << " |||";
 		    for (auto &w: source) cout << " " << sd.Convert(w);
@@ -482,7 +482,7 @@ template <class AM_t>
 void train(Model &model, AM_t &am, Corpus &training, Corpus &devel, 
 	Trainer &sgd, string out_file, bool curriculum, int max_epochs)
 {
-    double best = 9e+99;
+    cnn::real best = 9e+99;
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 500; 
     unsigned si = training.size();
@@ -516,7 +516,7 @@ void train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
 
     while (sgd.epoch < max_epochs) {
         Timer iteration("completed in");
-        double loss = 0;
+        cnn::real loss = 0;
         unsigned chars = 0;
 
         for (unsigned iter = 0; iter < report_every_i; ++iter) {
@@ -573,7 +573,7 @@ void train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
         // show score on dev data?
         report++;
         if (report % dev_every_i_reports == 0) {
-            double dloss = 0;
+            cnn::real dloss = 0;
             int dchars = 0;
             for (auto& spair : devel) {
                 ComputationGraph cg;
@@ -587,11 +587,11 @@ void train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
                 boost::archive::text_oarchive oa(out);
                 oa << model;
             }
-            cerr << "\n***DEV [epoch=" << (lines / (double)training.size()) << "] E = " << (dloss / dchars) << " ppl=" << exp(dloss / dchars) << ' ';
+            cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dloss / dchars) << " ppl=" << exp(dloss / dchars) << ' ';
         }
     }
 
-    double dloss = 0;
+    cnn::real dloss = 0;
     int dchars = 0;
     for (auto& spair : devel) {
         ComputationGraph cg;
@@ -605,7 +605,7 @@ void train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
         boost::archive::text_oarchive oa(out);
         oa << model;
     }
-    cerr << "\n***DEV [epoch=" << (lines / (double)training.size()) << "] E = " << (dloss / dchars) << " ppl=" << exp(dloss / dchars) << ' ';
+    cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dloss / dchars) << " ppl=" << exp(dloss / dchars) << ' ';
 }
 
 template <class AM_t>
@@ -658,7 +658,7 @@ void test(Model &model, AM_t &am, Corpus &devel, string out_file)
         of << endl;
     }
 
-    double dloss = 0;
+    cnn::real dloss = 0;
     int dchars = 0;
     for (auto& spair : devel) {
         ComputationGraph cg;
