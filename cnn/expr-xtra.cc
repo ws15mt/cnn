@@ -9,6 +9,7 @@
 #include "cnn/expr.h"
 #include "cnn/expr-xtra.h"
 
+extern int verbose;
 using namespace cnn;
 using namespace std;
 
@@ -314,9 +315,9 @@ vector<Expression> attention_using_bilinear_with_local_attention(vector<Expressi
         slen += p;
         vector<Expression> pweight;
         for (int k = 0; k < p; k++)
-            pweight.push_back((k - position[l]) * (k-position[l]) / (2 * 100));
+            pweight.push_back(-(k - position[l]) * (k-position[l]) / (25));  /// D = 10, 2*sigma^2 = 2*100/4 = 25
         l++;
-        v_position_weight.push_back(concatenate(pweight));
+        v_position_weight.push_back(exp(concatenate(pweight)));
     }
 
     Expression i_wa = i_Wa * i_h_tm1;  /// [d nutt]
@@ -355,9 +356,10 @@ vector<Expression> local_attention_to(ComputationGraph& cg, const vector<size_t>
     Expression i_wah_bias = concatenate_cols(vector<Expression>(nutt, i_blp));
     Expression i_position = logistic(i_vlp * tanh(i_wah + i_wah_bias));
 
+    Expression i_position_trans = reshape(i_position, { long(nutt), 1 });
     for (size_t k = 0; k < nutt; k++)
     {
-        Expression i_position_each = pick(i_position, k) * v_slen[k];
+        Expression i_position_each = pick(i_position_trans, k) * v_slen[k];
 
         /// need to do subsampling
         v_attention_to.push_back(i_position_each);

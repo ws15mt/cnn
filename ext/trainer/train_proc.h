@@ -103,7 +103,7 @@ public:
         Trainer &sgd, string out_file, int max_epochs, int min_diag_id,
         bool bcharlevel = false, bool nosplitdialogue = false);
     void train(Model &model, Proc &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs);
-    void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo, const string& score_embedding_fn);
+    void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo, const string& score_embedding_fn = "");
     void test(Model &model, Proc &am, TupleCorpus &devel, string out_file, Dict & sd, Dict & td);
     void dialogue(Model &model, Proc &am, string out_file, Dict & td);
 
@@ -1345,7 +1345,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
             cerr << "missing recognition output file" << endl;
             abort();
         }
-        ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, test_numturn2did, vm["scoreembeddingfn"].as<string>());
+        ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, test_numturn2did); 
     }
 
     delete sgd;

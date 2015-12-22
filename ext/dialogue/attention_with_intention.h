@@ -698,6 +698,7 @@ protected:
 
             context.new_graph(cg);
             context.start_new_sequence();
+            context.set_data_in_parallel(nutt);
 
             i_Wa = parameter(cg, p_Wa);
             i_va = parameter(cg, p_va);
@@ -711,8 +712,6 @@ protected:
 
         std::vector<Expression> source_embeddings;
         std::vector<Expression> v_last_decoder_state;
-
-        context.set_data_in_parallel(nutt);
 
         /// take the reverse direction to encoder source side
         v_encoder_bwd.push_back(new Builder(encoder_bwd));
@@ -865,7 +864,8 @@ struct AWI_Bilinear : public AWI< Builder , Decoder> {
             i_tgt2enc_b.clear();
             i_tgt2enc_w.clear();
             context.new_graph(cg);
-            
+            context.set_data_in_parallel(nutt);
+
             if (last_context_exp.size() == 0)
                 context.start_new_sequence();
             else
@@ -888,8 +888,6 @@ struct AWI_Bilinear : public AWI< Builder , Decoder> {
 
         std::vector<Expression> source_embeddings;
         std::vector<Expression> v_last_decoder_state;
-
-        context.set_data_in_parallel(nutt);
 
         /// take the reverse direction to encoder source side
         v_encoder_bwd.push_back(new Builder(encoder_bwd));
@@ -1039,6 +1037,7 @@ struct AWI_Bilinear_Simpler : public AWI_Bilinear < Builder, Decoder> {
             i_tgt2enc_b.clear();
             i_tgt2enc_w.clear();
             context.new_graph(cg);
+            context.set_data_in_parallel(nutt);
 
             if (last_context_exp.size() == 0)
                 context.start_new_sequence();
@@ -1061,8 +1060,6 @@ struct AWI_Bilinear_Simpler : public AWI_Bilinear < Builder, Decoder> {
 
         std::vector<Expression> source_embeddings;
         std::vector<Expression> v_last_decoder_state;
-
-        context.set_data_in_parallel(nutt);
 
         /// take the reverse direction to encoder source side
         v_encoder_bwd.push_back(new Builder(encoder_bwd));
@@ -1205,6 +1202,7 @@ public:
                 context.start_new_sequence();
             else
                 context.start_new_sequence(last_context_exp);
+            context.set_data_in_parallel(nutt);
 
             i_Wa = parameter(cg, p_Wa);
             i_va = parameter(cg, p_va);
@@ -1227,6 +1225,8 @@ public:
 
             i_zero = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
 
+            attention_layer.new_graph(cg);
+            attention_layer.set_data_in_parallel(nutt);
             if (verbose)
                 display_value(concatenate(i_h0), cg, "i_h0");
         }
@@ -1234,16 +1234,12 @@ public:
         std::vector<Expression> source_embeddings;
         std::vector<Expression> v_last_decoder_state;
 
-        context.set_data_in_parallel(nutt);
-
         /// take the reverse direction to encoder source side
         encoder_bwd.new_graph(cg);
         encoder_bwd.set_data_in_parallel(nutt);
         if (to_cxt.size() > 0)
         {
             /// encoder starts with the last decoder's state
-            if (verbose)
-                display_value(concatenate(v_last_decoder_state), cg, "v_last_decoder_state");
             for (size_t k = 0; k < i_tgt2enc_b.size(); k++)
             {
                 if (nutt > 1)
@@ -1286,8 +1282,6 @@ public:
         decoder.new_graph(cg);
         decoder.set_data_in_parallel(nutt);
         decoder.start_new_sequence(vcxt);  /// get the intention
-
-        attention_layer.new_graph(cg);
     }
 
     Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
@@ -1306,6 +1300,8 @@ public:
 
         Expression i_bias_mb = concatenate_cols(vector<Expression>(nutt, i_bias));
 
+        v_decoder_context.clear();
+        v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
             vector<int> vobs;
             for (auto p : osent)
@@ -1391,9 +1387,21 @@ public:
 
         vector<Expression> alpha;
         vector<Expression> position = local_attention_to(cg, src_len, i_Wa_local, i_ba_local, i_va_local, i_h_t, nutt);
+        if (verbose)
+        {
+            for (auto &p : position){
+                display_value(p, cg, "predicted local attention position ");
+            }
+        }
+
         vector<Expression> v_context_to_source = attention_using_bilinear_with_local_attention(v_src, src_len, i_Wa, i_h_t, hidden_dim[ENCODER_LAYER], nutt, alpha, i_scale, position);
         if (verbose)
-            display_value(concatenate_cols(alpha), cg, "alpha");
+        {
+            size_t k = 0;
+            for (auto &p : alpha){
+                display_value(p, cg, "attention_to_source_weight_" + boost::lexical_cast<string>(k++));
+            }
+        }
 
         /// compute attention
         Expression i_combined_input_to_attention = concatenate({ i_h_t, concatenate_cols(v_context_to_source) });
@@ -1477,6 +1485,7 @@ struct AWI_Bilinear_Simpler_AE : public AWI_Bilinear_Simpler< Builder, Decoder >
             i_tgt2enc_b.clear();
             i_tgt2enc_w.clear();
             context.new_graph(cg);
+            context.set_data_in_parallel(nutt);
 
             if (last_context_exp.size() == 0)
                 context.start_new_sequence();
@@ -1498,8 +1507,6 @@ struct AWI_Bilinear_Simpler_AE : public AWI_Bilinear_Simpler< Builder, Decoder >
 
         std::vector<Expression> source_embeddings;
         std::vector<Expression> v_last_decoder_state;
-
-        context.set_data_in_parallel(nutt);
 
         /// take the reverse direction to encoder source side
         v_encoder_bwd.push_back(new Builder(encoder_bwd));
