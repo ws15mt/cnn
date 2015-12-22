@@ -145,7 +145,8 @@ std::vector<Expression> forward_directional(unsigned & slen, const std::vector<s
 
 /**
 do backward directional RNN 
-the output is a vector of expression. 
+the output is a vector of expression.
+the element is the top-layer activity
 the element of this vector is an expression for that time.
 now need to process the data so that the output is
 [0 1 2 x x;
@@ -248,8 +249,11 @@ vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, cons
     Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, cnn::real fscale = 1.0);
 vector<Expression> attention_using_bilinear(vector<Expression> & v_src, const vector<size_t>& v_slen,
     Expression i_Wa, Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, Expression& fscale);
+vector<Expression> attention_using_bilinear_with_local_attention(vector<Expression> & v_src, const vector<size_t>& v_slen,
+    Expression i_Wa, Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, Expression& fscale,
+    vector<Expression>& position);
 
-vector<Expression> local_attention_to(ComputationGraph& cg, vector<int> v_slen,
+vector<Expression> local_attention_to(ComputationGraph& cg, const vector<size_t> & v_slen,
     Expression i_Wlp, Expression i_blp, Expression i_vlp,
     Expression i_h_tm1, size_t nutt);
 

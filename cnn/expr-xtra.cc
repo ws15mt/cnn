@@ -295,7 +295,54 @@ vector<Expression> attention_using_bilinear(vector<Expression> & v_src, const ve
     return v_input;
 }
 
-vector<Expression> local_attention_to(ComputationGraph& cg, vector<int> v_slen,
+/**
+use the local attention position prediction, together with the global attention
+*/
+vector<Expression> attention_using_bilinear_with_local_attention(vector<Expression> & v_src, const vector<size_t>& v_slen,
+    Expression i_Wa, Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, Expression& fscale,
+    vector<Expression>& position)
+{
+    Expression i_c_t;
+    Expression i_e_t;
+    int slen = 0;
+    vector<Expression> i_wah_rep;
+
+    vector<Expression> v_position_weight;
+    int l = 0;
+    for (auto p : v_slen)
+    {
+        slen += p;
+        vector<Expression> pweight;
+        for (int k = 0; k < p; k++)
+            pweight.push_back((k - position[l]) * (k-position[l]) / (2 * 100));
+        l++;
+        v_position_weight.push_back(concatenate(pweight));
+    }
+
+    Expression i_wa = i_Wa * i_h_tm1;  /// [d nutt]
+    Expression i_wah_reshaped = reshape(i_wa, { long(nutt * a_dim) });
+
+    Expression i_alpha_t;
+
+    vector<Expression> v_input;
+    int istt = 0;
+    for (size_t k = 0; k < nutt; k++)
+    {
+        Expression i_input;
+        Expression i_bilinear = transpose(v_src[k]) * pickrange(i_wah_reshaped, k * a_dim, (k + 1)* a_dim); // [v_slen x 1]
+        vector<Expression> vscale(v_slen[k], fscale);
+        Expression wgt = softmax(cwise_multiply(concatenate(vscale), i_bilinear));
+        Expression each_utt_wgt = cwise_multiply(wgt, v_position_weight[k]);
+        v_wgt.push_back(each_utt_wgt);
+
+        i_input = v_src[k] * each_utt_wgt;  // [D v_slen[k]] x[v_slen[k] 1] = [D 1]
+        v_input.push_back(i_input);
+    }
+
+    return v_input;
+}
+
+vector<Expression> local_attention_to(ComputationGraph& cg, const vector<size_t>& v_slen,
     Expression i_Wlp, Expression i_blp, Expression i_vlp,
     Expression i_h_tm1, size_t nutt)
 {
