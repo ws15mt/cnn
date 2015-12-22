@@ -106,6 +106,30 @@ struct RmsPropTrainer : public Trainer {
   std::vector<std::vector<real> > hlg;
 };
 
+/**
+In some cases, adding a momentum term β is beneficial. Here, Nesterov momentum is used:
+See descriptions in http://climin.readthedocs.org/en/latest/rmsprop.html
+*/
+struct RmsPropWithMomentumTrainer : public Trainer {
+    explicit RmsPropWithMomentumTrainer(Model* m, real lam = 1e-6, real e0 = 0.1, real eps = 1e-20, real rho = 0.95, real mom = 0.9) :
+        Trainer(m, lam, e0), epsilon(eps), rho(rho), shadow_params_allocated(false), momentum(mom) {}
+    void update(real nutt, real scale) override;
+
+    real epsilon;
+    real rho;
+    bool shadow_params_allocated;
+    std::vector<real> hg; // History of gradients
+    std::vector<std::vector<real> > hlg;
+
+    real momentum;
+
+    bool velocity_allocated;
+
+    // the following represent the current velocity
+    std::vector<ShadowParameters> vp;
+    std::vector<ShadowLookupParameters> vlp;
+};
+
 struct AdamTrainer : public Trainer {
   explicit AdamTrainer(Model* m, cnn::real lambda = 1e-6, cnn::real alpha = 0.001, cnn::real beta_1 = 0.9, cnn::real beta_2 = 0.999, cnn::real eps = 1e-8) :
     Trainer(m, lambda, alpha), beta_1(beta_1), beta_2(beta_2), eps(eps), shadow_params_allocated(false) {}

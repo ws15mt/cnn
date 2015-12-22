@@ -1130,6 +1130,27 @@ void prt_model_info(size_t LAYERS, size_t VOCAB_SIZE_SRC, const vector<unsigned>
     cerr << "scale = " << scale << endl;
 }
 
+template<class rnn_t, class TrainProc>
+Trainer* select_trainer(variables_map vm, Model* model)
+{
+    Trainer* sgd = nullptr;
+    if (vm["trainer"].as<string>() == "momentum")
+        sgd = new MomentumSGDTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
+    if (vm["trainer"].as<string>() == "sgd")
+        sgd = new SimpleSGDTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
+    if (vm["trainer"].as<string>() == "adagrad")
+        sgd = new AdagradTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
+    if (vm["trainer"].as<string>() == "adadelta")
+        sgd = new AdadeltaTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
+    if (vm["trainer"].as<string>() == "rmsprop")
+        sgd = new RmsPropTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
+    if (vm["trainer"].as<string>() == "rmspropwithmomentum")
+        sgd = new RmsPropWithMomentumTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
+    sgd->clip_threshold = vm["clip"].as<float>();
+
+    return sgd;
+}
+
 template <class rnn_t, class TrainProc>
 int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_input_to = 0, size_t mem_slots = MEM_SIZE)
 {
@@ -1242,16 +1263,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     cerr << "Parameters will be written to: " << fname << endl;
 
     Model model;
-    Trainer* sgd = nullptr;
-    if (vm["trainer"].as<string>() == "momentum")
-        sgd = new MomentumSGDTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
-    if (vm["trainer"].as<string>() == "sgd")
-        sgd = new SimpleSGDTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
-    if (vm["trainer"].as<string>() == "adagrad")
-        sgd = new AdagradTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
-    if (vm["trainer"].as<string>() == "adadelta")
-        sgd = new AdadeltaTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
-    sgd->clip_threshold = vm["clip"].as<float>();
+    Trainer* sgd = select_trainer<rnn_t, TrainProc>(vm, &model);
 
     cerr << "%% Using " << flavour << " recurrent units" << endl;
 
@@ -1299,13 +1311,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
         delete sgd;
 
         /// reopen sgd
-        if (vm["trainer"].as<string>() == "momentum")
-            sgd = new MomentumSGDTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
-        if (vm["trainer"].as<string>() == "sgd")
-            sgd = new SimpleSGDTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
-        if (vm["trainer"].as<string>() == "adagrad")
-            sgd = new AdagradTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
-        sgd->clip_threshold = vm["clip"].as<cnn::real>();
+        sgd = select_trainer<rnn_t, TrainProc>(vm, &model);
     }
 
     if (vm.count("sampleresponses"))
@@ -1478,16 +1484,7 @@ int tuple_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_addi
     cerr << "Parameters will be written to: " << fname << endl;
 
     Model model;
-    Trainer* sgd = nullptr;
-    if (vm["trainer"].as<string>() == "momentum")
-        sgd = new MomentumSGDTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
-    if (vm["trainer"].as<string>() == "sgd")
-        sgd = new SimpleSGDTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
-    if (vm["trainer"].as<string>() == "adagrad")
-        sgd = new AdagradTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
-    if (vm["trainer"].as<string>() == "adadelta")
-        sgd = new AdadeltaTrainer(&model, 1e-6, vm["eta"].as<cnn::real>());
-    sgd->clip_threshold = vm["clip"].as<cnn::real>();
+    Trainer* sgd = select_trainer<rnn_t, TrainProc>(vm, &model);
 
     cerr << "%% Using " << flavour << " recurrent units" << endl;
 

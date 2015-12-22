@@ -243,6 +243,58 @@ void RmsPropTrainer::update(real nutt, real scale) {
   ++updates;
 }
 
+void RmsPropWithMomentumTrainer::update(real nutt, real scale) {
+    unsigned pi = 0;
+    if (!shadow_params_allocated) {
+        hg.resize(model->parameters_list().size());
+
+        pi = 0;
+        hlg.resize(model->lookup_parameters_list().size());
+        for (auto p : model->lookup_parameters_list()) {
+            hlg[pi++].resize(p->size());
+        }
+
+        vp = AllocateShadowParameters(*model);
+        vlp = AllocateShadowLookupParameters(*model);
+
+        shadow_params_allocated = true;
+    }
+
+    const cnn::real gscale = clip_gradients(nutt);
+    cnn::real nutt_scale = 1.0 / nutt;
+    pi = 0;
+    for (auto p : model->parameters_list()) {
+        real& d2 = hg[pi];
+        auto reg = (*p->values) * lambda;
+        real g2 = (*p->g).squaredNorm();
+        d2 = rho * d2 + (1.0 - rho) * g2;
+
+        Tensor& v = vp[pi++].h;
+        (*v) = momentum * (*v) - (eta * scale * gscale * nutt_scale / sqrt(d2 + epsilon)) * *p->g;
+
+        *p->values += *v - reg; 
+        p->clear();
+    }
+
+    pi = 0;
+    for (auto p : model->lookup_parameters_list()) {
+        vector<real>& hlgx = hlg[pi];
+        vector<Tensor>& vx = vlp[pi++].h;
+        for (auto i : p->non_zero_grads) {
+            Tensor& v = vx[i];
+            real& d2 = hlgx[i];
+            auto reg = (*p->values[i]) * lambda;
+            real g2 = (*p->grads[i]).squaredNorm();
+            d2 = rho * d2 + (1.0 - rho) * g2;
+            (*v) = momentum * (*v) - (eta * scale * gscale * nutt_scale / sqrt(d2 + epsilon)) * *p->grads[i];
+            *p->values[i] += *v - reg; 
+        }
+        p->clear();
+    }
+
+    ++updates;
+}
+
 void AdamTrainer::update(cnn::real nutt, cnn::real scale) {
   unsigned pi;
   if (!shadow_params_allocated) {
