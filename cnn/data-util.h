@@ -145,4 +145,4 @@ FBCorpus read_facebook_qa_corpus(const string &filename, size_t & diag_id, Dict&
 /**
 return flavour of a builder in string
 */
-string builder_flavour(variables_map vm);
+std::string builder_flavour(variables_map vm);

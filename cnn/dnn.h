@@ -4,8 +4,11 @@
 /**
 this uses RNN interface but actually is deep network
 */
-#include "cnn/rnn.h"
 #include <string>
+#include <vector>
+#include "cnn/model.h"
+#include "cnn/cnn.h"
+#include "cnn/expr.h"
 
 using namespace std;
 using namespace cnn::expr;
@@ -34,8 +37,8 @@ namespace cnn {
         ~DNNBuilder() {}
 
     protected:
-        virtual void new_graph_impl(ComputationGraph& cg);
-        virtual Expression add_input_impl(const Expression& x);
+        void new_graph_impl(ComputationGraph& cg);
+        Expression add_input_impl(const Expression& x);
 
     public:
         Expression back() const { return h.back(); }
