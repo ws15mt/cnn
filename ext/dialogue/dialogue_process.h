@@ -370,6 +370,8 @@ namespace cnn {
     */
     template <class DBuilder>
     class HREDModel : public DialogueProcessInfo<DBuilder>{
+    private:
+        vector<Expression> i_errs; 
     public:
         HREDModel(cnn::Model& model,
             const vector<size_t>& layers,
@@ -390,6 +392,7 @@ namespace cnn {
         {
             Expression object;
             vector<Sentence> insent, osent;
+            i_errs.clear();
             for (auto p : cur_sentence)
             {
                 insent.push_back(p.first);
@@ -399,10 +402,14 @@ namespace cnn {
                 swords += p.first.size() - 1;
             }
 
+            s2tmodel.reset();
             object = s2tmodel.build_graph(insent, osent, cg);
 
             s2txent = object;
 
+            assert(twords == s2tmodel.tgt_words);
+            assert(swords == s2tmodel.src_words);
+            i_errs.push_back(object);
             return object;
         }
 
@@ -411,7 +418,6 @@ namespace cnn {
         Expression build_graph(const vector<SentencePair>& prv_sentence, const vector<SentencePair>& cur_sentence, ComputationGraph& cg) override
         {
             vector<Sentence> insent, osent;
-            twords = swords = 0;
 
             for (auto p : cur_sentence)
             {
@@ -439,8 +445,11 @@ namespace cnn {
 
             Expression object_cur_s2cur_t = s2tmodel.build_graph(insent, osent, cg);
 
-            s2txent = object_cur_s2cur_t;
-            return object_cur_s2cur_t + object_prv_t2cur_s;
+            s2txent = s2txent + object_cur_s2cur_t;
+
+            Expression i_sum_err = object_cur_s2cur_t + object_prv_t2cur_s;
+            i_errs.push_back(i_sum_err);
+            return sum(i_errs); 
         }
 
         Expression build_graph(const vector<SentenceTuple> & cur_sentence, ComputationGraph& cg) override
