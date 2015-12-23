@@ -826,7 +826,7 @@ public:
 */
 
 protected:
-    virtual Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg, Builder * decoder) = 0;
+//    virtual Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg, Builder * decoder) = 0;
     virtual Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg) = 0;
     virtual Expression decoder_step(int trg_tok, ComputationGraph& cg)
     {
