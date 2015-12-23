@@ -107,7 +107,6 @@ protected:
     Expression i_Wa, i_va, i_Q;
     Expression attention(int trg_tok, ComputationGraph& cg);
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg) override;
-    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg, Builder * decoder) override;
 
 };
 
@@ -229,41 +228,6 @@ Expression AttentionWithIntention<Builder, Decoder>::decoder_step(vector<int> tr
     Expression input = concatenate_cols(v_x_t);
 #endif
     return v_decoder[v_decoder.size() - 1]->add_input(input);
-}
-
-template<class Builder, class Decoder>
-Expression AttentionWithIntention<Builder, Decoder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg, Builder* decoder)
-{
-    Expression i_c_t;
-    size_t nutt = trg_tok.size();
-    Expression i_h_tm1 = concatenate(decoder->final_h());
-
-    vector<Expression> v_x_t;
-    for (auto p : trg_tok)
-    {
-        Expression i_x_x;
-        if (p >= 0)
-            i_x_x = lookup(cg, p_cs, p);
-        else
-            i_x_x = input(cg, { (long)hidden_dim[DECODER_LAYER] }, &zero);
-        v_x_t.push_back(i_x_x);
-    }
-#ifdef UNDERSTAND_AWI_ADD_ATTENTION
-    concatenate_cols(v_x_t);
-
-    vector<Expression> alpha;
-    vector<Expression> v_obs = attention_to_source(v_src, src_len, i_U, src, i_va, i_Wa, i_h_tm1, hidden_dim[ALIGN_LAYER], nutt, alpha);
-
-    vector<Expression> v_input;
-    for (size_t k = 0; k < nutt; k++)
-    {
-        v_input.push_back(concatenate(vector<Expression>({ v_x_t[k], v_obs[k] })));
-    }
-    Expression input = concatenate_cols(v_input);
-#else
-    Expression input = concatenate_cols(v_x_t);
-#endif
-    return decoder->add_input(input);
 }
 
 template<class Builder, class Decoder>
@@ -447,7 +411,6 @@ protected:
     Parameters* p_att_gate_A, *p_att_gate_b;
     Expression attention_gate(Expression i_h_tm1);
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg) override;
-    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg, Builder * decoder) override;
 
 };
 
@@ -491,42 +454,6 @@ Expression GatedAttention<Builder, Decoder>::decoder_step(vector<int> trg_tok, C
     Expression input = concatenate_cols(v_input);
 
     return decoder.add_input(input);
-}
-
-template<class Builder, class Decoder>
-Expression GatedAttention<Builder, Decoder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg, Builder * decoder)
-{
-    Expression i_c_t;
-    size_t nutt = trg_tok.size();
-    Expression i_h_tm1 = concatenate(decoder->final_h());
-
-    vector<Expression> v_x_t;
-    for (auto p : trg_tok)
-    {
-        Expression i_x_x;
-        if (p >= 0)
-            i_x_x = lookup(cg, p_cs, p);
-        else
-            i_x_x = input(cg, { (long)hidden_dim[DECODER_LAYER] }, &zero);
-        v_x_t.push_back(i_x_x);
-    }
-
-    vector<Expression> alpha;
-    vector<Expression> v_obs = attention_to_source(v_src, src_len, i_U, src, i_va, i_Wa, i_h_tm1, hidden_dim[ALIGN_LAYER], nutt, alpha);
-    Expression i_att_gate = attention_gate(i_h_tm1);
-    Expression i_obs = concatenate_cols(v_obs);
-    Expression i_gated_attention = cwise_multiply(i_att_gate, i_obs);
-    Expression i_flatted = reshape(i_gated_attention, { (long)(nutt * 2 * hidden_dim[DECODER_LAYER]) });
-
-    vector<Expression> v_input;
-    for (size_t k = 0; k < nutt; k++)
-    {
-        Expression i_flatted_element = pickrange(i_flatted, k * 2 * hidden_dim[DECODER_LAYER], (k + 1) * 2 * hidden_dim[DECODER_LAYER]);
-        v_input.push_back(concatenate(vector<Expression>({ v_x_t[k], i_flatted_element })));
-    }
-    Expression input = concatenate_cols(v_input);
-
-    return decoder->add_input(input);
 }
 
 template <class Builder, class Decoder>

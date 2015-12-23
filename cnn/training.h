@@ -1,4 +1,4 @@
-#ifndef CNN_TRAINING_H_
+﻿#ifndef CNN_TRAINING_H_
 #define CNN_TRAINING_H_
 
 #include <vector>
@@ -122,9 +122,6 @@ struct RmsPropWithMomentumTrainer : public Trainer {
     std::vector<std::vector<real> > hlg;
 
     real momentum;
-
-    bool velocity_allocated;
-
     // the following represent the current velocity
     std::vector<ShadowParameters> vp;
     std::vector<ShadowLookupParameters> vlp;
