@@ -476,16 +476,22 @@ namespace cnn {
     */
     template <class DBuilder>
     class DialogueSeq2SeqModel : public DialogueProcessInfo<DBuilder> {
-
+    private:
+        vector<Expression> i_errs;
     public:
         DialogueSeq2SeqModel(cnn::Model& model,
-            unsigned layers,
+            const vector<size_t>& layers,
             unsigned vocab_size_src,
+            unsigned vocab_size_tgt,
             const vector<unsigned>& hidden_dim,
-            unsigned hidden_replicates)
-            : DialogueProcessInfo<DBuilder>(model, layers, vocab_size_src, hidden_dim, hidden_replicates)
+            unsigned hidden_replicates,
+            unsigned decoder_additional_input = 0,
+            unsigned mem_slots = MEM_SIZE,
+            cnn::real iscale = 1.0)
+            : DialogueProcessInfo<DBuilder>(model, layers, vocab_size_src, vocab_size_tgt, hidden_dim, hidden_replicates, decoder_additional_input, mem_slots, iscale)
         {
         }
+
 
         // return Expression of total loss
         // only has one pair of sentence so far
@@ -493,6 +499,9 @@ namespace cnn {
         {
             Expression object;
             vector<Sentence> insent, osent;
+
+            i_errs.clear();
+
             for (auto p : cur_sentence)
             {
                 insent.push_back(p.first);
@@ -502,18 +511,77 @@ namespace cnn {
                 swords += p.first.size() - 1;
             }
 
+            s2tmodel.reset();
             object = s2tmodel.build_graph(insent, osent, cg);
 
             s2txent = object;
 
+            i_errs.push_back(s2txent);
+            return object;
+        }
+
+        /**
+        concatenate the previous response and the current source as input, and predict the reponse of the current turn
+        */
+        Expression build_graph(const vector<SentencePair>& prv_sentence, const vector<SentencePair>& cur_sentence, ComputationGraph& cg) override
+        {
+            vector<Sentence> insent, osent;
+
+            for (auto p : prv_sentence)
+            {
+                /// remove sentence ending
+                Sentence i_s; 
+                for (auto & w : p.second){
+                    if (w != kSRC_EOS)
+                        i_s.push_back(w);
+                }
+                insent.push_back(i_s);
+            }
+
+            size_t k = 0;
+            for (auto p : cur_sentence)
+            {
+                /// remove sentence begining
+                for (auto & w : p.first){
+                    if (w != kSRC_SOS)
+                        insent[k].push_back(w);
+                }
+                swords += insent[k].size() - 1;
+                k++;
+            }
+
+            for (auto p : cur_sentence)
+            {
+                osent.push_back(p.second);
+
+                twords += p.second.size() - 1;
+            }
+
+            int nutt = cur_sentence.size();
+
+            Expression object_cur_s2cur_t = s2tmodel.build_graph(insent, osent, cg);
+
+            i_errs.push_back(object_cur_s2cur_t);
+
+            s2txent = sum(i_errs);
+
+            return s2txent;
+        }
+
+        Expression build_graph(const vector<SentenceTuple> & cur_sentence, ComputationGraph& cg) override
+        {
+            Expression object;
+            throw("not implemented");
             return object;
         }
 
         // return Expression of total loss
         // only has one pair of sentence so far
-        Expression build_graph(const vector<SentencePair>& prv_sentence, const vector<SentencePair>& cur_sentence, ComputationGraph& cg) override
+        Expression build_graph(const vector<SentenceTuple>& prv_sentence, const vector<SentenceTuple>& cur_sentence, ComputationGraph& cg) override
         {
-            return build_graph(cur_sentence, cg);
+            Expression object;
+            throw("not implemented");
+            return object;
         }
     };
 
