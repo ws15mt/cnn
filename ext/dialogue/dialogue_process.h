@@ -425,8 +425,7 @@ namespace cnn {
 
             int nutt = cur_sentence.size();
 
-            Expression object_prv_t2cur_s;
-                //= s2tmodel.build_graph_target_source(insent, osent, cg);
+            Expression object_prv_t2cur_s = s2tmodel.build_graph(insent, osent, cg);
 
             osent.clear(); insent.clear();
             for (auto p : cur_sentence)
