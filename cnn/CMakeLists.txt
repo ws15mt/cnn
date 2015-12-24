@@ -68,6 +68,7 @@ set(cnn_library_HDRS
     dglstm.h
     treelstm.h
     math-util.h
+    metric-util.h
 )
 
 if(WITH_CUDA_BACKEND)
