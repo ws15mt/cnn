@@ -152,7 +152,7 @@ public:
         tgt_words = 0;
     }
 
-    virtual void serialise_context(ComputationGraph& cg,
+    void serialise_context(ComputationGraph& cg,
         vector<vector<cnn::real>>& v_last_cxt_s,
         vector<vector<cnn::real>>& v_last_decoder_s)
     {
@@ -196,7 +196,7 @@ public:
         v_last_decoder_s = last_decoder_s;
     }
 
-    virtual void serialise_context(ComputationGraph& cg)
+    void serialise_context(ComputationGraph& cg)
     {
         /// get the top output
         vector<vector<cnn::real>> vm;
@@ -236,7 +236,7 @@ public:
         last_decoder_s = v_last_d;
     }
 
-    virtual void save_context(ComputationGraph& cg)
+    void save_context(ComputationGraph& cg)
     {
         to_cxt.clear();
         vector<Expression> ve;
@@ -257,7 +257,7 @@ public:
             to_cxt.push_back(concatenate_cols(p));
     }
 
-    virtual void assign_cxt(ComputationGraph &cg, size_t nutt)
+    void assign_cxt(ComputationGraph &cg, size_t nutt)
     {
         if (turnid <= 0 || last_cxt_s.size() == 0 || last_decoder_s.size() == 0)
         {
@@ -307,7 +307,7 @@ public:
     @v_last_cxt_s [parameter_index][values vector for this parameter]. this is to the context or intention network
     @v_last_decoder_s [parameter_index][values vector for this parameter]. this is to the decoder network
     */
-    virtual void assign_cxt(ComputationGraph &cg, size_t nutt,
+    void assign_cxt(ComputationGraph &cg, size_t nutt,
         vector<vector<cnn::real>>& v_last_cxt_s, 
         vector<vector<cnn::real>>& v_last_decoder_s)
     {
@@ -353,12 +353,12 @@ public:
 
     }
 
-    virtual void assign_cxt(ComputationGraph &cg, size_t nutt,
+    void assign_cxt(ComputationGraph &cg, size_t nutt,
         std::vector<std::vector<std::vector<cnn::real>>>& v_last_cxt_s)
     {
     }
 
-    virtual void assign_cxt(ComputationGraph &cg,
+    void assign_cxt(ComputationGraph &cg,
         const vector<vector<int>>& v_last_cxt_s)
     {}
 
@@ -373,7 +373,7 @@ public:
         //  std::cerr << tdict.Convert(target.back());
         int t = 0;
 
-        start_new_instance(source, cg);
+        start_new_single_instance(source, cg);
 
         Expression i_bias = parameter(cg, p_bias);
         Expression i_R = parameter(cg, p_R);
@@ -381,7 +381,7 @@ public:
         v_decoder_context.clear();
         while (target.back() != eos_sym)
         {
-            Expression i_y_t = decoder_step(target.back(), cg);
+            Expression i_y_t = decoder_single_instance_step(target.back(), cg);
             Expression i_r_t = i_bias + i_R * i_y_t;
             Expression ydist = softmax(i_r_t);
 
@@ -416,78 +416,6 @@ public:
         return target;
     }
 
-#ifdef INPUT_UTF8
-    std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict<std::wstring> &tdict,
-        Builder* encoder_fwd, Builder* encoder_bwd,
-        Builder * context,
-        Builder *decoder)
-#else
-    std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict,
-        Builder* encoder_fwd, Builder* encoder_bwd,
-        Builder * context,
-        Builder *decoder)
-#endif
-    {
-#ifdef INPUT_UTF8
-        const int sos_sym = tdict.Convert(L"<s>");
-        const int eos_sym = tdict.Convert(L"</s>");
-#else
-        const int sos_sym = tdict.Convert("<s>");
-        const int eos_sym = tdict.Convert("</s>");
-#endif
-
-        std::vector<int> target;
-        target.push_back(sos_sym);
-
-        //  std::cerr << tdict.Convert(target.back());
-        int t = 0;
-
-        start_new_instance(source, cg, encoder_fwd, encoder_bwd, context, decoder);
-
-        Expression i_bias = parameter(cg, p_bias);
-        Expression i_R = parameter(cg, p_R);
-
-        v_decoder_context.clear();
-        v_decoder_context.resize(1);
-        while (target.back() != eos_sym)
-        {
-            vector<int> vt(1, target.back());
-            Expression i_y_t = decoder_step(vt, cg, decoder);
-            Expression i_r_t = i_bias + i_R * i_y_t;
-            Expression ydist = softmax(i_r_t);
-
-            // find the argmax next word (greedy)
-            unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
-            auto pr_w = dist[w];
-            for (unsigned x = 1; x < dist.size(); ++x) {
-                if (dist[x] > pr_w) {
-                    w = x;
-                    pr_w = dist[x];
-                }
-            }
-
-            // break potential infinite loop
-            if (t > 100) {
-                w = eos_sym;
-                pr_w = dist[w];
-            }
-
-            //        std::cerr << " " << tdict.Convert(w) << " [p=" << pr_w << "]";
-            t += 1;
-            target.push_back(w);
-        }
-
-        vector<Expression> v_t = decoder->final_s();
-        v_decoder_context[0] = v_t;
-
-        save_context(cg);
-
-        turnid++;
-
-        return target;
-    }
-
     std::vector<int> decode_tuple(const SentenceTuple&source, ComputationGraph& cg, cnn::Dict  &sdict, cnn::Dict  &tdict)
     {
         vector<int> vres;
@@ -495,11 +423,12 @@ public:
         return vres;
     };
 
- protected:
+ public:
      /// run in batch with multiple sentences
      /// source [utt][data stream] is utterance first and then its content
      /// the context RNN uses the last state of the encoder RNN as its input
-     virtual void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg) {
+     virtual void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg) 
+     {
          nutt = source.size();
 
          if (i_h0.size() == 0)
@@ -559,92 +488,10 @@ public:
              v_decoder.back()->start_new_sequence(i_h0);
      };
 
-     /// run in batch with multiple sentences
-     /// source [utt][data stream] is utterance first and then its content
-     /// the context RNN uses the last state of the encoder RNN as its input
-     virtual void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg,
-         Builder* encoder_fwd, Builder* encoder_bwd, 
-         Builder * context, 
-         Decoder *decoder) 
-     {
-         nutt = source.size();
-
-         std::vector<Expression> source_embeddings;
-
-         context->set_data_in_parallel(nutt);
-
-         encoder_fwd->new_graph(cg);
-         encoder_fwd->set_data_in_parallel(nutt);
-#ifndef UNDERSTAND_AWI
-         if (to_cxt.size() > 0)
-             encoder_fwd->start_new_sequence(to_cxt);
-         else
-#endif
-             encoder_fwd->start_new_sequence();
-
-         encoder_bwd->new_graph(cg);
-         encoder_bwd->set_data_in_parallel(nutt);
-#ifndef UNDERSTAND_AWI
-         if (to_cxt.size() > 0)
-             encoder_bwd->start_new_sequence(to_cxt);
-         else
-#endif
-             encoder_bwd->start_new_sequence();
-
-         /// the source sentence has to be approximately the same length
-         src_len = each_sentence_length(source);
-         //         if (!similar_length(source))
-         //         {
-         //             cerr << "sentence length differs too much" << endl;
-         //             abort();
-         //         }
-         src_fwd = bidirectional<Builder>(slen, source, cg, p_cs, zero, *encoder_fwd, *encoder_bwd, hidden_dim[ENCODER_LAYER]);
-
-         v_src = shuffle_data(src_fwd, (size_t)nutt, (size_t)2 * hidden_dim[ENCODER_LAYER], src_len);
-
-         /// for contet
-         vector<Expression> to;
-         /// take the top layer from decoder, take its final h
-         to.push_back(encoder_fwd->final_h()[layers[ENCODER_LAYER] - 1]);
-         to.push_back(encoder_bwd->final_h()[layers[ENCODER_LAYER] - 1]);
-
-         Expression q_m = concatenate(to);
-
-#ifndef UNDERSTAND_AWI
-         if (to_cxt.size() > 0)
-         {
-             Expression i_tgt2cxt = parameter(cg, p_tgt2cxt);
-             context->add_input(q_m + i_tgt2cxt * to_cxt.back());
-         }
-         else
-#endif
-             context->add_input(q_m);
-         cg.incremental_forward();
-
-         vector<Expression> d_m = context->final_s();
-
-         i_U = parameter(cg, p_U);
-         src = i_U * concatenate_cols(v_src);  // precompute 
-
-         decoder->new_graph(cg);
-         decoder->set_data_in_parallel(nutt);
-         decoder->start_new_sequence(d_m);  /// get the intention
-     };
-
-     virtual void start_new_instance(const std::vector<int> &src, ComputationGraph &cg)
+     void start_new_single_instance(const std::vector<int> &src, ComputationGraph &cg)
      {
          std::vector<std::vector<int>> source(1, src);
-         return start_new_instance(source, cg);
-     }
-
-     virtual void start_new_instance(const std::vector<int> &src, ComputationGraph &cg,
-         Builder * encoder_fwd, 
-         Builder * encoder_bwd,
-         Builder * context,
-         Decoder* decoder)
-     {
-         std::vector<std::vector<int>> source(1, src);
-         return start_new_instance(source, cg, encoder_fwd, encoder_bwd, context, decoder);
+         start_new_instance(source, cg);
      }
 
      Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
@@ -826,9 +673,9 @@ public:
 */
 
 protected:
-//    virtual Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg, Builder * decoder) = 0;
+
     virtual Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg) = 0;
-    virtual Expression decoder_step(int trg_tok, ComputationGraph& cg)
+    Expression decoder_single_instance_step(int trg_tok, ComputationGraph& cg) 
     {
         vector<int> input(1, trg_tok);
         return decoder_step(input, cg);

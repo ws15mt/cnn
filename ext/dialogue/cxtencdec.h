@@ -40,7 +40,7 @@ public:
 
 public:
 
-    void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg) override
+    void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg) override 
     {
         nutt = source.size();
 
@@ -163,6 +163,7 @@ public:
 
         return i_y_t;
     };
+
 };
 
 /** sequence to sequence encoder decodr 
@@ -286,6 +287,7 @@ public:
 
         return i_y_t;
     };
+
 };
 
 

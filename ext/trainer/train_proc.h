@@ -104,6 +104,7 @@ public:
         bool bcharlevel = false, bool nosplitdialogue = false);
     void train(Model &model, Proc &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs);
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo, const string& score_embedding_fn = "");
+    void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & sd);
     void test(Model &model, Proc &am, TupleCorpus &devel, string out_file, Dict & sd, Dict & td);
     void dialogue(Model &model, Proc &am, string out_file, Dict & td);
 
@@ -141,6 +142,10 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
     unsigned si = devel.size(); /// number of dialgoues in training
 
     Timer iteration("completed in");
+
+    /// report BLEU score
+    test(model, am, devel, out_file + "bleu", sd);
+
     cnn::real ddloss = 0;
     cnn::real ddchars_s = 0;
     cnn::real ddchars_t = 0;
@@ -199,6 +204,89 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
 
         delete ptr_evaluate;
     }
+
+    of.close();
+}
+
+template <class AM_t>
+void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_file, Dict & sd)
+{
+    unsigned lines = 0;
+    cnn::real dloss = 0;
+    cnn::real dchars_s = 0;
+    cnn::real dchars_t = 0;
+
+    BleuMetric bleuScore; 
+    bleuScore.Initialize();
+
+    ofstream of(out_file);
+
+    unsigned si = devel.size(); /// number of dialgoues in training
+
+    Timer iteration("completed in");
+    cnn::real ddloss = 0;
+    cnn::real ddchars_s = 0;
+    cnn::real ddchars_t = 0;
+
+
+    for (auto diag : devel){
+
+        SentencePair prv_turn;
+        size_t turn_id = 0;
+
+        /// train on two segments of a dialogue
+        ComputationGraph cg;
+        for (auto spair : diag){
+
+            SentencePair turn = spair;
+            vector<int> res;
+            vector<string> sref, srec;
+
+            if (turn_id == 0)
+                res = am.decode(turn.first, cg, sd);
+            else
+                res = am.decode(prv_turn.second, turn.first, cg, sd);
+
+            if (turn.first.size() > 0)
+            {
+                cout << "source: ";
+                for (auto p : turn.first){
+                    cout << sd.Convert(p) << " ";
+                }
+                cout << endl;
+            }
+
+            if (turn.second.size() > 0)
+            {
+                cout << "ref response: ";
+                for (auto p : turn.second){
+                    cout << sd.Convert(p) << " ";
+                    sref.push_back(sd.Convert(p));
+                }
+                cout << endl;
+            }
+
+            if (res.size() > 0)
+            {
+                cout << "res response: ";
+                for (auto p : res){
+                    cout << sd.Convert(p) << " ";
+                    srec.push_back(sd.Convert(p));
+                }
+                cout << endl;
+            }
+
+
+            bleuScore.AccumulateScore(sref, srec);
+
+            turn_id++;
+            prv_turn = turn;
+        }
+    }
+
+    string sBleuScore = bleuScore.GetScore(); 
+    cout << "BLEU (4) score = " << sBleuScore << endl;
+    of << sBleuScore << endl;
 
     of.close();
 }
