@@ -101,6 +101,16 @@ public:
         m_matchIndex = m_hypIndex + NgramOrder;
     }
 
+    void Initialize(int ngramorder = 4)
+    {
+        NgramOrder = ngramorder; 
+        m_allStats.resize(1 + 2 * NgramOrder, 0.0);
+
+        m_refIndex = 0;
+        m_hypIndex = m_refIndex + 1;
+        m_matchIndex = m_hypIndex + NgramOrder;
+    }
+
     cnn::real BrevityPenalty(LossStats stats)
     {
         cnn::real refLen = stats[m_refIndex];
