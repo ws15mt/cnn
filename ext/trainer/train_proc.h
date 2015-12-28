@@ -208,6 +208,11 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
     of.close();
 }
 
+/** warning, the test function use the true past response as the context, when measure bleu score
+• So the BLEU score is artificially high
+• However, because the use input is conditioned on the past response. If using the true decoder response as the past context, the user input cannot be from the corpus.
+• Therefore, it is reasonable to use the true past response as context when evaluating the model.
+*/
 template <class AM_t>
 void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_file, Dict & sd)
 {
@@ -236,10 +241,10 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
 
         /// train on two segments of a dialogue
         ComputationGraph cg;
+        vector<int> res;
         for (auto spair : diag){
 
             SentencePair turn = spair;
-            vector<int> res;
             vector<string> sref, srec;
 
             if (turn_id == 0)
@@ -320,10 +325,10 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, TupleCorpus &devel, string
 
         /// train on two segments of a dialogue
         ComputationGraph cg;
+        vector<int> res;
         for (auto spair : diag){
 
             SentenceTuple turn = spair;
-            vector<int> res;
 
             if (turn_id == 0)
                 res = am.decode_tuple(turn, cg, sd, td);
