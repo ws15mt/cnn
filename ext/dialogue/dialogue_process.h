@@ -71,24 +71,14 @@ namespace cnn {
 
         virtual Expression build_graph(const TupleDialogue& prv_sentence, const TupleDialogue& cur_sentence, ComputationGraph& cg) = 0;
 
-#ifdef INPUT_UTF8
-        virtual std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict<std::wstring> &tdict)
-#else
         virtual std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict)
-#endif
         {
             s2tmodel.reset();  /// reset network
-//            s2tmodel.assign_tocxt(cg, 1);
             return s2tmodel.decode(source, cg, tdict);
         }
 
-#ifdef INPUT_UTF8
-        virtual std::vector<int> decode(const std::vector<int> &source, const std::vector<int>& cur, ComputationGraph& cg, cnn::Dict<std::wstring> &tdict)
-#else
         virtual std::vector<int> decode(const std::vector<int> &source, const std::vector<int>& cur, ComputationGraph& cg, cnn::Dict  &tdict)
-#endif
         {
-//            s2tmodel.assign_tocxt(cg, 1);
             return s2tmodel.decode(cur, cg, tdict);
         }
 
@@ -478,6 +468,7 @@ namespace cnn {
     class DialogueSeq2SeqModel : public DialogueProcessInfo<DBuilder> {
     private:
         vector<Expression> i_errs;
+
     public:
         DialogueSeq2SeqModel(cnn::Model& model,
             const vector<size_t>& layers,
@@ -583,6 +574,34 @@ namespace cnn {
             throw("not implemented");
             return object;
         }
+
+        std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict) override
+        {
+            s2tmodel.reset();  /// reset network
+            return s2tmodel.decode(source, cg, tdict);
+        }
+
+        std::vector<int> decode(const std::vector<int> &source, const std::vector<int>& cur, ComputationGraph& cg, cnn::Dict  &tdict) override
+        {
+            Sentence insent;
+
+            /// remove sentence ending
+            for (auto & w : source){
+                if (w != kSRC_EOS)
+                    insent.push_back(w);
+            }
+
+            /// remove sentence begining
+            for (auto & w : cur){
+                if (w != kSRC_SOS)
+                    insent.push_back(w);
+            }
+
+            swords += insent.size() - 1;
+
+            return s2tmodel.decode(insent, cg, tdict);
+        }
+
     };
 
     template <class DBuilder>
