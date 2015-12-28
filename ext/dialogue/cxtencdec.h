@@ -142,6 +142,56 @@ public:
         return -i_nerr;
     };
 
+    std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict)
+    {
+        const int sos_sym = tdict.Convert("<s>");
+        const int eos_sym = tdict.Convert("</s>");
+
+        std::vector<int> target;
+        target.push_back(sos_sym);
+
+        //  std::cerr << tdict.Convert(target.back());
+        int t = 0;
+
+        start_new_single_instance(source, cg);
+
+        Expression i_bias = parameter(cg, p_bias);
+        Expression i_R = parameter(cg, p_R);
+
+        v_decoder_context.clear();
+        while (target.back() != eos_sym)
+        {
+            Expression i_y_t = decoder_single_instance_step(target.back(), cg);
+            Expression i_r_t = i_R * i_y_t;
+            Expression ydist = softmax(i_r_t);
+
+            // find the argmax next word (greedy)
+            unsigned w = 0;
+            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto pr_w = dist[w];
+            for (unsigned x = 1; x < dist.size(); ++x) {
+                if (dist[x] > pr_w) {
+                    w = x;
+                    pr_w = dist[x];
+                }
+            }
+
+            // break potential infinite loop
+            if (t > 100) {
+                w = eos_sym;
+                pr_w = dist[w];
+            }
+
+            //        std::cerr << " " << tdict.Convert(w) << " [p=" << pr_w << "]";
+            t += 1;
+            target.push_back(w);
+        }
+
+        turnid++;
+
+        return target;
+    }
+
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         size_t nutt = trg_tok.size();
