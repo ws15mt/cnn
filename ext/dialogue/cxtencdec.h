@@ -58,6 +58,7 @@ public:
 
             i_cxt2dec_w = parameter(cg, p_cxt2dec_w);
             i_R = parameter(cg, p_R); // hidden -> word rep parameter
+            i_bias = parameter(cg, p_bias);
         }
 
         encoder_bwd.new_graph(cg);
@@ -95,11 +96,11 @@ public:
         decoder.start_new_sequence(vcxt);  /// get the intention
     };
 
-    Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
-        size_t nutt;
+    vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
+        size_t nutt = source.size();
         start_new_instance(source, cg);
 
-        // decoder
+        vector<vector<Expression>> this_errs;
         vector<Expression> errs;
 
         nutt = osent.size();
@@ -130,16 +131,16 @@ public:
                     /// only compute errors on with output labels
                     Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
                     Expression i_ydist = log_softmax(r_r_t);
-                    errs.push_back(pick(i_ydist, osent[i][t + 1]));
+                    this_errs[i].push_back( -pick(i_ydist, osent[i][t + 1]));
                     tgt_words++;
                 }
             }
         }
 
-        Expression i_nerr = sum(errs);
-
         turnid++;
-        return -i_nerr;
+        for (auto &p : this_errs)
+            errs.push_back(sum(p));
+        return errs;
     };
 
     std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict)
@@ -271,11 +272,11 @@ public:
         decoder.start_new_sequence(to);  /// get the intention
     };
 
-    Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
-        size_t nutt;
+    vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
+        size_t nutt = source.size();
         start_new_instance(source, cg);
 
-        // decoder
+        vector<vector<Expression>> this_errs;
         vector<Expression> errs;
 
         nutt = osent.size();
@@ -304,16 +305,18 @@ public:
                     /// only compute errors on with output labels
                     Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
                     Expression i_ydist = log_softmax(r_r_t);
-                    errs.push_back(pick(i_ydist, osent[i][t + 1]));
+                    this_errs[i].push_back( -pick(i_ydist, osent[i][t + 1]));
                     tgt_words++;
                 }
             }
         }
 
-        Expression i_nerr = sum(errs);
-
         turnid++;
-        return -i_nerr;
+
+        for (auto &p : this_errs)
+            errs.push_back(sum(p));
+
+        return errs;
     };
 
     std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict)
