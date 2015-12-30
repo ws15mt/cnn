@@ -51,13 +51,9 @@ public:
     Expression build_graph(const std::vector<int> &source, const std::vector<int>& target,
         ComputationGraph& cg);
 
-    Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
+    vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
         return DialogueBuilder<Builder, Decoder>::build_graph(source, osent, cg);
     };
-
-    Expression build_graph_target_source(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
-        return DialogueBuilder<Builder, Decoder>::build_graph_target_source(source, osent, cg);
-    }
 
 #ifdef INPUT_UTF8
     std::vector<int> beam_decode(const std::vector<int> &source, ComputationGraph& cg, int beam_width, Dict<std::wstring> &tdict);
@@ -146,8 +142,6 @@ Expression AttentionWithIntention<Builder, Decoder>::build_graph(const std::vect
     i_va = parameter(cg, p_va);
     i_U = parameter(cg, p_U);
     i_Q = parameter(cg, p_Q);
-    Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
-    Expression i_bias = parameter(cg, p_bias);  // word bias
 
     const unsigned oslen = osent.size() - 1;
     for (unsigned t = 0; t < oslen; ++t) {
@@ -434,24 +428,20 @@ public:
 
     void setAlignDim(cnn::Model& model, unsigned alignd, cnn::real iscale);
 
-    Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
+    vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
     {
-        size_t nutt;
+        size_t nutt = source.size();
         start_new_instance(source, cg);
 
-        // decoder
+        vector<vector<Expression>> this_errs(nutt);
         vector<Expression> errs;
 
-        Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
-        Expression i_bias = parameter(cg, p_bias);  // word bias
-
         nutt = osent.size();
+        Expression i_bias_mb = concatenate_cols(vector<Expression>(nutt, i_bias));
 
         int oslen = 0;
         for (auto p : osent)
             oslen = (oslen < p.size()) ? p.size() : oslen;
-
-        Expression i_bias_mb = concatenate_cols(vector<Expression>(nutt, i_bias));
 
         v_decoder_context.clear();
         v_decoder_context.resize(nutt);
@@ -476,7 +466,7 @@ public:
                     /// only compute errors on with output labels
                     Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
                     Expression i_ydist = log_softmax(r_r_t);
-                    errs.push_back(pick(i_ydist, osent[i][t + 1]));
+                    this_errs[i].push_back( - pick(i_ydist, osent[i][t + 1]));
                     tgt_words++;
                 }
                 else if (t == osent[i].size() - 1)
@@ -498,11 +488,11 @@ public:
 
         save_context(cg);
 
-        Expression i_nerr = -sum(errs);
-
-        v_errs.push_back(i_nerr);
+        for (auto &p : this_errs)
+            errs.push_back(sum(p));
+        v_errs.push_back(sum(errs));
         turnid++;
-        return sum(v_errs);
+        return errs;
     };
 
 #ifdef INPUT_UTF8
@@ -525,9 +515,6 @@ public:
         int t = 0;
 
         start_new_single_instance(source, cg);
-
-        Expression i_bias = parameter(cg, p_bias);
-        Expression i_R = parameter(cg, p_R);
 
         v_decoder_context.clear();
 
@@ -589,6 +576,8 @@ protected:
             i_Wa = parameter(cg, p_Wa);
             i_va = parameter(cg, p_va);
             i_Q = parameter(cg, p_Q);
+
+            i_R = parameter(cg, p_R); // hidden -> word rep parameter
 
             i_cxt2dec_w = parameter(cg, p_cxt2dec_w);
 
@@ -755,6 +744,8 @@ public:
             i_Wa = parameter(cg, p_Wa);
             i_va = parameter(cg, p_va);
             i_Q = parameter(cg, p_Q);
+
+            i_R = parameter(cg, p_R); // hidden -> word rep parameter
 
             i_cxt2dec_w = parameter(cg, p_cxt2dec_w);
 
@@ -930,6 +921,8 @@ public:
             i_va = parameter(cg, p_va);
             i_Q = parameter(cg, p_Q);
 
+            i_R = parameter(cg, p_R); // hidden -> word rep parameter
+
             i_cxt2dec_w = parameter(cg, p_cxt2dec_w);
             for (auto p : p_tgt2enc_b)
                 i_tgt2enc_b.push_back(parameter(cg, p));
@@ -1036,9 +1029,6 @@ private:
     Parameters* p_scale;
     Expression i_scale; 
 
-    /// for generating output symbols
-    Expression i_R, i_bias;
-
     /// a single layer MLP
     DNNBuilder attention_layer;
     vector<Expression> attention_output_for_this_turn; /// [number of turn]
@@ -1090,6 +1080,8 @@ public:
             i_va = parameter(cg, p_va);
             i_Q = parameter(cg, p_Q);
 
+            i_R = parameter(cg, p_R); // hidden -> word rep parameter
+
             i_Wa_local = parameter(cg, p_Wa_local);
             i_va_local = parameter(cg, p_va_local);
             i_ba_local = parameter(cg, p_ba_local);
@@ -1097,7 +1089,7 @@ public:
             i_scale = exp(parameter(cg, p_scale));
 
             i_R = parameter(cg, p_R); // hidden -> word rep parameter
-            i_bias = parameter(cg, p_bias);  // word bias
+            i_bias = parameter(cg, p_bias);
 
             i_cxt2dec_w = parameter(cg, p_cxt2dec_w);
             for (auto p : p_tgt2enc_b)
@@ -1166,12 +1158,13 @@ public:
         decoder.start_new_sequence(vcxt);  /// get the intention
     }
 
-    Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
+    /// return errors[nutt]
+    vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
     {
-        size_t nutt;
+        size_t nutt = source.size();
         start_new_instance(source, cg);
 
-        // decoder
+        vector<vector<Expression>> this_errs(nutt);
         vector<Expression> errs;
 
         nutt = osent.size();
@@ -1179,8 +1172,6 @@ public:
         int oslen = 0;
         for (auto p : osent)
             oslen = (oslen < p.size()) ? p.size() : oslen;
-
-        Expression i_bias_mb = concatenate_cols(vector<Expression>(nutt, i_bias));
 
         v_decoder_context.clear();
         v_decoder_context.resize(nutt);
@@ -1205,7 +1196,7 @@ public:
                     /// only compute errors on with output labels
                     Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
                     Expression i_ydist = log_softmax(r_r_t);
-                    errs.push_back(pick(i_ydist, osent[i][t + 1]));
+                    this_errs[i].push_back(-pick(i_ydist, osent[i][t + 1]));
                     tgt_words++;
                 }
                 else if (t == osent[i].size() - 1)
@@ -1227,11 +1218,13 @@ public:
 
         save_context(cg);
 
-        Expression i_nerr = -sum(errs);
+        for (auto &p : this_errs)
+            errs.push_back(sum(p));
+        Expression i_nerr = sum(errs);
 
         v_errs.push_back(i_nerr);
         turnid++;
-        return sum(v_errs);
+        return errs;
     };
 
     std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict)
@@ -1241,7 +1234,6 @@ public:
 
         std::vector<int> target;
         target.push_back(sos_sym);
-
         int t = 0;
 
         start_new_single_instance(source, cg);
@@ -1280,11 +1272,9 @@ public:
         }
 
         v_decoder_context.push_back(decoder.final_s());
-
         save_context(cg);
 
         turnid++;
-
         return target;
     }
 
@@ -1351,7 +1341,6 @@ public:
 
         return i_h_attention_t;
     }
-
 };
 
 /**
@@ -1434,6 +1423,8 @@ public:
             i_va = parameter(cg, p_va);
             i_Q = parameter(cg, p_Q);
 
+            i_R = parameter(cg, p_R); // hidden -> word rep parameter
+
             for (auto p : p_tgt2enc_b)
                 i_tgt2enc_b.push_back(parameter(cg, p));
             for (auto p : p_tgt2enc_w)
@@ -1509,20 +1500,17 @@ public:
         v_encoder_fwd.back()->start_new_sequence(v_cxt);
     }
 
-    Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
+    vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
     {
-        size_t nutt;
+        size_t nutt = source.size();
         start_new_instance(source, cg);
 
-        // decoder
+        vector<vector<Expression>> this_errs(nutt);
         vector<Expression> errs;
 
         src_fwd = concatenate_cols(backward_directional<Builder>(slen, source, cg, p_cs, zero, *v_encoder_fwd.back(), hidden_dim[ENCODER_LAYER]));
         if (verbose)
             display_value(src_fwd, cg, "src_fwd");
-
-        Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
-        Expression i_bias = parameter(cg, p_bias);  // word bias
 
         nutt = osent.size();
 
@@ -1555,7 +1543,7 @@ public:
                     /// only compute errors on with output labels
                     Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
                     Expression i_ydist = log_softmax(r_r_t);
-                    errs.push_back(pick(i_ydist, osent[i][t + 1]));
+                    this_errs[i].push_back(-pick(i_ydist, osent[i][t + 1]));
                     tgt_words++;
                 }
                 else if (t == osent[i].size() - 1)
@@ -1577,11 +1565,13 @@ public:
 
         save_context(cg);
 
-        Expression i_nerr = -sum(errs);
+        for (auto &p : this_errs)
+            errs.push_back(sum(p));
+        Expression i_nerr = sum(errs);
 
         v_errs.push_back(i_nerr);
         turnid++;
-        return sum(v_errs);
+        return errs;
     };
 };
 
@@ -2011,6 +2001,7 @@ protected:
     LookupParameters* p_cs;
     Parameters* p_bias;
     Parameters* p_R;  // for affine transformation after decoder
+    Expression i_R, i_bias;
 
     vector<size_t> layers;
     Decoder decoder;  // for decoder at each turn
@@ -2226,6 +2217,9 @@ public:
             i_va = parameter(cg, p_va);
             i_Q = parameter(cg, p_Q);
 
+            i_R = parameter(cg, p_R); // hidden -> word rep parameter
+            i_bias = parameter(cg, p_bias);
+
             i_fact_encoder_state = parameter(cg, p_fact_encoder_state);
             i_fact_encoder_state_bias = parameter(cg, p_fact_encoder_state_bias);
             i_fact_encoder_state_to_cxt = parameter(cg, p_fact_encoder_state_to_cxt);
@@ -2263,9 +2257,9 @@ public:
         fact_encoder_state.push_back(to);
     }
 
-    Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
+    vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
     {
-        Expression exp;
+        vector<Expression> exp;
         throw("not implemented");
         return exp;
     }
@@ -2281,9 +2275,6 @@ public:
 
         if (osent.size() == 0 || osent[0].size() == 0)
             return errs; 
-
-        Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
-        Expression i_bias = parameter(cg, p_bias);  // word bias
 
         nutt = osent.size();
 
@@ -2343,6 +2334,13 @@ public:
         return vres;
     }
 
+    std::vector<Sentence> batch_decode(const vector<Sentence>&source, ComputationGraph& cg, cnn::Dict  &tdict)
+    {
+        vector<Sentence> vres;
+        throw("not implemented");
+        return vres;
+    }
+
     std::vector<int> decode_tuple(const SentenceTuple&source, ComputationGraph& cg, cnn::Dict  &sdict, cnn::Dict  &tdict)
     {
         const int sos_sym = tdict.Convert("<s>");
@@ -2358,9 +2356,6 @@ public:
             return target;
 
         assign_cxt(cg, source.last);
-
-        Expression i_bias = parameter(cg, p_bias);
-        Expression i_R = parameter(cg, p_R);
 
         decoder.new_graph(cg);
         decoder.set_data_in_parallel(nutt);
