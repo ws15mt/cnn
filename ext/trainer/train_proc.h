@@ -23,6 +23,7 @@
 
 #include <boost/random/mersenne_twister.hpp>
 #include <boost/random/uniform_int.hpp>
+#include <boost/random/uniform_01.hpp>
 #include <boost/random/variate_generator.hpp>
 #include <boost/range/adaptor/reversed.hpp>
 #include <boost/archive/text_iarchive.hpp>
@@ -88,8 +89,7 @@ The higher level training process
 template <class Proc>
 class TrainProcess{
 public:
-    TrainProcess()
-    {
+    TrainProcess(){
     }
 
     void prt_model_info(size_t LAYERS, size_t VOCAB_SIZE_SRC, const vector<unsigned>& dims, size_t nreplicate, size_t decoder_additiona_input_to, size_t mem_slots, cnn::real scale);
@@ -103,6 +103,7 @@ public:
         Trainer &sgd, string out_file, int max_epochs, int min_diag_id,
         bool bcharlevel = false, bool nosplitdialogue = false);
     void train(Model &model, Proc &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs);
+    void REINFORCEtrain(Model &model, Proc &am, Proc &am_agent_mirrow, Corpus &training, Corpus &devel, Trainer &sgd, string out_file, Dict & td, int max_epochs, int nparallel, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0);
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo, const string& score_embedding_fn = "");
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & sd);
     void test(Model &model, Proc &am, TupleCorpus &devel, string out_file, Dict & sd, Dict & td);
@@ -114,6 +115,9 @@ public:
         cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr);
     void segmental_forward_backward(Model &model, Proc &am, const PDialogue &v_v_dialogues, Trainer &sgd, bool bupdate, int nutt,
         cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t);
+    void REINFORCE_nosegmental_forward_backward(Model &model, Proc &am, Proc &am_mirrow, PDialogue &v_v_dialogues, int nutt,
+        cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, Trainer* sgd, Dict& sd, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0,
+        bool update_model = true);
 
     cnn::real smoothed_ppl(cnn::real curPPL);
     void reset_smoothed_ppl(){
@@ -432,6 +436,173 @@ void TrainProcess<AM_t>::dialogue(Model &model, AM_t &am, string out_file, Dict 
     of.close();
 }
 
+/**
+inspired by the following two papers
+Sequence level training with recurrent neural networks http://arxiv.org/pdf/1511.06732v3.pdf
+Minimum risk training for neural machine translation http://arxiv.org/abs/1512.02433
+
+use decoded responses as targets. start this process from the last turn, and then gradually move to earlier turns.
+this is also for implementation convenience.
+
+/// initially alwasy use the xent, later on, with probability p, use the decoded response as target, but weight it
+/// with a reward from BLEU
+/// this probability is increased from 0 to 1.0.
+/// two avoid different scaling, should apply decoding to all incoming sentences or otherwise, all use xent training
+
+/// with probability p, decode an input
+vector<int> response = s2tmodel_sim.decode(insent, cg);
+/// evaluate the response to get BLEU score
+
+/// subtract the BLEU score with a baseline number
+
+/// the scalar is the reward signal
+
+/// the target responses: some utterances are with true responses and the others are with decoded responses
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::REINFORCE_nosegmental_forward_backward(Model &model, AM_t &am, AM_t &am_mirrow, PDialogue &v_v_dialogues, int nutt,
+    cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, Trainer* sgd, Dict& sd, cnn::real reward_baseline, cnn::real threshold_prob_for_sampling, bool update_model)
+{
+    size_t turn_id = 0;
+    size_t i_turns = 0;
+    PTurn prv_turn, new_turn, new_prv_turn;
+    BleuMetric bleuScore;
+    bleuScore.Initialize();
+
+    bool do_sampling = false; 
+    cnn::real rng_value = rand() / (RAND_MAX + 0.0); 
+    if (rng_value >= threshold_prob_for_sampling)
+    {
+        do_sampling = true; 
+    }
+
+    ComputationGraph cg;
+
+    am.reset();
+    am_mirrow.reset();
+
+    /// train on two segments of a dialogue
+    vector<Sentence> res;
+    vector<Expression> v_errs; /// the errors to be minimized
+    vector<cnn::real> v_bleu_score;
+    vector<Expression> i_err;
+
+    for (auto &turn : v_v_dialogues)
+    {
+        if (do_sampling)
+        {
+            vector<string> sref, srec;
+            vector<Sentence> v_input, v_prv_response;
+
+            v_bleu_score.clear();
+
+            for (auto& p : turn)
+            {
+                v_input.push_back(p.first);
+            }
+            for (auto&p : prv_turn)
+            {
+                v_prv_response.push_back(p.second);
+            }
+
+            if (turn_id == 0)
+            {
+                res = am_mirrow.batch_decode(v_input, cg, sd);
+            }
+            else
+            {
+                res = am_mirrow.batch_decode(v_prv_response, v_input, cg, sd);
+            }
+
+            size_t k = 0;
+            for (auto &p : res)
+            {
+
+                sref.clear();
+                if (verbose) cout << "ref response: ";
+                for (auto p : turn[k].second){
+                    if (verbose) cout << sd.Convert(p) << " ";
+                    sref.push_back(sd.Convert(p));
+                }
+                if (verbose) cout << endl;
+
+                srec.clear();
+                if (verbose) cout << "res response: ";
+                for (auto p : res[k]){
+                    if (verbose) cout << sd.Convert(p) << " ";
+                    srec.push_back(sd.Convert(p));
+                }
+                if (verbose) cout << endl;
+
+                cnn::real score = bleuScore.GetSentenceScore(sref, srec);
+                v_bleu_score.push_back(score);
+
+                k++;
+            }
+
+            new_turn = turn;
+            for (size_t k = 0; k < nutt; k++)
+            {
+                new_turn[k].second = res[k];
+            }
+
+            /// get errors from the decoded results
+            if (turn_id == 0)
+            {
+                i_err = am.build_graph(new_turn, cg);
+            }
+            else
+            {
+                i_err = am.build_graph(new_prv_turn, new_turn, cg);
+            }
+        }
+        else{
+            /// get errors from the true reference
+            if (turn_id == 0)
+            {
+                i_err = am.build_graph(turn, cg);
+            }
+            else
+            {
+                i_err = am.build_graph(prv_turn, turn, cg);
+            }
+        }
+
+        if (do_sampling)
+        {
+            for (size_t k = 0; k < nutt; k++)
+            {
+                Expression t_err = i_err[k];
+                v_errs.push_back(t_err * (v_bleu_score[k] - reward_baseline));  /// multiply with reward
+            }
+        }
+        else
+        {
+            for (auto &p : i_err)
+                v_errs.push_back(p);
+        }
+
+        cg.incremental_forward();
+
+        prv_turn = turn;
+        new_prv_turn = new_turn;
+        turn_id++;
+        i_turns++;
+    }
+
+    Expression i_total_err = sum(v_errs);
+    dloss += as_scalar(cg.get_value(i_total_err));
+
+    dchars_s += am.swords;
+    dchars_t += am.twords;
+
+    if (sgd != nullptr && update_model)
+    {
+        cg.backward();
+        sgd->update(am.twords);
+    }
+}
+
 template <class AM_t>
 void TrainProcess<AM_t>::nosegmental_forward_backward(Model &model, AM_t &am, PDialogue &v_v_dialogues, int nutt,
     cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr)
@@ -539,7 +710,118 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, cons
     }
 }
 
-/* the following does mutiple sentences per minibatch 
+/**
+Train with REINFORCE algorithm
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::REINFORCEtrain(Model &model, AM_t &am, AM_t &am_agent_mirrow, Corpus &training, Corpus &devel, Trainer &sgd, string out_file, Dict & td, int max_epochs, int nparallel, cnn::real reward_baseline, cnn::real threshold_prob_for_sampling)
+{
+    cnn::real best = 9e+99;
+    unsigned report_every_i = 50;
+    unsigned dev_every_i_reports = 1000;
+    unsigned si = training.size(); /// number of dialgoues in training
+    vector<unsigned> order(training.size());
+    for (unsigned i = 0; i < order.size(); ++i) order[i] = i;
+
+    threshold_prob_for_sampling = min<cnn::real>(1.0, max<cnn::real>(0.0, threshold_prob_for_sampling)); /// normalize to [0.0, 1.0]
+
+    bool first = true;
+    int report = 0;
+    unsigned lines = 0;
+    int epoch = 0;
+
+    ofstream out(out_file, ofstream::out);
+    boost::archive::text_oarchive oa(out);
+    oa << model;
+    out.close();
+
+    int prv_epoch = -1;
+    vector<bool> v_selected(training.size(), false);  /// track if a dialgoue is used
+    size_t i_stt_diag_id = 0;
+
+    while (sgd.epoch < max_epochs) {
+        Timer iteration("completed in");
+        cnn::real dloss = 0;
+        cnn::real dchars_s = 0;
+        cnn::real dchars_t = 0;
+        cnn::real dchars_tt = 0;
+
+        for (unsigned iter = 0; iter < report_every_i;) {
+
+            if (si == training.size()) {
+                si = 0;
+                if (first) { first = false; }
+                else { sgd.update_epoch(); }
+            }
+
+            if (si % order.size() == 0) {
+                cerr << "**SHUFFLE\n";
+                /// shuffle number of turns
+                shuffle(training_numturn2did.vNumTurns.begin(), training_numturn2did.vNumTurns.end(), *rndeng);
+                i_stt_diag_id = 0;
+                v_selected = vector<bool>(training.size(), false);
+                for (auto p : training_numturn2did.mapNumTurn2DialogId){
+                    /// shuffle dailogues with the same number of turns
+                    random_shuffle(p.second.begin(), p.second.end());
+                }
+                v_selected.assign(training.size(), false);
+            }
+
+            Dialogue prv_turn;
+            
+            PDialogue v_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
+            vector<int> i_sel_idx = get_same_length_dialogues(training, nparallel, i_stt_diag_id, v_selected, v_dialogues, training_numturn2did);
+            size_t nutt = i_sel_idx.size();
+
+            REINFORCE_nosegmental_forward_backward(model, am, am_agent_mirrow, v_dialogues, nutt, dloss, dchars_s, dchars_t, &sgd, td, reward_baseline, threshold_prob_for_sampling);
+            si += nutt;
+            lines += nutt;
+            iter += nutt;
+        }
+        sgd.status();
+        cerr << "\n***Train [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
+
+        // show score on dev data?
+        report++;
+        if (floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0 || fmod(lines, (cnn::real)training.size()) == 0.0) {
+            cnn::real ddloss = 0;
+            cnn::real ddchars_s = 0;
+            cnn::real ddchars_t = 0;
+
+            vector<bool> vd_selected(devel.size(), false);  /// track if a dialgoue is used
+            size_t id_stt_diag_id = 0;
+            PDialogue vd_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
+            vector<int> id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, devel_numturn2did);
+            size_t ndutt = id_sel_idx.size();
+
+            while (ndutt > 0)
+            {
+                /// the cost is -(r - r_baseline) * log P
+                /// for small P, but with large r, the cost is high, so to reduce it, it generates large gradient as this event corresponds to low probability but high reward
+                REINFORCE_nosegmental_forward_backward(model, am, am_agent_mirrow, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, nullptr, td, reward_baseline, 0.0, false);
+                
+                id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, devel_numturn2did);
+                ndutt = id_sel_idx.size();
+            }
+            if (ddloss < best) {
+                best = ddloss;
+                ofstream out(out_file, ofstream::out);
+                boost::archive::text_oarchive oa(out);
+                oa << model;
+                out.close();
+            }
+            else if (ddloss > best * 1.05){
+                sgd.eta *= 0.5; /// reduce learning rate
+            }
+            cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] cost = " << (ddloss / ddchars_t) << " approximate ppl=" << exp(ddloss / ddchars_t) << ' ';
+        }
+
+        prv_epoch = floor(sgd.epoch);
+    }
+}
+
+
+/* the following does mutiple sentences per minibatch
 but I comment it out 
 */
 template <class AM_t>
@@ -1423,7 +1705,44 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
         }
         ptrTrainer->dialogue(model, hred, vm["outputfile"].as<string>(), sd);
     }
-    if (vm.count("nparallel") && !vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
+    if (vm.count("reinforce") && vm.count("nparallel") && !vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
+    {
+        // a mirrow of the agent to generate decoding results so that their results can be evaluated
+        // this is not efficient implementation, better way is to share model parameters
+        int n_reinforce_train = vm["num_reinforce_train"].as<int>();
+        for (size_t k_reinforce = 0; k_reinforce <= n_reinforce_train; k_reinforce++)
+        {
+            Model model_mirrow;
+            string fname;
+            if (vm.count("parameters") > 0 && k_reinforce == 0) {
+                fname = vm["parameters"].as<string>();
+
+                ofstream out(fname, ofstream::out);
+                boost::archive::text_oarchive oa(out);
+                oa << model;
+                out.close();
+            }
+            else if (vm.count("initialise") > 0){
+                fname = vm["initialise"].as<string>();
+            }
+            else
+                throw("need to specify either parameters or initialise model file name");
+            rnn_t hred_agent_mirrow(model_mirrow, layers, VOCAB_SIZE_SRC, VOCAB_SIZE_TGT, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
+            ifstream in(fname, ifstream::in);
+            if (in.is_open())
+            {
+                boost::archive::text_iarchive ia(in);
+                ia >> model_mirrow;
+            }
+
+            cnn::real threshold_prob;
+            threshold_prob = 1.0  -  k_reinforce / (vm["num_reinforce_train"].as<int>() + 0.0);
+
+            size_t each_epoch = min<int>(2, vm["epochs"].as<int>() / n_reinforce_train);
+            ptrTrainer->REINFORCEtrain(model, hred, hred_agent_mirrow, training, devel, *sgd, fname, sd, each_epoch, vm["nparallel"].as<int>(), vm["reward_baseline"].as<cnn::real>(), threshold_prob);
+        }
+    }
+    else if (vm.count("nparallel") && !vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
     {
         ptrTrainer->batch_train(model, hred, training, devel, *sgd, fname, vm["epochs"].as<int>(), vm["nparallel"].as<int>());
     }
