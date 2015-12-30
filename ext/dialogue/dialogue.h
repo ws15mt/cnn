@@ -33,6 +33,7 @@ protected:
     LookupParameters* p_cs;
     Parameters* p_bias;
     Parameters* p_R;  // for affine transformation after decoder
+    Expression i_bias, i_R;
 
     /// context dimension to decoder dimension
     Parameters* p_cxt2dec_w;
@@ -375,8 +376,8 @@ public:
 
         start_new_single_instance(source, cg);
 
-        Expression i_bias = parameter(cg, p_bias);
-        Expression i_R = parameter(cg, p_R);
+        i_bias = parameter(cg, p_bias);
+        i_R = parameter(cg, p_R);
 
         v_decoder_context.clear();
         while (target.back() != eos_sym)
@@ -416,6 +417,77 @@ public:
         return target;
     }
 
+    /// return [nutt][decoded_results]
+    std::vector<Sentence> batch_decode(const std::vector<Sentence> &source, ComputationGraph& cg, cnn::Dict  &tdict)
+    {
+        const int sos_sym = tdict.Convert("<s>");
+        const int eos_sym = tdict.Convert("</s>");
+
+        size_t nutt = source.size();
+        std::vector<Sentence> target(nutt, vector<int>(1, sos_sym));
+
+        int t = 0;
+
+        start_new_instance(source, cg);
+        cg.incremental_forward();
+
+        Expression i_bias = parameter(cg, p_bias);
+        Expression i_R = parameter(cg, p_R);
+
+        v_decoder_context.clear();
+
+        vector<int> vtmp(nutt, sos_sym);
+
+        bool need_decode = true;
+        while (need_decode)
+        {
+            Expression i_y_t = decoder_step(vtmp, cg);
+            Expression i_r_t = reshape(i_R * i_y_t, { long(nutt * vocab_size_tgt) });
+            cg.incremental_forward();
+            need_decode = false;
+            vtmp.clear();
+            for (size_t k = 0; k < nutt; k++)
+            {
+                if (target[k].back() != eos_sym)
+                {
+                    Expression ydist = softmax(pickrange(i_r_t, k *vocab_size_tgt, (k + 1) *vocab_size_tgt));
+
+                    // find the argmax next word (greedy)
+                    unsigned w = 0;
+                    auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
+                    auto pr_w = dist[w];
+                    for (unsigned x = 1; x < dist.size(); ++x) {
+                        if (dist[x] > pr_w) {
+                            w = x;
+                            pr_w = dist[x];
+                        }
+                    }
+
+                    // break potential infinite loop
+                    if (t > 100) {
+                        w = eos_sym;
+                        pr_w = dist[w];
+                    }
+
+                    vtmp.push_back(w);
+                    target[k].push_back(w);
+                    need_decode = true;
+                }
+                else
+                    vtmp.push_back(eos_sym);
+            }
+            t += 1;
+        }
+
+        v_decoder_context.push_back(decoder.final_s());
+
+        save_context(cg);
+
+        turnid++;
+
+        return target;
+    }
+
     std::vector<int> decode_tuple(const SentenceTuple&source, ComputationGraph& cg, cnn::Dict  &sdict, cnn::Dict  &tdict)
     {
         vector<int> vres;
@@ -442,6 +514,9 @@ public:
              context.start_new_sequence();
 
              i_cxt2dec_w = parameter(cg, p_cxt2dec_w);
+
+             i_bias = parameter(cg, p_bias);
+             i_R = parameter(cg, p_R);
          }
 
          size_t n_turns = 0;
@@ -494,11 +569,11 @@ public:
          start_new_instance(source, cg);
      }
 
-     Expression build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
-         size_t nutt;
+     vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
+         size_t nutt = source.size();
          start_new_instance(source, cg);
 
-         // decoder
+         vector<vector<Expression>> this_errs;
          vector<Expression> errs;
 
          Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
@@ -534,7 +609,7 @@ public:
                      /// only compute errors on with output labels
                      Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
                      Expression i_ydist = log_softmax(r_r_t);
-                     errs.push_back(pick(i_ydist, osent[i][t + 1]));
+                     this_errs[i].push_back( - pick(i_ydist, osent[i][t + 1]));
                  }
                  else if (t == osent[i].size() - 1)
                  {
@@ -571,18 +646,11 @@ public:
 
          save_context(cg);
 
-         Expression i_nerr = sum(errs);
-
+         for (auto &p : this_errs)
+             errs.push_back(sum(p));
          turnid++;
-         return -i_nerr;
+         return errs;
      };
-
-     Expression build_graph(const std::vector<std::vector<int>> &source,
-         const std::vector<std::vector<int>>& osent,
-         const std::vector<std::vector<int>> &additional_input,
-         ComputationGraph &cg)
-     {
-     }
 
      public:
      vector<Expression> build_comp_graph(const std::vector<std::vector<int>> &source,
