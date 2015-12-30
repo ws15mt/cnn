@@ -63,6 +63,16 @@ public:
         return boost::lexical_cast<string>(score);
     }
 
+    cnn::real GetSentenceScore(const vector<string> & refTokens, const vector<string> & hypTokens)
+    {
+        LossStats stats = GetStats(refTokens, hypTokens);
+        cnn::real precision = Precision(stats);
+        cnn::real bp = BrevityPenalty(stats);
+
+        cnn::real score = 100.0*precision*bp;
+        return score;
+    }
+
     LossStats GetStats(const vector<string> & refTokens, const vector<string> & hypTokens)
     {
         vector<string> lcRefTokens, lcHypTokens;
