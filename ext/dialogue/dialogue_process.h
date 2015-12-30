@@ -59,11 +59,11 @@ namespace cnn {
     
         // return Expression of total loss
         // only has one pair of sentence so far
-        virtual Expression build_graph(const Dialogue& cur_sentence, ComputationGraph& cg) = 0;
+        virtual vector<Expression> build_graph(const Dialogue& cur_sentence, ComputationGraph& cg) = 0;
 
         // return Expression of total loss
         // only has one pair of sentence so far
-        virtual Expression build_graph(const Dialogue& prv_sentence, const Dialogue& cur_sentence, ComputationGraph& cg) = 0;
+        virtual vector<Expression> build_graph(const Dialogue& prv_sentence, const Dialogue& cur_sentence, ComputationGraph& cg) = 0;
 
         // return Expression of total loss
         // only has one pair of sentence so far
@@ -100,6 +100,20 @@ namespace cnn {
             vector<int> iret = s2tmodel.decode(cur, cg, tdict);
 
             s2tmodel.serialise_context(cg, v_cxt_s, v_decoder_s);
+            return iret;
+        }
+
+        // parallel decoding
+        virtual vector<Sentence>batch_decode(const vector<Sentence>& cur_sentence, ComputationGraph& cg, cnn::Dict & tdict)
+        {
+            s2tmodel.reset();  /// reset network
+            vector<Sentence> iret = s2tmodel.batch_decode(cur_sentence, cg, tdict);
+            return iret;
+        }
+
+        virtual vector<Sentence> batch_decode(const vector<Sentence>& prv_sentence, const vector<Sentence>& cur_sentence, ComputationGraph& cg, cnn::Dict& tdict)
+        {
+            vector<Sentence> iret = s2tmodel.batch_decode(cur_sentence, cg, tdict);
             return iret;
         }
 
@@ -378,9 +392,9 @@ namespace cnn {
 
         // return Expression of total loss
         // only has one pair of sentence so far
-        Expression build_graph(const vector<SentencePair> & cur_sentence, ComputationGraph& cg) override
+        vector<Expression> build_graph(const vector<SentencePair> & cur_sentence, ComputationGraph& cg) override
         {
-            Expression object;
+            vector<Expression> object;
             vector<Sentence> insent, osent;
             i_errs.clear();
             for (auto p : cur_sentence)
@@ -395,17 +409,18 @@ namespace cnn {
             s2tmodel.reset();
             object = s2tmodel.build_graph(insent, osent, cg);
 
-            s2txent = object;
+            Expression i_err = sum(object);
+            s2txent = i_err;
 
             assert(twords == s2tmodel.tgt_words);
             assert(swords == s2tmodel.src_words);
-            i_errs.push_back(object);
+            i_errs.push_back(i_err);
             return object;
         }
 
         // return Expression of total loss
         // only has one pair of sentence so far
-        Expression build_graph(const vector<SentencePair>& prv_sentence, const vector<SentencePair>& cur_sentence, ComputationGraph& cg) override
+        vector<Expression> build_graph(const vector<SentencePair>& prv_sentence, const vector<SentencePair>& cur_sentence, ComputationGraph& cg) override
         {
             vector<Sentence> insent, osent;
 
@@ -421,7 +436,7 @@ namespace cnn {
 
             int nutt = cur_sentence.size();
 
-            Expression object_prv_t2cur_s = s2tmodel.build_graph(insent, osent, cg);
+            vector<Expression> object_prv_t2cur_s = s2tmodel.build_graph(insent, osent, cg);
 
             osent.clear(); insent.clear();
             for (auto p : cur_sentence)
@@ -433,13 +448,13 @@ namespace cnn {
                 swords += p.first.size() - 1;
             }
 
-            Expression object_cur_s2cur_t = s2tmodel.build_graph(insent, osent, cg);
+            vector<Expression> object_cur_s2cur_t = s2tmodel.build_graph(insent, osent, cg);
 
-            s2txent = s2txent + object_cur_s2cur_t;
+            s2txent = s2txent + sum(object_cur_s2cur_t);
 
-            Expression i_sum_err = object_cur_s2cur_t + object_prv_t2cur_s;
+            Expression i_sum_err = sum(object_cur_s2cur_t) + sum(object_prv_t2cur_s);
             i_errs.push_back(i_sum_err);
-            return sum(i_errs); 
+            return object_cur_s2cur_t;
         }
 
         Expression build_graph(const vector<SentenceTuple> & cur_sentence, ComputationGraph& cg) override
@@ -486,9 +501,9 @@ namespace cnn {
 
         // return Expression of total loss
         // only has one pair of sentence so far
-        Expression build_graph(const vector<SentencePair> & cur_sentence, ComputationGraph& cg) override
+        vector<Expression> build_graph(const vector<SentencePair> & cur_sentence, ComputationGraph& cg) override
         {
-            Expression object;
+            vector<Expression> object;
             vector<Sentence> insent, osent;
 
             i_errs.clear();
@@ -505,7 +520,7 @@ namespace cnn {
             s2tmodel.reset();
             object = s2tmodel.build_graph(insent, osent, cg);
 
-            s2txent = object;
+            s2txent = sum(object);
 
             i_errs.push_back(s2txent);
             return object;
@@ -514,7 +529,7 @@ namespace cnn {
         /**
         concatenate the previous response and the current source as input, and predict the reponse of the current turn
         */
-        Expression build_graph(const vector<SentencePair>& prv_sentence, const vector<SentencePair>& cur_sentence, ComputationGraph& cg) override
+        vector<Expression> build_graph(const vector<SentencePair>& prv_sentence, const vector<SentencePair>& cur_sentence, ComputationGraph& cg) override
         {
             vector<Sentence> insent, osent;
 
@@ -550,13 +565,14 @@ namespace cnn {
 
             int nutt = cur_sentence.size();
 
-            Expression object_cur_s2cur_t = s2tmodel.build_graph(insent, osent, cg);
+            vector<Expression> object_cur_s2cur_t = s2tmodel.build_graph(insent, osent, cg);
+            Expression i_err = sum(object_cur_s2cur_t);
 
-            i_errs.push_back(object_cur_s2cur_t);
+            i_errs.push_back(i_err);
 
-            s2txent = sum(i_errs);
+            s2txent = s2txent + i_err;
 
-            return s2txent;
+            return object_cur_s2cur_t;
         }
 
         Expression build_graph(const vector<SentenceTuple> & cur_sentence, ComputationGraph& cg) override
@@ -602,6 +618,44 @@ namespace cnn {
             return s2tmodel.decode(insent, cg, tdict);
         }
 
+        vector<Sentence>batch_decode(const vector<Sentence>& cur_sentence, ComputationGraph& cg, cnn::Dict & tdict)
+        {
+            s2tmodel.reset();  /// reset network
+            vector<Sentence> iret = s2tmodel.batch_decode(cur_sentence, cg, tdict);
+            return iret;
+        }
+        
+        vector<Sentence> batch_decode(const vector<Sentence>& prv_sentence, const vector<Sentence>& cur_sentence, ComputationGraph& cg, cnn::Dict& tdict)
+        {
+            vector<Sentence> insent;
+
+            for (auto p : prv_sentence)
+            {
+                /// remove sentence ending
+                Sentence i_s;
+                for (auto & w : p){
+                    if (w != kSRC_EOS)
+                        i_s.push_back(w);
+                }
+                insent.push_back(i_s);
+            }
+
+            size_t k = 0;
+            for (auto p : cur_sentence)
+            {
+                /// remove sentence begining
+                for (auto & w : p){
+                    if (w != kSRC_SOS)
+                        insent[k].push_back(w);
+                }
+                swords += insent[k].size() - 1;
+                k++;
+            }
+
+            vector<Sentence> iret = s2tmodel.batch_decode(insent, cg, tdict);
+            return iret;
+        }
+
     };
 
     template <class DBuilder>
@@ -622,9 +676,9 @@ namespace cnn {
 
         // return Expression of total loss
         // only has one pair of sentence so far
-        Expression build_graph(const Dialogue & cur_sentence, ComputationGraph& cg) override
+        vector<Expression> build_graph(const Dialogue & cur_sentence, ComputationGraph& cg) override
         {
-            Expression object;
+            vector<Expression> object;
 
             twords = 0;
             swords = 0;
@@ -642,7 +696,7 @@ namespace cnn {
             s2tmodel.reset();
             object = s2tmodel.build_graph(insent, osent, cg);
 
-            s2txent = object;
+            s2txent = sum(object);
             assert(twords == s2tmodel.tgt_words);
             assert(swords == s2tmodel.src_words);
 
@@ -651,7 +705,7 @@ namespace cnn {
 
         /// for all speakers with history
         /// for feedforward network
-        Expression build_graph(const Dialogue& prv_sentence, const Dialogue& cur_sentence, ComputationGraph& cg) override
+        vector<Expression> build_graph(const Dialogue& prv_sentence, const Dialogue& cur_sentence, ComputationGraph& cg) override
         {
             vector<Sentence> insent, osent;
             nbr_turns ++;
@@ -665,12 +719,14 @@ namespace cnn {
                 swords += p.first.size() - 1;
             }
 
-            s2txent = s2tmodel.build_graph(insent, osent, cg);
+            vector<Expression> s2terr = s2tmodel.build_graph(insent, osent, cg);
+            Expression i_err = sum(s2terr);
+            s2txent = s2txent + i_err;
 
             assert(twords == s2tmodel.tgt_words);
             assert(swords == s2tmodel.src_words);
 
-            return s2txent;
+            return s2terr;
         }
 
         // return Expression of total loss
@@ -782,7 +838,7 @@ namespace cnn {
         }
     };
 
-    /** 
+    /**
     reinforcement learning for AWI model
     */
     template <class DBuilder>
