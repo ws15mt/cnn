@@ -1739,7 +1739,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
             threshold_prob = 1.0  -  k_reinforce / (vm["num_reinforce_train"].as<int>() + 0.0);
 
             size_t each_epoch = min<int>(2, vm["epochs"].as<int>() / n_reinforce_train);
-            ptrTrainer->REINFORCEtrain(model, hred, hred_agent_mirrow, training, devel, *sgd, fname, sd, each_epoch, vm["nparallel"].as<int>(), vm["reward_baseline"].as<cnn::real>(), threshold_prob);
+            ptrTrainer->REINFORCEtrain(model, hred, hred_agent_mirrow, training, devel, *sgd, fname, sd, each_epoch * n_reinforce_train, vm["nparallel"].as<int>(), vm["reward_baseline"].as<cnn::real>(), threshold_prob);
         }
     }
     else if (vm.count("nparallel") && !vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
