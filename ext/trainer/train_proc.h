@@ -103,7 +103,7 @@ public:
         Trainer &sgd, string out_file, int max_epochs, int min_diag_id,
         bool bcharlevel = false, bool nosplitdialogue = false);
     void train(Model &model, Proc &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs);
-    void REINFORCEtrain(Model &model, Proc &am, Proc &am_agent_mirrow, Corpus &training, Corpus &devel, Trainer &sgd, string out_file, Dict & td, int max_epochs, int nparallel, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0);
+    void REINFORCEtrain(Model &model, Proc &am, Proc &am_agent_mirrow, Corpus &training, Corpus &devel, Trainer &sgd, string out_file, Dict & td, int max_epochs, int nparallel, cnn::real& largest_cost, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0);
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo, const string& score_embedding_fn = "");
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & sd);
     void test(Model &model, Proc &am, TupleCorpus &devel, string out_file, Dict & sd, Dict & td);
@@ -714,9 +714,8 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, cons
 Train with REINFORCE algorithm
 */
 template <class AM_t>
-void TrainProcess<AM_t>::REINFORCEtrain(Model &model, AM_t &am, AM_t &am_agent_mirrow, Corpus &training, Corpus &devel, Trainer &sgd, string out_file, Dict & td, int max_epochs, int nparallel, cnn::real reward_baseline, cnn::real threshold_prob_for_sampling)
+void TrainProcess<AM_t>::REINFORCEtrain(Model &model, AM_t &am, AM_t &am_agent_mirrow, Corpus &training, Corpus &devel, Trainer &sgd, string out_file, Dict & td, int max_epochs, int nparallel, cnn::real& largest_cost, cnn::real reward_baseline, cnn::real threshold_prob_for_sampling)
 {
-    cnn::real best = 9e+99;
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
     unsigned si = training.size(); /// number of dialgoues in training
@@ -803,14 +802,16 @@ void TrainProcess<AM_t>::REINFORCEtrain(Model &model, AM_t &am, AM_t &am_agent_m
                 id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, devel_numturn2did);
                 ndutt = id_sel_idx.size();
             }
-            if (ddloss < best) {
-                best = ddloss;
+            ddloss = smoothed_ppl(ddloss);
+            if (ddloss < largest_cost) {
+                largest_cost = ddloss;
                 ofstream out(out_file, ofstream::out);
                 boost::archive::text_oarchive oa(out);
                 oa << model;
                 out.close();
             }
-            else if (ddloss > best * 1.05){
+            else{
+                sgd.eta0 *= 0.5; /// reduce learning rate
                 sgd.eta *= 0.5; /// reduce learning rate
             }
             cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] cost = " << (ddloss / ddchars_t) << " approximate ppl=" << exp(ddloss / ddchars_t) << ' ';
@@ -844,6 +845,8 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
     boost::archive::text_oarchive oa(out);
     oa << model;
     out.close();
+
+    reset_smoothed_ppl();
 
     int prv_epoch = -1;
     vector<bool> v_selected(training.size(), false);  /// track if a dialgoue is used
@@ -941,6 +944,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
                     }
                 }
             }
+            ddloss = smoothed_ppl(ddloss);
             if (ddloss < best) {
                 best = ddloss;
                 ofstream out(out_file , ofstream::out);
@@ -948,7 +952,8 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
                 oa << model;
                 out.close();
             }
-            else if (ddloss > best * 1.05){
+            else{
+                sgd.eta0 *= 0.5; /// reduce learning rate
                 sgd.eta *= 0.5; /// reduce learning rate
             }
             cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (ddloss / ddchars_t) << " ppl=" << exp(ddloss / ddchars_t) << ' ';
@@ -1710,6 +1715,8 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
         // a mirrow of the agent to generate decoding results so that their results can be evaluated
         // this is not efficient implementation, better way is to share model parameters
         int n_reinforce_train = vm["num_reinforce_train"].as<int>();
+        cnn::real largest_cost = 9e+99;
+        ptrTrainer->reset_smoothed_ppl();
         for (size_t k_reinforce = 0; k_reinforce <= n_reinforce_train; k_reinforce++)
         {
             Model model_mirrow;
@@ -1739,7 +1746,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
             threshold_prob = 1.0  -  k_reinforce / (vm["num_reinforce_train"].as<int>() + 0.0);
 
             size_t each_epoch = min<int>(2, vm["epochs"].as<int>() / n_reinforce_train);
-            ptrTrainer->REINFORCEtrain(model, hred, hred_agent_mirrow, training, devel, *sgd, fname, sd, each_epoch * n_reinforce_train, vm["nparallel"].as<int>(), vm["reward_baseline"].as<cnn::real>(), threshold_prob);
+            ptrTrainer->REINFORCEtrain(model, hred, hred_agent_mirrow, training, devel, *sgd, fname, sd, each_epoch * n_reinforce_train, vm["nparallel"].as<int>(), largest_cost, vm["reward_baseline"].as<cnn::real>(), threshold_prob);
         }
     }
     else if (vm.count("nparallel") && !vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
