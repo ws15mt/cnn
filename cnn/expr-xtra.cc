@@ -359,7 +359,7 @@ vector<Expression> local_attention_to(ComputationGraph& cg, const vector<size_t>
     Expression i_position_trans = reshape(i_position, { long(nutt), 1 });
     for (size_t k = 0; k < nutt; k++)
     {
-        Expression i_position_each = pick(i_position_trans, k) * v_slen[k];
+        Expression i_position_each = pick(i_position_trans, k) * (v_slen[k] - 1);
 
         /// need to do subsampling
         v_attention_to.push_back(i_position_each);
