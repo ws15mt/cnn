@@ -21,6 +21,7 @@ namespace cnn {
         explicit DNNBuilder(unsigned layers,
             unsigned input_dim,
             unsigned hidden_dim,
+            unsigned output_dim,
             Model* model,
             cnn::real i_scale = 1.0, 
             string name = "");
@@ -38,7 +39,7 @@ namespace cnn {
 
     protected:
         void new_graph_impl(ComputationGraph& cg);
-        Expression add_input_impl(const Expression& x);
+        virtual Expression add_input_impl(const Expression& x);
 
     public:
         Expression back() const { return h.back(); }
@@ -75,7 +76,7 @@ namespace cnn {
         }
 
 
-    private:
+    protected:
 
         unsigned layers;  /// number of layers
 
@@ -92,6 +93,25 @@ namespace cnn {
         std::vector<Expression> h;
 
         std::vector<std::vector<Expression>> biases;
+    };
+
+    class ReluDNNBuilder  : public DNNBuilder{
+    public:
+        ReluDNNBuilder() { dparallel = 1; }
+        explicit ReluDNNBuilder(unsigned layers,
+            unsigned input_dim,
+            unsigned hidden_dim,
+            unsigned output_dim,
+            Model* model,
+            cnn::real i_scale = 1.0,
+            string name = "") :
+            DNNBuilder(layers, input_dim, hidden_dim, output_dim, model, i_scale)
+        {
+        }
+
+    protected:
+        Expression add_input_impl(const Expression& x) override;
+
     };
 };
 

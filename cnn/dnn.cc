@@ -28,6 +28,7 @@ namespace cnn {
     DNNBuilder::DNNBuilder(unsigned ilayers,
         unsigned input_dim,
         unsigned hidden_dim,
+        unsigned output_dim,
         Model* model,
         cnn::real iscale,
         string name) 
@@ -39,13 +40,14 @@ namespace cnn {
         for (unsigned i = 0; i < layers; ++i) {
             input_dims[i] = layer_input_dim;
 
+            unsigned odim = (i == layers - 1) ? output_dim : hidden_dim;
             string i_name = "";
             if (name.size() > 0)
                 i_name = name + "p_x2h" + boost::lexical_cast<string>(i);
-            Parameters* p_x2h = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+            Parameters* p_x2h = model->add_parameters({ long(odim), layer_input_dim }, iscale, i_name);
             if (name.size() > 0)
                 i_name = name + "p_x2hb" + boost::lexical_cast<string>(i);
-            Parameters* p_x2hb = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
+            Parameters* p_x2hb = model->add_parameters({ long(odim) }, iscale, i_name);
             vector<Parameters*> ps = { p_x2h, p_x2hb };
             params.push_back(ps);
             layer_input_dim = hidden_dim;
@@ -104,5 +106,21 @@ namespace cnn {
             params[i][1]->copy(*rnn_simple.params[i][1]);
         }
     }
+
+    Expression ReluDNNBuilder::add_input_impl(const Expression &in)  {
+        h.resize(layers);
+
+        Expression x = in;
+
+        for (unsigned i = 0; i < layers; ++i) {
+            const vector<Expression>& vars = param_vars[i];
+
+            Expression y = affine_transform({ biases[i][0], vars[0], x });
+
+            x = h[i] = rectify(y);
+        }
+        return h.back();
+    }
+
 
 } // namespace cnn

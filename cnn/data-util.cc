@@ -261,16 +261,16 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int
     return corpus;
 }
 
-Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool appendBSandES, bool bcharacter)
+Corpus read_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool appendBSandES, bool bcharacter)
 {
     ifstream in(filename);
     string line;
 
     Corpus corpus;
     Dialogue diag;
-    int prv_diagid = -1;
+    string prv_diagid = "-1";
     int lc = 0, stoks = 0, ttoks = 0;
-    min_diag_id = 99999;
+
     while (getline(in, line)) {
         trim_left(line);
         trim_right(line);
@@ -278,11 +278,10 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int 
             break;
         ++lc;
         Sentence source, target;
-        int diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, appendBSandES, kSRC_SOS, kSRC_EOS, bcharacter);
-        if (diagid == -1)
+        string diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, appendBSandES, kSRC_SOS, kSRC_EOS, bcharacter);
+        if (diagid.size() == 0)
             break;
-        if (diagid < min_diag_id)
-            min_diag_id = diagid;
+
         if (diagid != prv_diagid)
         {
             if (diag.size() > 0)
@@ -377,7 +376,7 @@ SentenceTuple make_triplet_sentence(const Sentence& m1, const Sentence& m2, cons
     return make_triplet<Sentence>(m1, m2, m3);
 }
 
-int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool appendSBandSE, int kSRC_SOS, int kSRC_EOS, bool bcharacter)
+string MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool appendSBandSE, int kSRC_SOS, int kSRC_EOS, bool bcharacter)
 {
     std::istringstream in(line);
     std::string word;
@@ -388,7 +387,7 @@ int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dic
     std::vector<int>* v = s;
 
     if (line.length() == 0)
-        return -1;
+        return "";
 
     in >> diagid;
     trim(diagid);
@@ -439,11 +438,8 @@ int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dic
     }
     if (appendSBandSE)
         v->push_back(kSRC_EOS);
-    int res;
 
-    res = boost::lexical_cast<int>(diagid);
-
-    return res;
+    return diagid;
 }
 
 int MultiTurnsReadSentence(const std::string& line,

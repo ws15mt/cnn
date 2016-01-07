@@ -1040,7 +1040,7 @@ public:
     unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
     const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
     : AWI_Bilinear_Simpler<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale),
-      attention_layer(1, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], &model, iscale, "attention_layer")
+    attention_layer(1, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], &model, iscale, "attention_layer")
     {
         p_Wa_local = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(hidden_dim[DECODER_LAYER]) }, iscale);
         p_ba_local = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]) }, iscale);
@@ -1383,7 +1383,7 @@ public:
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
         : AWI_Bilinear_Simpler<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale),
-        attention_layer(1, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], &model, iscale, "attention_layer")
+        attention_layer(1, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], &model, iscale, "attention_layer")
     {
             p_Wa = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]), long(hidden_dim[DECODER_LAYER]) }, iscale);
             p_scale = model.add_parameters({ long(1) }, 0.0);
@@ -1693,7 +1693,7 @@ h_t = f(h_{t-1}, y_{t-1}, \tilde{h}_{t-1})
 */
 template <class Builder, class Decoder>
 class AWI_GeneralInputFeedingWDropout : public AWI_GeneralInputFeeding< Builder, Decoder> {
-private:
+protected:
     /// dropout rate
     cnn::real dropout_rate; 
 public:
@@ -1854,6 +1854,255 @@ public:
         /// compute attention
         Expression i_combined_input_to_attention = concatenate({ i_h_t, concatenate_cols(v_context_to_source) });
         i_h_attention_t = attention_layer.add_input(i_combined_input_to_attention);
+
+        if (attention_output_for_this_turn.size() <= turnid)
+            attention_output_for_this_turn.push_back(i_h_attention_t);
+        else
+            /// refresh the attention output for this turn
+            attention_output_for_this_turn[turnid] = i_h_attention_t;
+
+        return i_h_attention_t;
+    }
+};
+
+/**
+inspired from the paper
+
+Only the top-layer LSTM is used. Input is reversed. Attention layer takes the top layer from encoder and decoder. Decoder initialized from
+context layer.
+
+Attention layer is a 2-layer feed-forward network
+
+Decoder:
+\tilde{h}_t = tanh(W_c[c_t; h_t])
+
+Input feeding
+h_t = f(h_{t-1}, y_{t-1}, \tilde{h}_{t-1})
+*/
+template <class Builder, class Decoder>
+class AWI_InputFeedingWithNNAttention: public AWI_GeneralInputFeedingWDropout< Builder, Decoder> {
+protected:
+    // a single layer MLP
+    ReluDNNBuilder true_attention_layer;
+    DNNBuilder response_layer;
+
+public:
+    AWI_InputFeedingWithNNAttention(Model& model,
+        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
+        const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
+        : AWI_GeneralInputFeedingWDropout<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale),
+        true_attention_layer(2, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], 1, &model, iscale, "true attention layer"),
+        response_layer(1, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], &model, iscale, "response layer")
+    {
+        }
+
+    void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg) override
+    {
+        nutt = source.size();
+        std::vector<Expression> v_tgt2enc;
+
+        if (i_h0.size() == 0)
+        {
+            i_h0.clear();
+            for (auto p : p_h0)
+            {
+                i_h0.push_back(concatenate_cols(vector<Expression>(nutt, parameter(cg, p))));
+            }
+
+            attention_output_for_this_turn.clear();
+
+            i_tgt2enc_b.clear();
+            i_tgt2enc_w.clear();
+            context.new_graph(cg);
+
+            if (last_context_exp.size() == 0)
+                context.start_new_sequence();
+            else
+                context.start_new_sequence(last_context_exp);
+            context.set_data_in_parallel(nutt);
+
+            i_Wa = parameter(cg, p_Wa);
+            i_va = parameter(cg, p_va);
+            i_Q = parameter(cg, p_Q);
+
+            i_R = parameter(cg, p_R); // hidden -> word rep parameter
+
+            i_scale = exp(parameter(cg, p_scale));
+
+            i_R = parameter(cg, p_R); // hidden -> word rep parameter
+            i_bias = parameter(cg, p_bias);
+
+            i_cxt2dec_w = parameter(cg, p_cxt2dec_w);
+            for (auto p : p_tgt2enc_b)
+                i_tgt2enc_b.push_back(parameter(cg, p));
+            for (auto p : p_tgt2enc_w)
+                i_tgt2enc_w.push_back(parameter(cg, p));
+
+            i_zero = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+
+            true_attention_layer.new_graph(cg);
+            true_attention_layer.set_data_in_parallel(nutt);
+            response_layer.new_graph(cg);
+            response_layer.set_data_in_parallel(nutt);
+            if (verbose)
+                display_value(concatenate(i_h0), cg, "i_h0");
+        }
+
+        std::vector<Expression> source_embeddings;
+        std::vector<Expression> v_last_decoder_state;
+
+        /// take the reverse direction to encoder source side
+        encoder_bwd.new_graph(cg);
+        encoder_bwd.set_data_in_parallel(nutt);
+        if (to_cxt.size() > 0)
+        {
+            /// encoder starts with the last decoder's state
+            for (size_t k = 0; k < i_tgt2enc_b.size(); k++)
+            {
+                if (nutt > 1)
+                    v_tgt2enc.push_back(concatenate_cols(std::vector<Expression>(nutt, i_tgt2enc_b[k])) + i_tgt2enc_w[k] * to_cxt[k]);
+                else
+                    v_tgt2enc.push_back(i_tgt2enc_b[k] + i_tgt2enc_w[k] * to_cxt[k]);
+            }
+            encoder_bwd.start_new_sequence(v_tgt2enc);
+        }
+        else
+            encoder_bwd.start_new_sequence(i_h0);
+
+        /// the source sentence has to be approximately the same length
+        src_len = each_sentence_length(source);
+        for (auto p : src_len)
+        {
+            src_words += (p - 1);
+        }
+
+        /// get the backward direction encoding of the source
+        src_fwd = concatenate_cols(backward_directional<Builder>(slen, source, cg, p_cs, zero, encoder_bwd, hidden_dim[ENCODER_LAYER]));
+
+        v_src = shuffle_data(src_fwd, (size_t)nutt, (size_t)hidden_dim[ENCODER_LAYER], src_len);
+        if (verbose)
+            display_value(concatenate_cols(v_src), cg, "v_src");
+
+        /// have input to context RNN
+        vector<Expression> to = encoder_bwd.final_s();
+
+        Expression q_m = concatenate(to);
+        if (verbose)
+            display_value(q_m, cg, "q_m");
+        /// update intention
+        context.add_input(q_m);
+
+        /// decoder start with a context from intention 
+        vector<Expression> vcxt;
+        for (auto p : context.final_s())
+            vcxt.push_back(i_cxt2dec_w * p);
+        decoder.new_graph(cg);
+        decoder.set_data_in_parallel(nutt);
+        decoder.start_new_sequence(vcxt);  /// get the intention
+    }
+
+    /** use a nn to extraction attention
+    */
+    vector<Expression> attention_to_source_using_nn(vector<Expression> & v_src, const vector<size_t>& v_slen, 
+        Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, Expression fscale)
+    {
+        Expression i_c_t;
+        Expression i_e_t;
+        int slen = 0;
+        vector<Expression> i_wah_rep;
+
+        for (auto p : v_slen)
+            slen += p;
+
+        Expression i_wah = i_h_tm1;  /// [d nutt]
+        Expression i_wah_reshaped = reshape(i_wah, { long(nutt * a_dim) });
+        for (size_t k = 0; k < nutt; k++)
+        {
+            Expression i_wah_each = pickrange(i_wah_reshaped, k * a_dim, (k + 1)*a_dim);  /// [d]
+            /// need to do subsampling
+            Expression i_tgt = concatenate_cols(std::vector<Expression>(v_slen[k], i_wah_each));
+            vector<Expression> v_tgt_src;
+            v_tgt_src.push_back(i_tgt);
+            v_tgt_src.push_back(v_src[k]);
+            Expression i_tgt_src = concatenate(v_tgt_src); /// combine both source and target
+            i_wah_rep.push_back(i_tgt_src);  /// [d v_slen[k]]
+        }
+        Expression i_wah_m = concatenate_cols(i_wah_rep);  // [(d_s + d_t) \sum_k v_slen[k] ]
+
+        true_attention_layer.set_data_in_parallel(slen);
+        i_e_t = true_attention_layer.add_input(i_wah_m); 
+        i_e_t = reshape(i_e_t, { (long)slen, (long)1 });
+    
+        Expression i_alpha_t;
+
+        vector<Expression> v_input;
+        int istt = 0;
+        for (size_t k = 0; k < nutt; k++)
+        {
+            Expression i_input;
+            int istp = istt + v_slen[k];
+
+            vector<Expression> vscale(v_slen[k], fscale);
+
+            Expression wgt = softmax(cwise_multiply(concatenate(vscale),  pickrange(i_e_t, istt, istp)));
+            v_wgt.push_back(wgt);
+
+            i_input = v_src[k] * wgt;  // [D v_slen[k]] x[v_slen[k] 1] = [D 1]
+            v_input.push_back(i_input);
+
+            istt = istp;
+        }
+
+        return v_input;
+    }
+
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
+    {
+        Expression i_c_t;
+        size_t nutt = trg_tok.size();
+        Expression i_h_t;  /// the decoder output before attention
+        Expression i_h_attention_t; /// the attention state
+        vector<Expression> v_x_t;
+
+        for (auto p : trg_tok)
+        {
+            Expression i_x_x;
+            if (p >= 0)
+                i_x_x = lookup(cg, p_cs, p);
+            else
+                i_x_x = i_zero;
+            if (verbose)
+                display_value(i_x_x, cg, "i_x_x");
+            v_x_t.push_back(i_x_x);
+        }
+
+        Expression i_obs = concatenate_cols(v_x_t);
+        Expression i_input;
+        if (attention_output_for_this_turn.size() <= turnid)
+        {
+            i_input = concatenate({ i_obs, concatenate_cols(vector<Expression>(nutt, i_zero)) });
+        }
+        else
+        {
+            i_input = concatenate({ i_obs, dropout(attention_output_for_this_turn.back(), dropout_rate) });
+        }
+
+        i_h_t = decoder.add_input(i_input);
+
+        vector<Expression> alpha;
+        vector<Expression> v_context_to_source = attention_to_source_using_nn(v_src, src_len, i_h_t, hidden_dim[DECODER_LAYER], nutt, alpha, i_scale);
+            
+        if (verbose)
+        {
+            size_t k = 0;
+            for (auto &p : alpha){
+                display_value(p, cg, "attention_to_source_weight_" + boost::lexical_cast<string>(k++));
+            }
+        }
+
+        /// compute response
+        Expression i_combined_input_to_attention = concatenate({ i_h_t, concatenate_cols(v_context_to_source) });
+        i_h_attention_t = response_layer.add_input(i_combined_input_to_attention);
 
         if (attention_output_for_this_turn.size() <= turnid)
             attention_output_for_this_turn.push_back(i_h_attention_t);

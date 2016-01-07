@@ -320,7 +320,7 @@ vector<Expression> attention_using_bilinear_with_local_attention(vector<Expressi
         v_position_weight.push_back(exp(concatenate(pweight)));
     }
 
-    Expression i_wa = i_Wa * i_h_tm1;  /// [d nutt]
+    Expression i_wa = tanh(i_Wa * i_h_tm1);  /// [d nutt]
     Expression i_wah_reshaped = reshape(i_wa, { long(nutt * a_dim) });
 
     Expression i_alpha_t;
@@ -332,8 +332,10 @@ vector<Expression> attention_using_bilinear_with_local_attention(vector<Expressi
         Expression i_input;
         Expression i_bilinear = transpose(v_src[k]) * pickrange(i_wah_reshaped, k * a_dim, (k + 1)* a_dim); // [v_slen x 1]
         vector<Expression> vscale(v_slen[k], fscale);
-        Expression wgt = softmax(cwise_multiply(concatenate(vscale), i_bilinear));
-        Expression each_utt_wgt = cwise_multiply(wgt, v_position_weight[k]);
+//        Expression wgt = softmax(cwise_multiply(concatenate(vscale), i_bilinear));
+//        Expression each_utt_wgt = cwise_multiply(wgt, v_position_weight[k]);
+//        Expression each_utt_wgt = softmax(cwise_multiply(concatenate(vscale), cwise_multiply(i_bilinear, v_position_weight[k])));
+        Expression each_utt_wgt = softmax(cwise_multiply(i_bilinear, v_position_weight[k]));
         v_wgt.push_back(each_utt_wgt);
 
         i_input = v_src[k] * each_utt_wgt;  // [D v_slen[k]] x[v_slen[k] 1] = [D 1]

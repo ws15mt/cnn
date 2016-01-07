@@ -62,7 +62,6 @@ unsigned VOCAB_SIZE_SRC = 0;
 unsigned VOCAB_SIZE_TGT = 0;
 long nparallel = -1;
 long mbsize = -1;
-unsigned min_diag_id = 0;
 size_t g_train_on_turns = 1; 
 
 cnn::Dict sd;
@@ -100,7 +99,7 @@ public:
         Trainer &sgd, string out_file, cnn::real target_ppl, int min_diag_id,
         bool bcharlevel = false, bool nosplitdialogue = false);
     void train(Model &model, Proc &am, Corpus &training, Corpus &devel,
-        Trainer &sgd, string out_file, int max_epochs, int min_diag_id,
+        Trainer &sgd, string out_file, int max_epochs, 
         bool bcharlevel = false, bool nosplitdialogue = false);
     void train(Model &model, Proc &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs);
     void REINFORCEtrain(Model &model, Proc &am, Proc &am_agent_mirrow, Corpus &training, Corpus &devel, Trainer &sgd, string out_file, Dict & td, int max_epochs, int nparallel, cnn::real& largest_cost, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0);
@@ -968,8 +967,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
 */
 template <class AM_t>
 void TrainProcess<AM_t>::train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
-    Trainer &sgd, string out_file, int max_epochs, int min_diag_id,
-    bool bcharlevel = false, bool nosplitdialogue = false)
+    Trainer &sgd, string out_file, int max_epochs, bool bcharlevel = false, bool nosplitdialogue = false)
 {
     cnn::real best = 9e+99;
     unsigned report_every_i = 50;
@@ -1019,10 +1017,10 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, Corpus &training, Corpus 
             }
 
             // build graph for this instance
-            auto& spair = training[order[si % order.size()] + min_diag_id];
+            auto& spair = training[order[si % order.size()]];
 
             if (verbose)
-                cerr << "diag = " << order[si % order.size()] + min_diag_id << endl;
+                cerr << "diag = " << order[si % order.size()] << endl;
 
             /// find portion to train
             bool b_trained = false;
@@ -1314,13 +1312,13 @@ cnn::real TrainProcess<AM_t>::smoothed_ppl(cnn::real curPPL)
         ppl_hist.erase(ppl_hist.begin());
 
     cnn::real finPPL = 0;
-    size_t k = 1;
+    size_t k = 0;
     for (auto p : ppl_hist)
     {
-        finPPL += pow(0.9, 3 - k) * p;
+        finPPL += p;
         k++;
     }
-    return finPPL;
+    return finPPL/k;
 }
 
 /**
@@ -1568,7 +1566,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     if (vm.count("train") > 0)
     {
         cerr << "Reading training data from " << vm["train"].as<string>() << "...\n";
-        training = read_corpus(vm["train"].as<string>(), min_diag_id, sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), vm.count("appendBOSEOS")> 0,
+        training = read_corpus(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), vm.count("appendBOSEOS")> 0,
             vm.count("charlevel") > 0);
         sd.Freeze(); // no new word types allowed
 
@@ -1615,15 +1613,13 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
 
     if (vm.count("devel")) {
         cerr << "Reading dev data from " << vm["devel"].as<string>() << "...\n";
-        unsigned min_dev_id = 0;
-        devel = read_corpus(vm["devel"].as<string>(), min_dev_id, sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), vm.count("appendBOSEOS")> 0, vm.count("charlevel") > 0);
+        devel = read_corpus(vm["devel"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), vm.count("appendBOSEOS")> 0, vm.count("charlevel") > 0);
         devel_numturn2did = get_numturn2dialid(devel);
     }
 
     if (vm.count("testcorpus")) {
         cerr << "Reading test corpus from " << vm["testcorpus"].as<string>() << "...\n";
-        unsigned min_dev_id = 0;
-        testcorpus = read_corpus(vm["testcorpus"].as<string>(), min_dev_id, sd, kSRC_SOS, kSRC_EOS);
+        testcorpus = read_corpus(vm["testcorpus"].as<string>(), sd, kSRC_SOS, kSRC_EOS);
         test_numturn2did = get_numturn2dialid(testcorpus);
     }
 
@@ -1697,8 +1693,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     if (vm.count("sampleresponses"))
     {
         cerr << "Reading sample corpus from " << vm["sampleresponses"].as<string>() << "...\n";
-        unsigned min_dev_id = 0;
-        training = read_corpus(vm["sampleresponses"].as<string>(), min_dev_id, sd, kSRC_SOS, kSRC_EOS);
+        training = read_corpus(vm["sampleresponses"].as<string>(), sd, kSRC_SOS, kSRC_EOS);
         ptrTrainer->collect_sample_responses(hred, training);
     }
     if (vm.count("dialogue"))
@@ -1755,7 +1750,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     }
     else if (!vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
     {
-        ptrTrainer->train(model, hred, training, devel, *sgd, fname, vm["epochs"].as<int>(), min_diag_id, vm.count("charlevel") > 0, vm.count("nosplitdialogue"));
+        ptrTrainer->train(model, hred, training, devel, *sgd, fname, vm["epochs"].as<int>(), vm.count("charlevel") > 0, vm.count("nosplitdialogue"));
     }
     else if (vm.count("testcorpus"))
     {
