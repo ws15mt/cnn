@@ -3,7 +3,9 @@
 
 #include "cnn/cnn.h"
 #include "cnn/rnn.h"
+#include <string>
 
+using namespace std;
 namespace cnn {
 
 class Model;
@@ -14,7 +16,8 @@ struct GRUBuilder : public RNNBuilder {
                       unsigned input_dim,
                       unsigned hidden_dim,
                       Model* model,
-                      float iscale = 1.0);
+                      cnn::real iscale = 1.0,
+                      string name = "");
   GRUBuilder(const GRUBuilder& ref):
       RNNBuilder(ref)
   {}

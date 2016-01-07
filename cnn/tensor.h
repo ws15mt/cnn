@@ -28,17 +28,33 @@ namespace cnn {
 
 #define EIGEN_BACKEND 1
 
-typedef float real;
+//#define USE_DOUBLE
+#ifdef USE_DOUBLE
+    /// for gradient check, need to use double
+    typedef double real;
+#else
+    /// for fast evaluation, use cnn::real
+    typedef float real;
+#endif
 
 struct Tensor {
   Tensor() = default;
-  Tensor(const Dim& d, float* v) : d(d), v(v) {}
+  Tensor(const Dim& d, cnn::real* v) : d(d), v(v) {}
+#ifdef USE_DOUBLE
+  const Eigen::Map<Eigen::MatrixXd> operator*() const {
+    return Eigen::Map<Eigen::MatrixXd>(v, d.rows(), d.cols());
+  }
+  Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> operator*() {
+    return Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(v, d.rows(), d.cols());
+  }
+#else
   const Eigen::Map<Eigen::MatrixXf, Eigen::Aligned> operator*() const {
-    return Eigen::Map<Eigen::MatrixXf, Eigen::Aligned>(v, d.rows(), d.cols());
+      return Eigen::Map<Eigen::MatrixXf, Eigen::Aligned>(v, d.rows(), d.cols());
   }
   Eigen::Map<Eigen::MatrixXf, Eigen::Aligned> operator*() {
-    return Eigen::Map<Eigen::MatrixXf, Eigen::Aligned>(v, d.rows(), d.cols());
+      return Eigen::Map<Eigen::MatrixXf, Eigen::Aligned>(v, d.rows(), d.cols());
   }
+#endif
   // this is very slow: use sparingly
   inline bool is_valid() const {
 #if HAVE_CUDA
@@ -52,7 +68,7 @@ struct Tensor {
 #endif
   }
   Dim d;
-  float* v;
+  cnn::real* v;
 
  private:
   friend class boost::serialization::access;
@@ -60,8 +76,8 @@ struct Tensor {
   void save(Archive& ar, const unsigned int) const {
     ar & d;
 #if HAVE_CUDA
-    float* vc = (float*)malloc(d.size() * sizeof(float));
-    CUDA_CHECK(cudaMemcpy(vc, v, d.size() * sizeof(float), cudaMemcpyDeviceToHost));
+    cnn::real* vc = (cnn::real*)malloc(d.size() * sizeof(cnn::real));
+    CUDA_CHECK(cudaMemcpy(vc, v, d.size() * sizeof(cnn::real), cudaMemcpyDeviceToHost));
     ar & boost::serialization::make_array(vc, d.size());
     free(vc);
 #else
@@ -72,12 +88,12 @@ struct Tensor {
   void load(Archive& ar, const unsigned int) {
     ar & d;
 #if HAVE_CUDA
-    CUDA_CHECK(cudaMalloc(&v, d.size() * sizeof(float)));
-    float* vc = static_cast<float*>(std::malloc(d.size() * sizeof(float)));
+    CUDA_CHECK(cudaMalloc(&v, d.size() * sizeof(cnn::real)));
+    cnn::real* vc = static_cast<cnn::real*>(std::malloc(d.size() * sizeof(cnn::real)));
     ar & boost::serialization::make_array(vc, d.size());
-    CUDA_CHECK(cudaMemcpyAsync(v, vc, d.size() * sizeof(float), cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpyAsync(v, vc, d.size() * sizeof(cnn::real), cudaMemcpyHostToDevice));
 #else
-    v = static_cast<float*>(cnn_mm_malloc(d.size() * sizeof(float), 32));
+    v = static_cast<cnn::real*>(cnn_mm_malloc(d.size() * sizeof(cnn::real), 32));
     ar & boost::serialization::make_array(v, d.size());
 #endif
   }
@@ -89,7 +105,7 @@ real as_scalar(const Tensor& t);
 std::vector<real> as_vector(const Tensor& v);
 
 struct TensorTools {
-  static void Constant(Tensor& d, float c);
+  static void Constant(Tensor& d, cnn::real c);
   static void Zero(Tensor& d);
   static void Randomize(Tensor& val, real scale);
   static void Randomize(Tensor& d);
@@ -97,8 +113,8 @@ struct TensorTools {
   static void RandomBernoulli(Tensor& val, real p, real scale = 1.0);
   static void RandomizeNormal(real mean, real stddev, Tensor& val);
   // AccessElement is very, very slow (potentially) - use appropriately
-  static float AccessElement(const Tensor& v, const Dim& index);
-  static void SetElements(const Tensor& v, const std::vector<float>& vec);
+  static cnn::real AccessElement(const Tensor& v, const Dim& index);
+  static void SetElements(const Tensor& v, const std::vector<cnn::real>& vec);
   static void CopyElements(const Tensor& v, const Tensor& v_src);
 };
 real rand01();

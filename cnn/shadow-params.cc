@@ -8,13 +8,13 @@ using namespace std;
 namespace cnn {
 
 ShadowParameters::ShadowParameters(const Parameters& p) : h(p.values) {
-  h.v = (float*)cnn_mm_malloc(h.d.size() * sizeof(float), 256);
+  h.v = (cnn::real*)cnn_mm_malloc(h.d.size() * sizeof(cnn::real), CNN_ALIGN);
   TensorTools::Zero(h);
 }
 
 ShadowLookupParameters::ShadowLookupParameters(const LookupParameters& lp) : h(lp.values) {
   for (auto& t : h) {
-    t.v = (float*)cnn_mm_malloc(t.d.size() * sizeof(float), 256);
+      t.v = (cnn::real*)cnn_mm_malloc(t.d.size() * sizeof(cnn::real), CNN_ALIGN);
     TensorTools::Zero(t);
   }
 }

@@ -9,6 +9,12 @@
 
 #include "cnn/tensor.h"
 
+#ifdef USE_DOUBLE
+#define CNN_ALIGN 256
+#else
+#define CNN_ALIGN 256
+#endif
+
 namespace cnn {
 
 // to deal with sparse updates, there are two parameter classes:
@@ -19,9 +25,9 @@ namespace cnn {
 
 struct ParametersBase {
   friend class Model;
-  virtual void scale_parameters(float a) = 0;
-  virtual void squared_l2norm(float* sqnorm) const = 0;
-  virtual void g_squared_l2norm(float* sqnorm) const = 0;
+  virtual void scale_parameters(cnn::real a) = 0;
+  virtual void squared_l2norm(cnn::real* sqnorm) const = 0;
+  virtual void g_squared_l2norm(cnn::real* sqnorm) const = 0;
   virtual size_t size() const = 0;
   virtual ~ParametersBase();
 };
@@ -29,10 +35,10 @@ struct ParametersBase {
 // represents parameters (e.g., a weight matrix) that will be optimized
 struct Parameters : public ParametersBase {
   friend class Model;
-  void scale_parameters(float a) override;
+  void scale_parameters(cnn::real a) override;
   void reset_to_zero() ;
-  void squared_l2norm(float* sqnorm) const override;
-  void g_squared_l2norm(float* sqnorm) const override;
+  void squared_l2norm(cnn::real* sqnorm) const override;
+  void g_squared_l2norm(cnn::real* sqnorm) const override;
   size_t size() const override;
 
   void copy(const Parameters & val);
@@ -49,7 +55,7 @@ private:
       cnn_mm_free(values.v);
       cnn_mm_free(g.v); 
   }
-  explicit Parameters(const Dim& d, float minmax, std::string nodename = ""); // initialize with ~U(-minmax,+minmax)
+  explicit Parameters(const Dim& d, cnn::real minmax, std::string nodename = ""); // initialize with ~U(-minmax,+minmax)
                                  // or Glorot initialization if minmax = 0
   friend class boost::serialization::access;
   template<class Archive> void serialize(Archive& ar, const unsigned int version) {
@@ -62,11 +68,11 @@ private:
 // represents a matrix/vector embedding of a discrete set
 struct LookupParameters : public ParametersBase {
   friend class Model;
-  void scale_parameters(float a) override;
-  void squared_l2norm(float* sqnorm) const override;
-  void g_squared_l2norm(float* sqnorm) const override;
+  void scale_parameters(cnn::real a) override;
+  void squared_l2norm(cnn::real* sqnorm) const override;
+  void g_squared_l2norm(cnn::real* sqnorm) const override;
   size_t size() const override;
-  void Initialize(unsigned index, const std::vector<float>& val);
+  void Initialize(unsigned index, const std::vector<cnn::real>& val);
 
   void copy(const LookupParameters & val);
   void accumulate_grad(unsigned index, const Tensor& g);
@@ -81,7 +87,7 @@ struct LookupParameters : public ParametersBase {
 private:
   LookupParameters() {}
   ~LookupParameters();
-  LookupParameters(unsigned n, const Dim& d, float scale, std::string nodename = "");
+  LookupParameters(unsigned n, const Dim& d, cnn::real scale, std::string nodename = "");
 
   friend class boost::serialization::access;
   template<class Archive>
@@ -114,12 +120,12 @@ class Model {
  public:
   Model() : gradient_norm_scratch() {}
   ~Model();
-  float gradient_l2_norm() const;
+  cnn::real gradient_l2_norm() const;
   // set scale to use custom initialization
-  Parameters* add_parameters(const Dim& d, float scale = 1.0f, std::string nodename = "");
-  LookupParameters* add_lookup_parameters(unsigned n, const Dim& d, float scale = 1.0f, std::string nodename = "");
+  Parameters* add_parameters(const Dim& d, cnn::real scale = 1.0f, std::string nodename = "");
+  LookupParameters* add_lookup_parameters(unsigned n, const Dim& d, cnn::real scale = 1.0f, std::string nodename = "");
   // project weights so their L2 norm = radius
-  void project_weights(float radius = 1.0f);
+  void project_weights(cnn::real radius = 1.0f);
 
   const std::vector<ParametersBase*>& all_parameters_list() const { return all_params; }
   const std::vector<Parameters*>& parameters_list() const { return params; }
@@ -158,7 +164,7 @@ class Model {
   std::vector<ParametersBase*> all_params;
   std::vector<Parameters*> params;
   std::vector<LookupParameters*> lookup_params;
-  mutable float* gradient_norm_scratch;
+  mutable cnn::real* gradient_norm_scratch;
 };
 
 } // namespace cnn

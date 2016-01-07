@@ -1,6 +1,7 @@
 # ########## cnn library ##########
 # Sources:
 set(cnn_library_SRCS
+    dnn.cc
     cnn.cc
     conv.cc
     deep-lstm.cc
@@ -33,6 +34,7 @@ set(cnn_library_SRCS
 
 # Headers:
 set(cnn_library_HDRS
+    dnn.h
     aligned-mem-pool.h
     c2w.h
     cnn.h
@@ -66,6 +68,7 @@ set(cnn_library_HDRS
     dglstm.h
     treelstm.h
     math-util.h
+    metric-util.h
 )
 
 if(WITH_CUDA_BACKEND)

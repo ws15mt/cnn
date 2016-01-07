@@ -1,5 +1,5 @@
 #include "cnn/gru.h"
-
+#include <boost/lexical_cast.hpp>
 #include <string>
 #include <cassert>
 #include <vector>
@@ -18,27 +18,47 @@ enum { X2Z, H2Z, BZ, X2R, H2R, BR, X2H, H2H, BH };
 GRUBuilder::GRUBuilder(unsigned ilayers,
                        unsigned input_dim,
                        unsigned hidden_dim,
-                       Model* model, float iscale) : hidden_dim(hidden_dim) {
+                       Model* model, cnn::real iscale, 
+                       string name) : hidden_dim(hidden_dim) {
   layers = ilayers; 
+  string i_name;
   long layer_input_dim = input_dim;
   input_dims = vector<unsigned>(layers, layer_input_dim);
   for (unsigned i = 0; i < layers; ++i) {
     input_dims[i] = layer_input_dim;
     
     // z
-    Parameters* p_x2z = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
-    Parameters* p_h2z = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
-    Parameters* p_bz = model->add_parameters({ long(hidden_dim) }, iscale);
+    if (name.size() > 0)
+        i_name = name + "p_x2z" + boost::lexical_cast<string>(i);
+    Parameters* p_x2z = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_h2z" + boost::lexical_cast<string>(i);
+    Parameters* p_h2z = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_bz" + boost::lexical_cast<string>(i);
+    Parameters* p_bz = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
     
     // r
-    Parameters* p_x2r = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
-    Parameters* p_h2r = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
-    Parameters* p_br = model->add_parameters({ long(hidden_dim) }, iscale);
+    if (name.size() > 0)
+        i_name = name + "p_x2r" + boost::lexical_cast<string>(i);
+    Parameters* p_x2r = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_h2r" + boost::lexical_cast<string>(i);
+    Parameters* p_h2r = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_br" + boost::lexical_cast<string>(i);
+    Parameters* p_br = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
 
     // h
-    Parameters* p_x2h = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
-    Parameters* p_h2h = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
-    Parameters* p_bh = model->add_parameters({ long(hidden_dim) }, iscale);
+    if (name.size() > 0)
+        i_name = name + "p_x2h" + boost::lexical_cast<string>(i);
+    Parameters* p_x2h = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_h2h" + boost::lexical_cast<string>(i);
+    Parameters* p_h2h = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_bh" + boost::lexical_cast<string>(i);
+    Parameters* p_bh = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
     layer_input_dim = hidden_dim;  // output (hidden) from 1st layer is input to next
 
     vector<Parameters*> ps = {p_x2z, p_h2z, p_bz, p_x2r, p_h2r, p_br, p_x2h, p_h2h, p_bh};
@@ -161,40 +181,55 @@ Expression GRUBuilder::add_input_impl(const std::vector<Expression> & prev_histo
     vector<Expression>& ht = h.back();
     Expression in = x;
 
-    if (prev_history.size() != num_h0_components())
-    {
-        cerr << "GRU prevhistory has wrong dimension. it should have the same number of elements as the number of layers" << endl;
-        throw("GRU prevhistory has wrong dimension. it should have the same number of elements as the number of layers");
-    }
-
     for (unsigned i = 0; i < layers; ++i) {
         const vector<Expression>& vars = param_vars[i];
         Expression h_tprev;
         // prev_zero means that h_tprev should be treated as 0
         bool prev_zero = false;
-        h_tprev = prev_history[i];
 
         // update gate
         Expression zt;
-        zt = affine_transform({ biases[i][0], vars[X2Z], in, vars[H2Z], h_tprev });
+        if (prev_history.size() > 0)
+        {
+            h_tprev = prev_history[i];
+            zt = affine_transform({ biases[i][0], vars[X2Z], in, vars[H2Z], h_tprev });
+        }
+        else
+            zt = affine_transform({ biases[i][0], vars[X2Z], in });
         zt = logistic(zt);
         // forget
         Expression ft = 1.f - zt;
         // reset gate
         Expression rt;
-        rt = affine_transform({ biases[i][1], vars[X2R], in, vars[X2R], h_tprev });
+        if (prev_history.size() > 0)
+            rt = affine_transform({ biases[i][1], vars[X2R], in, vars[X2R], h_tprev });
+        else
+            rt = affine_transform({ biases[i][1], vars[X2R], in });
 
         rt = logistic(rt);
 
         // candidate activation
         Expression ct;
-        Expression ght = cwise_multiply(rt, h_tprev);
-        ct = affine_transform({ biases[i][2], vars[X2H], in, vars[H2H], ght });
+        if (prev_history.size() > 0)
+        {
+            Expression ght = cwise_multiply(rt, h_tprev);
+            ct = affine_transform({ biases[i][2], vars[X2H], in, vars[H2H], ght });
+        }
+        else
+        {
+            ct = affine_transform({ biases[i][2], vars[X2H], in });
+        }
 
         ct = tanh(ct);
         Expression nwt = cwise_multiply(zt, ct);
-        Expression crt = cwise_multiply(ft, h_tprev);
-        in = ht[i] = crt + nwt;
+        Expression crt;
+        if (prev_history.size() > 0)
+        {
+            crt = cwise_multiply(ft, h_tprev);
+            in = ht[i] = crt + nwt;
+        }
+        else
+            in = ht[i] = nwt;
     }
     return ht.back();
 }

@@ -12,26 +12,26 @@
 using namespace cnn;
 using namespace std;
 
-inline bool is_close(float a, float b) {
+inline bool is_close(cnn::real a, cnn::real b) {
     /// to-do use CNTK's isclose function
     return (fabs(a - b) < 1e-7);
 }
 
-Expression arange(ComputationGraph &cg, unsigned begin, unsigned end, bool log_transform, std::vector<float> *aux_mem);
+Expression arange(ComputationGraph &cg, unsigned begin, unsigned end, bool log_transform, std::vector<cnn::real> *aux_mem);
 
-Expression repeat(ComputationGraph &cg, unsigned num, float value, std::vector<float> *aux_mem);
+Expression repeat(ComputationGraph &cg, unsigned num, cnn::real value, std::vector<cnn::real> *aux_mem);
 
-Expression dither(ComputationGraph &cg, const Expression &expr, float pad_value, std::vector<float> *aux_mem);
+Expression dither(ComputationGraph &cg, const Expression &expr, cnn::real pad_value, std::vector<cnn::real> *aux_mem);
 
 // these expressions can surely be implemented much more efficiently than this
 Expression abs(const Expression &expr);
 
 // binary boolean functions, is it better to use a sigmoid?
-Expression eq(const Expression &expr, float value, float epsilon = 0.1);
+Expression eq(const Expression &expr, cnn::real value, cnn::real epsilon = 0.1);
 
-Expression geq(const Expression &expr, float value, Expression &one, float epsilon = 0.01);
+Expression geq(const Expression &expr, cnn::real value, Expression &one, cnn::real epsilon = 0.01);
 
-Expression leq(const Expression &expr, float value, Expression &one, float epsilon = 0.01);
+Expression leq(const Expression &expr, cnn::real value, Expression &one, cnn::real epsilon = 0.01);
 
 /// do forward and backward embedding
 template<class Builder>
@@ -105,7 +105,8 @@ Expression bidirectional(unsigned & slen, const vector<int>& source, Computation
 std::vector<std::vector<Expression>> rnn_h0_for_each_utt(std::vector<Expression> v_h0, size_t nutt, size_t feat_dim);
 
 /**
-now need to process the data so that the output is
+data in return has the following format
+the index 0,1,2,3,and 4 below are the sentence indices
 [0 1 2 x x;
  0 1 2 3 x;
  0 1 2 3 4]
@@ -144,7 +145,8 @@ std::vector<Expression> forward_directional(unsigned & slen, const std::vector<s
 
 /**
 do backward directional RNN 
-the output is a vector of expression. 
+the output is a vector of expression.
+the element is the top-layer activity
 the element of this vector is an expression for that time.
 now need to process the data so that the output is
 [0 1 2 x x;
@@ -241,12 +243,17 @@ vector<Expression> convert_to_vector(Expression & in, size_t dim, size_t nutt);
 
 vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& wgt, float fscale = 1.0);
+    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& wgt, cnn::real fscale = 1.0);
 vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, const vector<size_t>& v_slen,
-    Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, float fscale = 1.0);
+    Expression i_va, Expression i_Wa,
+    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, cnn::real fscale = 1.0);
+vector<Expression> attention_using_bilinear(vector<Expression> & v_src, const vector<size_t>& v_slen,
+    Expression i_Wa, Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, Expression& fscale);
+vector<Expression> attention_using_bilinear_with_local_attention(vector<Expression> & v_src, const vector<size_t>& v_slen,
+    Expression i_Wa, Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, Expression& fscale,
+    vector<Expression>& position);
 
-vector<Expression> local_attention_to(ComputationGraph& cg, vector<int> v_slen,
+vector<Expression> local_attention_to(ComputationGraph& cg, const vector<size_t> & v_slen,
     Expression i_Wlp, Expression i_blp, Expression i_vlp,
     Expression i_h_tm1, size_t nutt);
 

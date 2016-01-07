@@ -16,7 +16,7 @@ typedef struct Expression{
 
 Expression input(ComputationGraph& g, real s);
 Expression input(ComputationGraph& g, const real *ps);
-Expression input(ComputationGraph& g, const Dim& d, const std::vector<float>* pdata);
+Expression input(ComputationGraph& g, const Dim& d, const std::vector<cnn::real>* pdata);
 Expression parameter(ComputationGraph& g, Parameters* p);
 Expression lookup(ComputationGraph& g, LookupParameters* p, unsigned index);
 Expression lookup(ComputationGraph& g, LookupParameters* p, const unsigned* pindex);
@@ -31,9 +31,9 @@ Expression operator-(const Expression& x, const Expression& y);
 Expression operator-(real x, const Expression& y);
 Expression operator-(const Expression& x, real y);
 Expression operator*(const Expression& x, const Expression& y);
-Expression operator*(const Expression& x, float y);
-inline Expression operator*(float y, const Expression& x) { return x * y; }
-inline Expression operator/(const Expression& x, float y) { return x * (1.f / y); }
+Expression operator*(const Expression& x, cnn::real y);
+inline Expression operator*(cnn::real y, const Expression& x) { return x * y; }
+inline Expression operator/(const Expression& x, cnn::real y) { return x * (1.f / y); }
 // componentwise division
 Expression cdiv(const Expression& x, const Expression& y);
 Expression colwise_add(const Expression& x, const Expression& bias);
@@ -49,8 +49,8 @@ Expression cube(const Expression& x);
 Expression log(const Expression& x);
 Expression logistic(const Expression& x);
 Expression rectify(const Expression& x);
-Expression hinge(const Expression& x, unsigned index, float m = 1.0);
-Expression hinge(const Expression& x, const unsigned* pindex, float m = 1.0);
+Expression hinge(const Expression& x, unsigned index, cnn::real m = 1.0);
+Expression hinge(const Expression& x, const unsigned* pindex, cnn::real m = 1.0);
 Expression log_softmax(const Expression& x);
 Expression log_softmax(const Expression& x, const std::vector<unsigned>& restriction);
 Expression softmax(const Expression& x);
@@ -69,7 +69,7 @@ Expression cwise_multiply(const Expression& x, const Expression& y);
 
 Expression dot_product(const Expression& x, const Expression& y);
 Expression squared_distance(const Expression& x, const Expression& y);
-Expression huber_distance(const Expression& x, const Expression& y, float c = 1.345f);
+Expression huber_distance(const Expression& x, const Expression& y, cnn::real c = 1.345f);
 Expression l1_distance(const Expression& x, const Expression& y);
 Expression binary_log_loss(const Expression& x, const Expression& y);
 Expression pairwise_rank_loss(const Expression& x, const Expression& y, real m=1.0);

@@ -1,5 +1,5 @@
 #include "cnn/dglstm.h"
-
+#include <boost/lexical_cast.hpp>
 #include <string>
 #include <cassert>
 #include <vector>
@@ -30,8 +30,10 @@ DGLSTMBuilder::DGLSTMBuilder(unsigned ilayers,
     unsigned input_dim,
     unsigned hidden_dim,
     Model* model,
-    float iscale) 
+    cnn::real iscale, 
+    string name) 
 {
+    string i_name;
     layers = ilayers;
     Parameters * p_x2k, *p_c2k, *p_q2k, *p_bk, *p_x2k0;
     long layer_input_dim = input_dim;
@@ -40,10 +42,18 @@ DGLSTMBuilder::DGLSTMBuilder(unsigned ilayers,
     for (unsigned i = 0; i < layers; ++i) {
         input_dims[i] = layer_input_dim;
         // i
-        Parameters* p_x2i = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
-        Parameters* p_h2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
-        Parameters* p_c2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
-        Parameters* p_bi = model->add_parameters({ long(hidden_dim) }, iscale);
+        if (name.size() > 0)
+            i_name = name + "p_x2i" + boost::lexical_cast<string>(i);
+        Parameters* p_x2i = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+        if (name.size() > 0)
+            i_name = name + "p_h2i" + boost::lexical_cast<string>(i);
+        Parameters* p_h2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+        if (name.size() > 0)
+            i_name = name + "p_c2i" + boost::lexical_cast<string>(i);
+        Parameters* p_c2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+        if (name.size() > 0)
+            i_name = name + "p_bi" + boost::lexical_cast<string>(i);
+        Parameters* p_bi = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
 #ifdef USE_STANDARD_LSTM_DEFINE
         // f
         Parameters* p_x2f = model->add_parameters({ long(hidden_dim), layer_input_dim });
@@ -52,24 +62,48 @@ DGLSTMBuilder::DGLSTMBuilder(unsigned ilayers,
         Parameters* p_bf = model->add_parameters({ long(hidden_dim) });
 #endif
         // o
-        Parameters* p_x2o = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
-        Parameters* p_h2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
-        Parameters* p_c2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
-        Parameters* p_bo = model->add_parameters({ long(hidden_dim) }, iscale);
+        if (name.size() > 0)
+            i_name = name + "p_x2o" + boost::lexical_cast<string>(i);
+        Parameters* p_x2o = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+        if (name.size() > 0)
+            i_name = name + "p_h2o" + boost::lexical_cast<string>(i);
+        Parameters* p_h2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+        if (name.size() > 0)
+            i_name = name + "p_c2o" + boost::lexical_cast<string>(i);
+        Parameters* p_c2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+        if (name.size() > 0)
+            i_name = name + "p_bo" + boost::lexical_cast<string>(i);
+        Parameters* p_bo = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
 
         // c
-        Parameters* p_x2c = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
-        Parameters* p_h2c = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
-        Parameters* p_bc = model->add_parameters({ long(hidden_dim) }, iscale);
+        if (name.size() > 0)
+            i_name = name + "p_x2c" + boost::lexical_cast<string>(i);
+        Parameters* p_x2c = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale,i_name);
+        if (name.size() > 0)
+            i_name = name + "p_h2c" + boost::lexical_cast<string>(i);
+        Parameters* p_h2c = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+        if (name.size() > 0)
+            i_name = name + "p_bc" + boost::lexical_cast<string>(i);
+        Parameters* p_bc = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
 
-        p_x2k = model->add_parameters({ long(hidden_dim), long(layer_input_dim) }, iscale);
-        p_c2k = model->add_parameters({ long(hidden_dim) }, iscale);
-        p_bk = model->add_parameters({ long(hidden_dim) }, iscale);
-        p_q2k = model->add_parameters({ long(hidden_dim) }, iscale);
+        if (name.size() > 0)
+            i_name = name + "p_x2k" + boost::lexical_cast<string>(i);
+        p_x2k = model->add_parameters({ long(hidden_dim), long(layer_input_dim) }, iscale, i_name);
+        if (name.size() > 0)
+            i_name = name + "p_c2k" + boost::lexical_cast<string>(i);
+        p_c2k = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
+        if (name.size() > 0)
+            i_name = name + "p_bk" + boost::lexical_cast<string>(i);
+        p_bk = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
+        if (name.size() > 0)
+            i_name = name + "p_q2k" + boost::lexical_cast<string>(i);
+        p_q2k = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
 
         layer_input_dim = hidden_dim;  // output (hidden) from 1st layer is input to next
 
-        Parameters * p_stab = model->add_parameters({ 1 }, iscale);
+        if (name.size() > 0)
+            i_name = name + "p_stab" + boost::lexical_cast<string>(i);
+        Parameters * p_stab = model->add_parameters({ 1 }, iscale, i_name);
         p_stab->reset_to_zero();
 
         vector<Parameters*> ps;
@@ -318,12 +352,6 @@ Expression DGLSTMBuilder::add_input_impl(const std::vector<Expression>& prev_his
     Expression in = x;
     Expression in_stb;
 
-    if (prev_history.size() != num_h0_components())
-    {
-        cerr << "LSTM prevhistory has wrong dimension. it should have the same number of elements as the number of layers" << endl;
-        throw("LSTM prevhistory has wrong dimension. it should have the same number of elements as the number of layers");
-    }
-
     int nutt = data_in_parallel();
 
     for (unsigned i = 0; i < layers; ++i) {
@@ -331,15 +359,21 @@ Expression DGLSTMBuilder::add_input_impl(const std::vector<Expression>& prev_his
         Expression i_stabilizer = biases[i][6];
         Expression i_v_stab = concatenate_cols(vector<Expression>(nutt, i_stabilizer));
         in_stb = cwise_multiply(i_v_stab, in);
-        Expression i_h_tm1, i_c_tm1;
 
-        i_h_tm1 = prev_history[i+layers];
-        i_c_tm1 = prev_history[i];
+        Expression i_h_tm1, i_c_tm1;
+        if (prev_history.size() > 0)
+        {
+            i_h_tm1 = prev_history[i + layers];
+            i_c_tm1 = prev_history[i];
+        }
 
         // input
         Expression i_ait;
         Expression bimb = biases[i][0];
-        i_ait = affine_transform({ bimb, vars[X2I], in_stb, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
+        if (prev_history.size() > 0)
+            i_ait = affine_transform({ bimb, vars[X2I], in_stb, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
+        else
+            i_ait = affine_transform({ bimb, vars[X2I], in_stb});
 
         Expression i_it = logistic(i_ait);
 
@@ -360,15 +394,23 @@ Expression DGLSTMBuilder::add_input_impl(const std::vector<Expression>& prev_his
         // write memory cell
         Expression bcmb = biases[i][1];
         Expression i_awt;
-        i_awt = affine_transform({ bcmb, vars[X2C], in_stb, vars[H2C], i_h_tm1 });
+        if (prev_history.size() > 0)
+            i_awt = affine_transform({ bcmb, vars[X2C], in_stb});
+        else
+            i_awt = affine_transform({ bcmb, vars[X2C], in_stb, vars[H2C], i_h_tm1 });
 
         Expression i_wt = tanh(i_awt);
 
         // output
         Expression i_before_add_with_lower_linearly;
         Expression i_nwt = cwise_multiply(i_it, i_wt);
-        Expression i_crt = cwise_multiply(i_ft, i_c_tm1);
-        i_before_add_with_lower_linearly = i_crt + i_nwt;
+        if (prev_history.size() > 0)
+        {
+            Expression i_crt = cwise_multiply(i_ft, i_c_tm1);
+            i_before_add_with_lower_linearly = i_crt + i_nwt;
+        }
+        else
+            i_before_add_with_lower_linearly = i_nwt;
 
         /// add lower layer memory cell
         Expression i_k_t;
@@ -381,15 +423,21 @@ Expression DGLSTMBuilder::add_input_impl(const std::vector<Expression>& prev_his
         }
 
         Expression q2kmb = biases[i][5];
-        i_k_t = logistic(i_k_lowerc + vars[X2K] * in_stb + cwise_multiply(q2kmb, i_c_tm1));
+        if (prev_history.size() > 0)
+            i_k_t = logistic(i_k_lowerc + vars[X2K] * in_stb + cwise_multiply(q2kmb, i_c_tm1));
+        else
+            i_k_t = logistic(i_k_lowerc + vars[X2K] * in_stb );
 
         ct[i] = i_before_add_with_lower_linearly + cwise_multiply(i_k_t, (i == 0) ? vars[X2K0] * lower_layer_c : lower_layer_c);
 
 
         Expression i_aot;
         Expression bomb = biases[i][2];
-        i_aot = affine_transform({ bomb, vars[X2O], in_stb, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
- 
+        if (prev_history.size() == 0)
+            i_aot = affine_transform({ bomb, vars[X2O], in_stb, vars[C2O], ct[i] });
+        else
+            i_aot = affine_transform({ bomb, vars[X2O], in_stb, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
+
         Expression i_ot = logistic(i_aot);
         Expression ph_t = tanh(ct[i]);
         in = ht[i] = cwise_multiply(i_ot, ph_t);

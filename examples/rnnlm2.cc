@@ -59,8 +59,8 @@ struct RNNLanguageModel {
       Expression i_r_t =  i_bias + i_R * i_y_t;
       
       // we can easily look at intermidiate values
-//      std::vector<float> r_t = as_vector(i_r_t.value());
-  //    for (float f : r_t) cout << f << " "; cout << endl;
+//      std::vector<cnn::real> r_t = as_vector(i_r_t.value());
+  //    for (cnn::real f : r_t) cout << f << " "; cout << endl;
     //  cout << "[" << as_scalar(pick(i_r_t, sent[t+1]).value()) << "]" << endl;
 
       // LogSoftmax followed by PickElement can be written in one step
@@ -110,7 +110,7 @@ struct RNNLanguageModel {
       unsigned w = 0;
       while (w == 0 || (int)w == kSOS) {
         auto dist = as_vector(cg.incremental_forward());
-        double p = rand01();
+        cnn::real p = rand01();
         for (; w < dist.size(); ++w) {
           p -= dist[w];
           if (p < 0.0) { break; }
@@ -131,7 +131,7 @@ void train(Model &model, LM_t &lm,
     Trainer *sgd, const string& fname,
     bool randomSample)
 {
-    double best = 9e+99;
+    cnn::real best = 9e+99;
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 500;
     unsigned si = training.size();
@@ -150,7 +150,7 @@ void train(Model &model, LM_t &lm,
     size_t i_epoch = 0;
     while (sgd->epoch < total_epoch) {
         Timer iteration("completed in");
-        double loss = 0;
+        cnn::real loss = 0;
         unsigned chars = 0;
         for (unsigned i = 0; i < report_every_i; ++i) {
             if (si == training.size()) {
@@ -181,7 +181,7 @@ void train(Model &model, LM_t &lm,
         // show score on dev data?
         report++;
         if (report % dev_every_i_reports == 0) {
-            double dloss = 0;
+            cnn::real dloss = 0;
             int dchars = 0;
             for (auto& sent : dev) {
                 ComputationGraph cg;
@@ -211,7 +211,7 @@ void testcorpus(Model &model, LM_t &lm,
     const vector<vector<int>>& dev)
 {
     unsigned lines = 0;
-    double dloss = 0;
+    cnn::real dloss = 0;
     int dchars = 0;
     for (auto& sent : dev) {
         ComputationGraph cg;
@@ -220,7 +220,7 @@ void testcorpus(Model &model, LM_t &lm,
         dchars += sent.size() - 1;
     }
 
-    cerr << "\n***DEV [epoch=" << (lines / (double)dev.size()) << "] E = " << (dloss / dchars) << " ppl=" << exp(dloss / dchars) << ' ';
+    cerr << "\n***DEV [epoch=" << (lines / (cnn::real)dev.size()) << "] E = " << (dloss / dchars) << " ppl=" << exp(dloss / dchars) << ' ';
 }
 
 void initialise(Model &model, const string &filename)

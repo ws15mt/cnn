@@ -4,7 +4,9 @@
 #include "cnn/cnn.h"
 #include "cnn/rnn-state-machine.h"
 #include "cnn/expr.h"
+#include <string>
 
+using namespace std;
 using namespace cnn::expr;
 
 namespace cnn {
@@ -133,7 +135,8 @@ struct SimpleRNNBuilder : public RNNBuilder {
                             unsigned input_dim,
                             unsigned hidden_dim,
                             Model* model,
-                            float i_scale = 1.0,
+                            cnn::real i_scale = 1.0,
+                            string name = "",
                             bool support_lags=false);
   /// for parameter sharing 
   SimpleRNNBuilder(const SimpleRNNBuilder& ref) 

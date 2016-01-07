@@ -34,7 +34,7 @@ struct AttentionalModel {
 	    bool giza_extensions, unsigned hidden_replicates=1, 
         LookupParameters* cs=0, LookupParameters *ct=0, 
         bool use_external_memory = false , /// this is for extmem rnn memory size
-        float iscale = 1.0  /// random initialization range
+        cnn::real iscale = 1.0  /// random initialization range
     );
 
     ~AttentionalModel();
@@ -83,7 +83,7 @@ struct AttentionalModel {
     void start_new_instance(const std::vector<int> &src, ComputationGraph &cg);
     void start_new_instance(const std::vector<int> &source, ComputationGraph &cg, vector<Expression>& decoderInit);
     Expression add_input(int tgt_tok, int t, ComputationGraph &cg, RNNPointer *prev_state = 0);
-    std::vector<float> *auxiliary_vector(); // memory management
+    std::vector<cnn::real> *auxiliary_vector(); // memory management
 
     // state variables used in the above two methods
     Expression src;
@@ -101,7 +101,7 @@ struct AttentionalModel {
     Expression i_src_len;
     std::vector<Expression> aligns;
     unsigned slen;
-    std::vector<std::vector<float>*> aux_vecs; // special storage for constant vectors
+    std::vector<std::vector<cnn::real>*> aux_vecs; // special storage for constant vectors
     unsigned num_aux_vecs;
 };
 
@@ -109,7 +109,7 @@ template <class Builder>
 AttentionalModel<Builder>::AttentionalModel(cnn::Model& model,
     unsigned vocab_size_src, unsigned _vocab_size_tgt, unsigned layers, unsigned hidden_dim, 
     unsigned align_dim, bool _rnn_src_embeddings, bool _giza_extentions, unsigned hidden_replicates, 
-    LookupParameters* cs, LookupParameters *ct, bool use_external_memory = false, float iscale = 1.0)
+    LookupParameters* cs, LookupParameters *ct, bool use_external_memory = false, cnn::real iscale = 1.0)
     : layers(layers), builder(layers, (_rnn_src_embeddings) ? 3 * hidden_dim : 2 * hidden_dim, hidden_dim, &model, iscale),
   builder_src_fwd(1, hidden_dim, hidden_dim, &model, iscale),
   builder_src_bwd(1, hidden_dim, hidden_dim, &model, iscale),
@@ -261,10 +261,10 @@ void AttentionalModel<Builder>::start_new_instance(const std::vector<int> &sourc
 }
 
 template <class Builder>
-std::vector<float>* AttentionalModel<Builder>::auxiliary_vector()
+std::vector<cnn::real>* AttentionalModel<Builder>::auxiliary_vector()
 {
     while (num_aux_vecs >= aux_vecs.size())
-        aux_vecs.push_back(new std::vector<float>());
+        aux_vecs.push_back(new std::vector<cnn::real>());
     // NB, we return the last auxiliary vector, AND increment counter
     return aux_vecs[num_aux_vecs++];
 }
@@ -488,18 +488,18 @@ AttentionalModel<Builder>::display(const std::vector<int> &source, const std::ve
     using namespace std;
 
     // display the alignment
-    //float I = target.size() - 1;
-    //float J = source.size() - 1;
-    float I = target.size();
-    float J = source.size();
+    //cnn::real I = target.size() - 1;
+    //cnn::real J = source.size() - 1;
+    cnn::real I = target.size();
+    cnn::real J = source.size();
     //vector<string> symbols{"\u2588","\u2589","\u258A","\u258B","\u258C","\u258D","\u258E","\u258F"};
     vector<string> symbols{".","o","*","O","@"};
     int num_symbols = symbols.size();
-    vector<float> thresholds;
+    vector<cnn::real> thresholds;
     thresholds.push_back(0.8/I);
-    float lgap = (0 - log(thresholds.back())) / (num_symbols - 1);
+    cnn::real lgap = (0 - log(thresholds.back())) / (num_symbols - 1);
     for (auto rit = symbols.begin(); rit != symbols.end(); ++rit) {
-        float thr = exp(log(thresholds.back()) + lgap);
+        cnn::real thr = exp(log(thresholds.back()) + lgap);
         thresholds.push_back(thr);
     }
     // FIXME: thresholds > 1, what's going on?
@@ -521,10 +521,10 @@ AttentionalModel<Builder>::display(const std::vector<int> &source, const std::ve
         //cout << setw(12) << td.Convert(target[i+1]) << "  ";
         cout << setw(12) << td.Convert(target[i]) << "  ";
         cout.setf(ios_base::adjustfield, ios_base::right);
-        float max_v = 0;
+        cnn::real max_v = 0;
         int max_j = -1;
         for (int j = 0; j < J; ++j) {
-            float v = TensorTools::AccessElement(a, Dim(j, i));
+            cnn::real v = TensorTools::AccessElement(a, Dim(j, i));
             string symbol;
             for (int s = 0; s <= num_symbols; ++s) {
                 if (s == 0) 
@@ -594,15 +594,15 @@ AttentionalModel<Builder>::decode(const std::vector<int> &source, ComputationGra
 }
 
 struct Hypothesis {
-    Hypothesis(RNNPointer state, int tgt, float cst, int _t)
+    Hypothesis(RNNPointer state, int tgt, cnn::real cst, int _t)
         : builder_state(state), target({tgt}), cost(cst), t(_t) {}
-    Hypothesis(RNNPointer state, int tgt, float cst, Hypothesis &last)
+    Hypothesis(RNNPointer state, int tgt, cnn::real cst, Hypothesis &last)
         : builder_state(state), target(last.target), cost(cst), t(last.t+1) {
         target.push_back(tgt);
     }
     RNNPointer builder_state;
     std::vector<int> target;
-    float cost;
+    cnn::real cost;
     int t;
 };
 
@@ -736,7 +736,7 @@ AttentionalModel<Builder>::sample(const std::vector<int> &source, ComputationGra
 
 	// in rnnlm.cc there's a loop around this block -- why? can incremental_forward fail?
         auto dist = as_vector(cg.incremental_forward());
-	double p = rand01();
+	cnn::real p = rand01();
         unsigned w = 0;
         for (; w < dist.size(); ++w) {
 	    p -= dist[w];
