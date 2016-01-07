@@ -2084,7 +2084,7 @@ public:
         }
         else
         {
-            i_input = concatenate({ i_obs, dropout(attention_output_for_this_turn.back(), dropout_rate) });
+            i_input = concatenate({ i_obs, attention_output_for_this_turn.back() });
         }
 
         i_h_t = decoder.add_input(i_input);

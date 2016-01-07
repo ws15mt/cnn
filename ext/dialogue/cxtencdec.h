@@ -100,7 +100,7 @@ public:
         size_t nutt = source.size();
         start_new_instance(source, cg);
 
-        vector<vector<Expression>> this_errs;
+        vector<vector<Expression>> this_errs(nutt);
         vector<Expression> errs;
 
         nutt = osent.size();
@@ -276,11 +276,10 @@ public:
         size_t nutt = source.size();
         start_new_instance(source, cg);
 
-        vector<vector<Expression>> this_errs;
+        vector<vector<Expression>> this_errs(nutt);
         vector<Expression> errs;
 
-        nutt = osent.size();
-
+        this_errs.resize(nutt);
         int oslen = 0;
         for (auto p : osent)
             oslen = (oslen < p.size()) ? p.size() : oslen;
