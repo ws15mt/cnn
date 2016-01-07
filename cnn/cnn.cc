@@ -10,9 +10,9 @@ using namespace std;
 
 namespace cnn {
 
-float* kSCALAR_MINUSONE;
-float* kSCALAR_ONE;
-float* kSCALAR_ZERO;
+cnn::real* kSCALAR_MINUSONE;
+cnn::real* kSCALAR_ONE;
+cnn::real* kSCALAR_ZERO;
 int n_hgs = 0;
 
 Node::~Node() {}
@@ -53,7 +53,7 @@ VariableIndex ComputationGraph::add_input(const real* ps) {
   return new_node_index;
 }
 
-VariableIndex ComputationGraph::add_input(const Dim& d, const vector<float>* pm) {
+VariableIndex ComputationGraph::add_input(const Dim& d, const vector<cnn::real>* pm) {
   VariableIndex new_node_index(nodes.size());
   nodes.push_back(new InputNode(d, pm));
   set_dim_for_new_node(new_node_index);
@@ -129,7 +129,7 @@ const Tensor& ComputationGraph::get_value(VariableIndex i) { return ee->get_valu
 const Tensor& ComputationGraph::get_value(const expr::Expression& e) { return this->get_value(e.i); }
 const Tensor& ComputationGraph::get_error(VariableIndex i) { return ee->get_error(i); }
 void ComputationGraph::invalidate() { ee->invalidate(); }
-void ComputationGraph::backward(float * kInitError){ ee->backward(kInitError); }
+void ComputationGraph::backward(cnn::real * kInitError){ ee->backward(kInitError); }
 void ComputationGraph::backward(VariableIndex i) { ee->backward(i); }
 
 void ComputationGraph::PrintGraphviz() const {

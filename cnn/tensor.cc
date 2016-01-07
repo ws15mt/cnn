@@ -26,8 +26,8 @@ ostream& operator<<(ostream& os, const Tensor& t) {
 real as_scalar(const Tensor& t) {
   assert(t.d.size() == 1);
 #if HAVE_CUDA
-  float res;
-  CUDA_CHECK(cudaMemcpy(&res, t.v, sizeof(float), cudaMemcpyDeviceToHost));
+  cnn::real res;
+  CUDA_CHECK(cudaMemcpy(&res, t.v, sizeof(cnn::real), cudaMemcpyDeviceToHost));
   return res;
 #else
   return t.v[0];
@@ -44,7 +44,7 @@ vector<real> as_vector(const Tensor& v) {
   return res;
 }
 
-float TensorTools::AccessElement(const Tensor& v, const Dim& index) {
+cnn::real TensorTools::AccessElement(const Tensor& v, const Dim& index) {
 #if HAVE_CUDA
   abort();
 #else
@@ -52,7 +52,7 @@ float TensorTools::AccessElement(const Tensor& v, const Dim& index) {
 #endif
 }
 
-void TensorTools::SetElements(const Tensor& v, const vector<float>& vec) {
+void TensorTools::SetElements(const Tensor& v, const vector<cnn::real>& vec) {
 #if HAVE_CUDA
   cudaMemcpyAsync(v.v, &vec[0], sizeof(real) * vec.size(), cudaMemcpyHostToDevice);
 #else
@@ -68,16 +68,16 @@ void TensorTools::CopyElements(const Tensor& v, const Tensor& v_src) {
 #endif
 }
 
-void TensorTools::Constant(Tensor& d, float c) {
+void TensorTools::Constant(Tensor& d, cnn::real c) {
 #if HAVE_CUDA
   if (!c) {
-    CUDA_CHECK(cudaMemsetAsync(d.v, 0, d.d.size() * sizeof(float)));
+    CUDA_CHECK(cudaMemsetAsync(d.v, 0, d.d.size() * sizeof(cnn::real)));
   } else {
     fill(d.v, d.v + d.d.size(), c);
   }
 #else
   if (!c) {
-    memset(d.v, c, d.d.size() * sizeof(float));
+    memset(d.v, c, d.d.size() * sizeof(cnn::real));
   } else {
     fill(d.v, d.v + d.d.size(), c);
   }
@@ -92,7 +92,7 @@ void TensorTools::Randomize(Tensor& val, real scale) {
   uniform_real_distribution<real> distribution(-scale,scale);
   auto b = [&] {return distribution(*rndeng);};
 #if HAVE_CUDA
-  float* t = new float[val.d.size()];
+  cnn::real* t = new cnn::real[val.d.size()];
   generate(t, t + val.d.size(), b);
   CUDA_CHECK(cudaMemcpy(val.v, t, sizeof(real) * val.d.size(), cudaMemcpyHostToDevice));
   delete[] t;

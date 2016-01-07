@@ -14,6 +14,8 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+#include <tuple>
+#include <functional>
 #include <boost/system/config.hpp>
 #include <boost/locale.hpp>
 #include <boost/locale/encoding_utf.hpp>
@@ -259,16 +261,16 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int
     return corpus;
 }
 
-Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool appendBSandES, bool bcharacter)
+Corpus read_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool appendBSandES, bool bcharacter)
 {
     ifstream in(filename);
     string line;
 
     Corpus corpus;
     Dialogue diag;
-    int prv_diagid = -1;
+    string prv_diagid = "-1";
     int lc = 0, stoks = 0, ttoks = 0;
-    min_diag_id = 99999;
+
     while (getline(in, line)) {
         trim_left(line);
         trim_right(line);
@@ -276,11 +278,10 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int 
             break;
         ++lc;
         Sentence source, target;
-        int diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, appendBSandES, kSRC_SOS, kSRC_EOS, bcharacter);
-        if (diagid == -1)
+        string diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, appendBSandES, kSRC_SOS, kSRC_EOS, bcharacter);
+        if (diagid.size() == 0)
             break;
-        if (diagid < min_diag_id)
-            min_diag_id = diagid;
+
         if (diagid != prv_diagid)
         {
             if (diag.size() > 0)
@@ -314,7 +315,68 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, Dict& sd, int 
     return corpus;
 }
 
-int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool appendSBandSE, int kSRC_SOS, int kSRC_EOS, bool bcharacter)
+/**
+the data contains triplet
+user input ||| response ||| addition input such as intention
+*/
+TupleCorpus read_tuple_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS, Dict& td, int kTGT_SOS, int kTGT_EOS, int maxSentLength)
+{
+    ifstream in(filename);
+    string line;
+
+    TupleCorpus corpus;
+    TupleDialogue diag;
+    vector<Dict*> vDict;
+    vDict.push_back(&sd);
+    vDict.push_back(&td);
+    vDict.push_back(&sd);
+
+    int prv_diagid = -1;
+    int lc = 0, stoks = 0, ttoks = 0;
+    long min_diag_id = 99999;
+    while (getline(in, line)) 
+    {
+        trim_left(line);
+        trim_right(line);
+        if (line.length() == 0)
+            break;
+        ++lc;
+        Sentence i_source, i_answer, i_query;
+        vector<Sentence*> source;
+        source.push_back(&i_source);
+        source.push_back(&i_answer);
+        source.push_back(&i_query);
+        int diagid = MultiTurnsReadSentence(line, source, vDict);
+        if (diagid == -1)
+            break;
+
+        if (diagid != prv_diagid)
+        {
+            if (diag.size() > 0)
+                corpus.push_back(diag);
+            diag.clear();
+            prv_diagid = diagid;
+        }
+
+        SentenceTuple stuple = make_triplet_sentence(i_source, i_answer, i_query);
+        diag.push_back(stuple);
+
+        stoks += source[0]->size();
+        ttoks += source[1]->size();
+    }
+
+    if (diag.size() > 0)
+        corpus.push_back(diag);
+    cerr << lc << " lines, " << stoks << " & " << ttoks << " tokens (s & t), " << sd.size() << " & " << td.size() << " types\n";
+    return corpus;
+}
+
+SentenceTuple make_triplet_sentence(const Sentence& m1, const Sentence& m2, const Sentence& m3)
+{
+    return make_triplet<Sentence>(m1, m2, m3);
+}
+
+string MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool appendSBandSE, int kSRC_SOS, int kSRC_EOS, bool bcharacter)
 {
     std::istringstream in(line);
     std::string word;
@@ -325,7 +387,7 @@ int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dic
     std::vector<int>* v = s;
 
     if (line.length() == 0)
-        return -1;
+        return "";
 
     in >> diagid;
     trim(diagid);
@@ -376,6 +438,58 @@ int MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dic
     }
     if (appendSBandSE)
         v->push_back(kSRC_EOS);
+
+    return diagid;
+}
+
+int MultiTurnsReadSentence(const std::string& line,
+    vector<std::vector<int>*> s,
+    vector<Dict*> sd)
+{
+    std::istringstream in(line);
+    std::string word;
+    std::string sep = "|||";
+    Dict* d = sd[0];
+    std::string diagid, turnid;
+
+    std::vector<int>* v = s[0];
+
+    if (line.length() == 0)
+        return -1;
+
+    in >> diagid;
+    trim(diagid);
+    in >> word;
+    if (word != sep)
+    {
+        cerr << "format should be <diagid> ||| <turnid> ||| src || tgt ||| additional " << endl;
+        cerr << "expecting diagid" << endl;
+        abort();
+    }
+
+    in >> turnid;
+    in >> word;
+    if (word != sep)
+    {
+        cerr << "format should be <diagid> ||| <turnid> ||| src || tgt ||| additional " << endl;
+        cerr << "expecting turn id" << endl;
+        abort();
+    }
+
+    size_t kk = 0;
+    while (in) {
+        in >> word;
+        trim(word);
+        if (!in) break;
+        if (word == sep) {
+            ++kk;
+            d = sd[kk]; v = s[kk];
+            continue;
+        }
+
+        v->push_back(d->Convert(word));
+    }
+
     int res;
 
     res = boost::lexical_cast<int>(diagid);
@@ -452,7 +566,24 @@ NumTurn2DialogId get_numturn2dialid(Corpus corp)
     {
         info.vNumTurns.push_back(p.first);
     }
-    return info; 
+    return info;
+}
+
+NumTurn2DialogId get_numturn2dialid(TupleCorpus corp)
+{
+    NumTurn2DialogId info;
+
+    int id = 0;
+    for (auto p : corp)
+    {
+        size_t d_turns = p.size();
+        info.mapNumTurn2DialogId[d_turns].push_back(id++);
+    }
+    for (auto p : info.mapNumTurn2DialogId)
+    {
+        info.vNumTurns.push_back(p.first);
+    }
+    return info;
 }
 
 
@@ -675,3 +806,19 @@ vector<cnn::real> read_embedding(const string& line, Dict& sd, int & index)
     index = id;
     return v_data;
 }
+
+string builder_flavour(variables_map vm)
+{
+    string flavour = "rnn";
+    if (vm.count("lstm"))	flavour = "lstm";
+    else if (vm.count("gru"))	flavour = "gru";
+    else if (vm.count("dglstm"))	flavour = "dglstm";
+    else if (vm.count("dglstm-dnn")) flavour = "dnn";
+    else if (vm.count("builder")>0)
+    {
+        flavour = vm["builder"].as<string>();
+    }
+
+    return flavour;
+}
+

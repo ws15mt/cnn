@@ -6,7 +6,6 @@
 #include <unordered_set>
 #include <iostream>
 
-#define CNN_ALIGN 256
 #if HAVE_CUDA
 #include <thrust/version.h>
 #include "cnn/gpu-ops.h"
@@ -19,11 +18,11 @@ namespace cnn {
 
 ParametersBase::~ParametersBase() {}
 
-Parameters::Parameters(const Dim& d, float scale , std::string nodename) : dim(d), name(nodename) {
+Parameters::Parameters(const Dim& d, cnn::real scale , std::string nodename) : dim(d), name(nodename) {
   values.d = g.d = d;
-  values.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
+  values.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
   TensorTools::Randomize(values, scale); 
-  g.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
+  g.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
   TensorTools::Zero(g);
 }
 
@@ -38,11 +37,11 @@ void Parameters::reset_to_zero()
 #endif
 }
 
-void Parameters::scale_parameters(float a) {
+void Parameters::scale_parameters(cnn::real a) {
   (*g) *= a;
 }
 
-void Parameters::squared_l2norm(float* sqnorm) const {
+void Parameters::squared_l2norm(cnn::real* sqnorm) const {
 #if HAVE_CUDA
   gpu::l2_norm_reducer(values.d.size(), values.v, sqnorm, true, false);
 #else
@@ -50,7 +49,7 @@ void Parameters::squared_l2norm(float* sqnorm) const {
 #endif
 }
 
-void Parameters::g_squared_l2norm(float* sqnorm) const {
+void Parameters::g_squared_l2norm(cnn::real* sqnorm) const {
 #if HAVE_CUDA
   gpu::l2_norm_reducer(g.d.size(), g.v, sqnorm, true, false);
 #else
@@ -86,32 +85,32 @@ LookupParameters::~LookupParameters()
     }
 }
 
-LookupParameters::LookupParameters(unsigned n, const Dim& d, float scale, std::string nodename) : dim(d), values(n), grads(n), name(nodename) {
+LookupParameters::LookupParameters(unsigned n, const Dim& d, cnn::real scale, std::string nodename) : dim(d), values(n), grads(n), name(nodename) {
   for (unsigned i = 0; i < n; ++i) {
     auto& v = values[i];
     v.d = d;
-    v.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
+    v.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
     TensorTools::Randomize(v, scale);
 
     auto& g = grads[i];
     g.d = d;
-    g.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
+    g.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
     TensorTools::Zero(g);
   }
 }
 
-void LookupParameters::scale_parameters(float a) {
+void LookupParameters::scale_parameters(cnn::real a) {
   for (auto& p : values)
     (*p) *= a;
 }
 
-void LookupParameters::Initialize(unsigned index, const vector<float>& val) {
+void LookupParameters::Initialize(unsigned index, const vector<cnn::real>& val) {
   assert(int(val.size()) == int(dim.size()));
 #if HAVE_CUDA
   cerr << "implement LookupParameters::Initialize\n";
   throw cuda_not_implemented("LookupParameters::Initialize");
 #else
-  memcpy(values[index].v, &val[0], val.size() * sizeof(float));
+  memcpy(values[index].v, &val[0], val.size() * sizeof(cnn::real));
 #endif
 }
 
@@ -119,7 +118,7 @@ size_t LookupParameters::size() const {
   return values.size() * dim.size();
 }
 
-void LookupParameters::g_squared_l2norm(float* sqnorm) const {
+void LookupParameters::g_squared_l2norm(cnn::real* sqnorm) const {
 #if HAVE_CUDA
   bool acc = false;
   for (auto i : non_zero_grads) {
@@ -134,7 +133,7 @@ void LookupParameters::g_squared_l2norm(float* sqnorm) const {
 #endif
 }
 
-void LookupParameters::squared_l2norm(float* sqnorm) const {
+void LookupParameters::squared_l2norm(cnn::real* sqnorm) const {
 #if HAVE_CUDA
   bool acc = false;
   for (unsigned i = 0; i < values.size(); ++i) {
@@ -142,7 +141,7 @@ void LookupParameters::squared_l2norm(float* sqnorm) const {
     acc = true;
   }
 #else
-  float a = 0;
+  cnn::real a = 0;
   for (unsigned i = 0; i < values.size(); ++i)
     a += (*values[i]).squaredNorm();
   *sqnorm = a;
@@ -177,50 +176,50 @@ Model::~Model() {
       cnn_mm_free(gradient_norm_scratch); 
 }
 
-void Model::project_weights(float radius) {
-  static float* project_scratch = 0;
+void Model::project_weights(cnn::real radius) {
+  static cnn::real* project_scratch = 0;
   if (!project_scratch)
-    project_scratch = (float*)cnn_mm_malloc(all_params.size() * sizeof(float), 256);
+    project_scratch = (cnn::real*)cnn_mm_malloc(all_params.size() * sizeof(cnn::real), CNN_ALIGN);
   int pi = 0;
   for (auto p : all_params) {
     p->squared_l2norm(&project_scratch[pi]);
     ++pi;
   }
-  double gg = 0;
+  cnn::real gg = 0;
   for (int i = 0; i < pi; ++i)
     gg += project_scratch[i];
   cerr << "NORM: " << sqrt(gg) << endl;
 }
 
-float Model::gradient_l2_norm() const {
+cnn::real Model::gradient_l2_norm() const {
   if (!gradient_norm_scratch)
-    gradient_norm_scratch = (float*)cnn_mm_malloc(all_params.size() * sizeof(float), 256);
+      gradient_norm_scratch = (cnn::real*)cnn_mm_malloc(all_params.size() * sizeof(cnn::real), CNN_ALIGN);
   int pi = 0;
   for (auto p : all_params) {
     p->g_squared_l2norm(&gradient_norm_scratch[pi]);
     ++pi;
   }
 #if HAVE_CUDA
-  float res = 0;
+  cnn::real res = 0;
   gpu::l2_norm_reducer(all_params.size(), gradient_norm_scratch, gradient_norm_scratch, false, false);
-  cudaMemcpy(&res, gradient_norm_scratch, sizeof(float),  cudaMemcpyDeviceToHost);
+  cudaMemcpy(&res, gradient_norm_scratch, sizeof(cnn::real),  cudaMemcpyDeviceToHost);
   return sqrt(res);
 #else
-  double gg = 0;
+  cnn::real gg = 0;
   for (int i = 0; i < pi; ++i)
     gg += gradient_norm_scratch[i];
   return sqrt(gg);
 #endif
 }
 
-Parameters* Model::add_parameters(const Dim& d, float scale, std::string nodename) {
+Parameters* Model::add_parameters(const Dim& d, cnn::real scale, std::string nodename) {
   Parameters* p = new Parameters(d, scale, nodename);
   all_params.push_back(p);
   params.push_back(p);
   return p;
 }
 
-LookupParameters* Model::add_lookup_parameters(unsigned n, const Dim& d, float scale, std::string nodename) {
+LookupParameters* Model::add_lookup_parameters(unsigned n, const Dim& d, cnn::real scale, std::string nodename) {
   LookupParameters* p = new LookupParameters(n,d, scale, nodename);
   if (nodename != "") p->name = nodename;
   all_params.push_back(p);

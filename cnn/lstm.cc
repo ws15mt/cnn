@@ -1,5 +1,5 @@
 #include "cnn/lstm.h"
-
+#include <boost/lexical_cast.hpp>
 #include <string>
 #include <cassert>
 #include <vector>
@@ -18,8 +18,11 @@ LSTMBuilder::LSTMBuilder(unsigned ilayers,
                          unsigned input_dim,
                          unsigned hidden_dim,
                          Model* model,
-                         float iscale)  {
+                         cnn::real iscale,
+                         string name)
+{
   layers = ilayers;
+  string i_name;
   long layer_input_dim = input_dim;
   input_dims = vector<unsigned>(layers, layer_input_dim);
 
@@ -27,21 +30,43 @@ LSTMBuilder::LSTMBuilder(unsigned ilayers,
     input_dims[i] = layer_input_dim;
     
     // i
-    Parameters* p_x2i = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
-    Parameters* p_h2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
-    Parameters* p_c2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
-    Parameters* p_bi = model->add_parameters({ long(hidden_dim) }, iscale);
+    if (name.size() > 0)
+        i_name = name + "p_x2i" + boost::lexical_cast<string>(i);
+    Parameters* p_x2i = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_h2i" + boost::lexical_cast<string>(i);
+    Parameters* p_h2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_c2i" + boost::lexical_cast<string>(i);
+    Parameters* p_c2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_bi" + boost::lexical_cast<string>(i);
+    Parameters* p_bi = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
     
     // o
-    Parameters* p_x2o = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
-    Parameters* p_h2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
-    Parameters* p_c2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
-    Parameters* p_bo = model->add_parameters({ long(hidden_dim) }, iscale);
+    if (name.size() > 0)
+        i_name = name + "p_x2o" + boost::lexical_cast<string>(i);
+    Parameters* p_x2o = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_h2o" + boost::lexical_cast<string>(i);
+    Parameters* p_h2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_c2o" + boost::lexical_cast<string>(i);
+    Parameters* p_c2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_bo" + boost::lexical_cast<string>(i);
+    Parameters* p_bo = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
 
     // c
-    Parameters* p_x2c = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
-    Parameters* p_h2c = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
-    Parameters* p_bc = model->add_parameters({ long(hidden_dim) }, iscale);
+    if (name.size() > 0)
+        i_name = name + "p_x2c" + boost::lexical_cast<string>(i);
+    Parameters* p_x2c = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_h2c" + boost::lexical_cast<string>(i);
+    Parameters* p_h2c = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_bc" + boost::lexical_cast<string>(i);
+    Parameters* p_bc = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
     layer_input_dim = hidden_dim;  // output (hidden) from 1st layer is input to next
 
     vector<Parameters*> ps = {p_x2i, p_h2i, p_c2i, p_bi, p_x2o, p_h2o, p_c2o, p_bo, p_x2c, p_h2c, p_bc};
@@ -128,12 +153,6 @@ Expression LSTMBuilder::add_input_impl(const vector<Expression>& prev_history, c
     vector<Expression>& ct = c.back();
     Expression in = x;
 
-    if (prev_history.size() != num_h0_components())
-    {
-        cerr << "LSTM prevhistory has wrong dimension. it should have the same number of elements as the number of layers" << endl;
-        throw("LSTM prevhistory has wrong dimension. it should have the same number of elements as the number of layers");
-    }
-
     for (unsigned i = 0; i < layers; ++i) {
         const vector<Expression>& vars = param_vars[i];
         Expression i_h_tm1, i_c_tm1;
@@ -143,7 +162,10 @@ Expression LSTMBuilder::add_input_impl(const vector<Expression>& prev_history, c
         // input
         Expression i_ait;
         Expression bimb = biases[i][0];
-        i_ait = affine_transform({ bimb, vars[X2I], in, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
+        if (prev_history.size() > 0)
+            i_ait = affine_transform({ bimb, vars[X2I], in, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
+        else
+            i_ait = affine_transform({ bimb, vars[X2I], in});
 
         Expression i_it = logistic(i_ait);
         // forget
@@ -152,17 +174,28 @@ Expression LSTMBuilder::add_input_impl(const vector<Expression>& prev_history, c
         // write memory cell
         Expression i_awt;
         Expression bcmb = biases[i][1];
-        i_awt = affine_transform({ bcmb, vars[X2C], in, vars[H2C], i_h_tm1 });
+        if (prev_history.size() > 0)
+            i_awt = affine_transform({ bcmb, vars[X2C], in, vars[H2C], i_h_tm1 });
+        else
+            i_awt = affine_transform({ bcmb, vars[X2C], in });
 
         Expression i_wt = tanh(i_awt);
         // output
         Expression i_nwt = cwise_multiply(i_it, i_wt);
-        Expression i_crt = cwise_multiply(i_ft, i_c_tm1);
-        ct[i] = i_crt + i_nwt;
+        if (prev_history.size() > 0)
+        {
+            Expression i_crt = cwise_multiply(i_ft, i_c_tm1);
+            ct[i] = i_crt + i_nwt;
+        }
+        else
+            ct[i] = i_nwt;
 
         Expression i_aot;
         Expression bomb = biases[i][2];
-        i_aot = affine_transform({ bomb, vars[X2O], in, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
+        if (prev_history.size() > 0)
+            i_aot = affine_transform({ bomb, vars[X2O], in, vars[C2O], ct[i] });
+        else
+            i_aot = affine_transform({ bomb, vars[X2O], in, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
 
         Expression i_ot = logistic(i_aot);
         Expression ph_t = tanh(ct[i]);

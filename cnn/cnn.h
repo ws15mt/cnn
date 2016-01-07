@@ -26,9 +26,9 @@ namespace cnn {
 
 extern AlignedMemoryPool<6>* fxs;
 extern AlignedMemoryPool<6>* dEdfs;
-extern float* kSCALAR_MINUSONE;
-extern float* kSCALAR_ONE;
-extern float* kSCALAR_ZERO;
+extern cnn::real* kSCALAR_MINUSONE;
+extern cnn::real* kSCALAR_ONE;
+extern cnn::real* kSCALAR_ZERO;
 
 class ExecutionEngine;
 struct ParameterNodeBase;
@@ -51,7 +51,7 @@ struct ComputationGraph {
   // structures and make them available to the computation
   VariableIndex add_input(real s);  // add scalar
   VariableIndex add_input(const real* ps);  // add pointer to scalar
-  VariableIndex add_input(const Dim& d, const std::vector<float>* pdata);
+  VariableIndex add_input(const Dim& d, const std::vector<cnn::real>* pdata);
 
   // PARAMETERS
   // parameters are things that are optimized. in contrast to a system like
@@ -98,7 +98,7 @@ struct ComputationGraph {
   // clears forward caches (for get_value etc).
   void invalidate();
   // computes backward gradients from the front-most evaluated node.
-  void backward(float * initError = nullptr);
+  void backward(cnn::real * initError = nullptr);
   // computes backward gradients from node i (assuming it already been evaluated).
   void backward(VariableIndex i);
 

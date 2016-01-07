@@ -56,7 +56,7 @@ Dim TraceOfProduct::dim_forward(const vector<Dim>& xs) const {
     cerr << "Bad arguments in TraceOfProduct: " << xs << endl;
     throw std::invalid_argument("invalid arguments to TraceOfProduct");
   }
-  return Dim({1});
+  return Dim({(long)1});
 }
 
 string ConstScalarMultiply::as_string(const vector<string>& arg_names) const {
@@ -87,7 +87,7 @@ Dim DotProduct::dim_forward(const vector<Dim>& xs) const {
     cerr << "Bad arguments to DotProduct: " << xs << endl;
     throw std::invalid_argument("Bad arguments to DotProduct");
   }
-  return Dim({1});
+  return Dim({ (long)1 });
 }
 
 string Transpose::as_string(const vector<string>& arg_names) const {
@@ -142,7 +142,7 @@ Dim KMHNGram::dim_forward(const vector<Dim>& xs) const {
     cerr << "Bad input dimensions in KMHNGram: " << xs << endl;
     abort();
   }
-  return Dim({xs[0][0], new_cols});
+  return Dim({(long)xs[0][0], new_cols});
 }
 
 string InnerProduct3D_1D::as_string(const vector<string>& arg_names) const {
@@ -163,7 +163,7 @@ Dim InnerProduct3D_1D::dim_forward(const vector<Dim>& xs) const {
     cerr << "Bad input dimensions in InnerProduct3D_1D: " << xs << endl;
     abort();
   }
-  Dim d({xs[0].size(0), xs[0].size(1)});
+  Dim d({(long)xs[0].size(0), (long)xs[0].size(1)});
   if (xs.size() == 3 && xs[2] != d) {
     cerr << "Bad input dimensions in InnerProduct3D_1D: " << xs << endl;
     abort();
@@ -417,7 +417,7 @@ Dim Hinge::dim_forward(const vector<Dim>& xs) const {
     cerr << "Bad input dimensions in Hinge: " << xs << endl;
     abort();
   }
-  return Dim({1});
+  return Dim({ (long)1 });
 }
 
 string Identity::as_string(const vector<string>& arg_names) const {
@@ -471,7 +471,7 @@ Dim PickNegLogSoftmax::dim_forward(const vector<Dim>& xs) const {
     cerr << "Bad input dimensions in PickNegLogSoftmax: " << xs << endl;
     abort();
   }
-  return Dim({1});
+  return Dim({ (long)1 });
 }
 
 string LogSoftmax::as_string(const vector<string>& arg_names) const {
@@ -516,7 +516,7 @@ Dim PickElement::dim_forward(const vector<Dim>& xs) const {
     cerr << "Bad input dimensions in PickElement: " << xs << endl;
     abort();
   }
-  return Dim({1});
+  return Dim({ (long)1 });
 }
 
 // x_1 is a vector
@@ -551,7 +551,7 @@ Dim MatrixMultiply::dim_forward(const vector<Dim>& xs) const {
     abort();
   }
   if (xs[1].ndims() == 1) return Dim({xs[0].rows()});
-  return Dim({xs[0].rows(), xs[1].cols()});
+  return Dim({(long)xs[0].rows(), (long)xs[1].cols()});
 }
 
 string CwiseMultiply::as_string(const vector<string>& arg_names) const {
@@ -644,7 +644,7 @@ Dim HuberDistance::dim_forward(const vector<Dim>& xs) const {
     cerr << "Mismatched input dimensions in HuberDistance: " << xs << endl;
     abort();
   }
-  return Dim({1});
+  return Dim({(long)1});
 }
 
 string L1Distance::as_string(const vector<string>& arg_names) const {
@@ -659,7 +659,7 @@ Dim L1Distance::dim_forward(const vector<Dim>& xs) const {
     cerr << "Mismatched input dimensions in L1Distance: " << xs << endl;
     abort();
   }
-  return Dim({1});
+  return Dim({(long)1});
 }
 
 string PoissonRegressionLoss::as_string(const vector<string>& arg_names) const {
@@ -690,7 +690,7 @@ Dim SquaredEuclideanDistance::dim_forward(const vector<Dim>& xs) const {
     cerr << "Mismatched input dimensions in SquaredEuclideanDistance: " << xs << endl;
     abort();
   }
-  return Dim({1});
+  return Dim({ (long)1 });
 }
 
 string LogisticSigmoid::as_string(const vector<string>& arg_names) const {
@@ -720,7 +720,7 @@ Dim BinaryLogLoss::dim_forward(const vector<Dim>& xs) const {
     cerr << "Bad input dimensions in BinaryLogLoss: " << xs << endl;
     abort();
   }
-  return Dim({1});
+  return Dim({ (long)1 });
 }
 
 } // namespace cnn

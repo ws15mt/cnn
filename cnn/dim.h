@@ -17,37 +17,37 @@ namespace cnn {
 
 struct Dim {
   Dim() : nd() {}
-  explicit Dim(int m) : nd(1) { d[0] = m; }
+  explicit Dim(unsigned int m) : nd(1) { d[0] = m; }
   Dim(int m, int n) : nd(2) { d[0] = m; d[1] = n; }
   Dim(std::initializer_list<long> x) : nd() {
     for(auto v : x) d[nd++] = v;
   }
-  inline int size() const {
-    int p = 1;
+  inline unsigned int size() const {
+    unsigned int p = 1;
     for (unsigned i = 0; i < nd; ++i) p *= d[i];
     return p;
   }
-  inline int sum_dims() const {
-    int p = 0;
+  inline unsigned int sum_dims() const {
+    unsigned int p = 0;
     for (unsigned i = 0; i < nd; ++i) p += d[i];
     return p;
   }
   inline Dim truncate() const {
     Dim r = *this;
-    int m = 1;
-    int s = size();
-    for (int i = 1; i < s; ++i)
+    unsigned int m = 1;
+    unsigned int s = size();
+    for (unsigned int i = 1; i < s; ++i)
       if (size(i) > 1) m = i + 1;
     r.resize(m);
     return r;
   }
   inline void resize(unsigned i) { nd = i; }
-  inline int ndims() const { return nd; }
-  inline int rows() const { return d[0]; }
-  inline int cols() const { return nd > 1 ? d[1] : 1; }
+  inline unsigned int ndims() const { return nd; }
+  inline unsigned int rows() const { return d[0]; }
+  inline unsigned int cols() const { return nd > 1 ? d[1] : 1; }
   inline void set(unsigned i, unsigned s) { assert(i < nd); assert(s > 0); d[i] = s; }
-  inline int operator[](unsigned i) const { return i < nd ? d[i] : 1; }
-  inline int size(unsigned i) const { return (*this)[i]; }
+  inline unsigned int operator[](unsigned i) const { return i < nd ? d[i] : 1; }
+  inline unsigned int size(unsigned i) const { return (*this)[i]; }
   inline Dim transpose() const {
     if (nd == 1) { return Dim(1, d[0]); }
     else if (nd == 2) { return Dim(d[1], d[0]); }

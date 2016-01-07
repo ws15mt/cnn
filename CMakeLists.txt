@@ -102,10 +102,20 @@ include_directories(${EIGEN3_INCLUDE_DIR})
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/ext/trainer)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/ext/dialogue)
+#include_directories(${CMAKE_CURRENT_BINARY_DIR}/../quartzin/src/cnn)
+#include_directories(${CMAKE_CURRENT_BINARY_DIR}/../conversation/src/cnn)
 
 link_directories(${BOOST_LIBRARYDIR})
 
 
 add_subdirectory(cnn)
 add_subdirectory(examples)
+add_subdirectory(ext/dialogue)
+#add_subdirectory(ext/memory)
+#add_subdirectory(ext/rl)
+add_subdirectory(ext/trainer)
+#add_subdirectory(ext/ir)
+#add_subdirectory(../conversation/src/cnn "${CMAKE_CURRENT_BINARY_DIR}/conversation/dev/src")
 

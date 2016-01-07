@@ -239,7 +239,7 @@ int main(int argc, char** argv) {
 
   if (argc < 2) {
     cerr << "Usage: " << argv[0] << " data.txt" << endl;
-    cerr << "Where data.txt contains tab-delimited pairs of floats." << endl;
+    cerr << "Where data.txt contains tab-delimited pairs of cnn::reals." << endl;
     return 1;
   }
   vector<Datum> data = ReadData(argv[1]);

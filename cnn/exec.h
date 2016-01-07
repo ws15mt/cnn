@@ -18,8 +18,8 @@ class ExecutionEngine {
   virtual void  set_value(const Tensor& t, VariableIndex i) = 0;
   virtual const Tensor& get_value(VariableIndex i) = 0;
   virtual const Tensor& get_error(VariableIndex i) = 0; 
-  virtual void backward(float * kScalarInit = nullptr) = 0;
-  virtual void backward(VariableIndex i, float * kScalarInit = nullptr) = 0;
+  virtual void backward(cnn::real * kScalarInit = nullptr) = 0;
+  virtual void backward(VariableIndex i, cnn::real * kScalarInit = nullptr) = 0;
  protected:
   explicit ExecutionEngine(const ComputationGraph& cg) : cg(cg) {}
   const ComputationGraph& cg;
@@ -42,8 +42,8 @@ public:
   /// kScalarInit is the pointer to initial error signal.
   /// it is necesary if want to use this engine to penalize model by giving *kScalarInit = -1. 
   /// settting this to nullptr, corresponding o use *kScalarInit = 1;
-  void backward(float * kScalarInit = nullptr) override;
-  void backward(VariableIndex i, float * kScalarInit = nullptr ) override;
+  void backward(cnn::real * kScalarInit = nullptr) override;
+  void backward(VariableIndex i, cnn::real * kScalarInit = nullptr ) override;
  private:
   std::vector<Tensor> nfxs;
   std::vector<Tensor> ndEdfs;

@@ -9,11 +9,12 @@
 #include "cnn/expr.h"
 #include "cnn/expr-xtra.h"
 
+extern int verbose;
 using namespace cnn;
 using namespace std;
 
 // Chris -- this should be a library function
-Expression arange(ComputationGraph &cg, unsigned begin, unsigned end, bool log_transform, std::vector<float> *aux_mem) 
+Expression arange(ComputationGraph &cg, unsigned begin, unsigned end, bool log_transform, std::vector<cnn::real> *aux_mem) 
 {
     aux_mem->clear();
     for (unsigned i = begin; i < end; ++i) 
@@ -22,7 +23,7 @@ Expression arange(ComputationGraph &cg, unsigned begin, unsigned end, bool log_t
 }
 
 // Chris -- this should be a library function
-Expression repeat(ComputationGraph &cg, unsigned num, float value, std::vector<float> *aux_mem) 
+Expression repeat(ComputationGraph &cg, unsigned num, cnn::real value, std::vector<cnn::real> *aux_mem) 
 {
     aux_mem->clear();
     aux_mem->resize(num, value);
@@ -30,7 +31,7 @@ Expression repeat(ComputationGraph &cg, unsigned num, float value, std::vector<f
 }
 
 // Chris -- this should be a library function
-Expression dither(ComputationGraph &cg, const Expression &expr, float pad_value, std::vector<float> *aux_mem)
+Expression dither(ComputationGraph &cg, const Expression &expr, cnn::real pad_value, std::vector<cnn::real> *aux_mem)
 {
     const auto& shape = cg.nodes[expr.i]->dim;
     aux_mem->clear();
@@ -49,18 +50,18 @@ Expression abs(const Expression &expr)
 }
 
 // binary boolean functions, is it better to use a sigmoid?
-Expression eq(const Expression &expr, float value, float epsilon) 
+Expression eq(const Expression &expr, cnn::real value, cnn::real epsilon) 
 {
     return min(rectify(expr - (value - epsilon)), rectify(-expr + (value + epsilon))) / epsilon; 
 }
 
-Expression geq(const Expression &expr, float value, Expression &one, float epsilon) 
+Expression geq(const Expression &expr, cnn::real value, Expression &one, cnn::real epsilon) 
 {
     return min(one, rectify(expr - (value - epsilon)) / epsilon);
         //rectify(1 - rectify(expr - (value - epsilon)));
 }
 
-Expression leq(const Expression &expr, float value, Expression &one, float epsilon) 
+Expression leq(const Expression &expr, cnn::real value, Expression &one, cnn::real epsilon) 
 {
     return min(one, rectify((value + epsilon) - expr) / epsilon);
     //return rectify(1 - rectify((value + epsilon) - expr));
@@ -167,14 +168,14 @@ bool similar_length(const vector<vector<int>>& source)
         imin = std::min<int>(p.size(), imin);
     }
 
-    return (fabs((float)(imax - imin)) < 3.0);
+    return (fabs((cnn::real)(imax - imin)) < 3.0);
 }
 
 /// src is without reduntent info
 /// v_src is without reduntent info
 vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, float fscale )
+    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, cnn::real fscale )
 {
     Expression i_c_t;
     Expression i_e_t;
@@ -219,8 +220,8 @@ vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<
 
 /// use bilinear model for attention
 vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, const vector<size_t>& v_slen,
-    Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, const float fscale)
+    Expression i_va, Expression i_Wa,
+    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, const cnn::real fscale)
 {
     Expression i_c_t;
     Expression i_e_t;
@@ -258,7 +259,93 @@ vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, cons
     return v_input;
 }
 
-vector<Expression> local_attention_to(ComputationGraph& cg, vector<int> v_slen,
+/** use bilinear model for attention
+different from attention_to_source_bilinear
+this function doesn't add a bias to input
+*/
+vector<Expression> attention_using_bilinear(vector<Expression> & v_src, const vector<size_t>& v_slen,
+    Expression i_Wa, Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, Expression& fscale)
+{
+    Expression i_c_t;
+    Expression i_e_t;
+    int slen = 0;
+    vector<Expression> i_wah_rep;
+
+    for (auto p : v_slen)
+        slen += p;
+
+    Expression i_wa = i_Wa * i_h_tm1;  /// [d nutt]
+    Expression i_wah_reshaped = reshape(i_wa, { long(nutt * a_dim) });
+
+    Expression i_alpha_t;
+
+    vector<Expression> v_input;
+    int istt = 0;
+    for (size_t k = 0; k < nutt; k++)
+    {
+        Expression i_input;
+        Expression i_bilinear = transpose(v_src[k]) * pickrange(i_wah_reshaped, k * a_dim, (k + 1)* a_dim); // [v_slen x 1]
+        vector<Expression> vscale(v_slen[k], fscale);
+        Expression wgt = softmax(cwise_multiply(concatenate(vscale), i_bilinear));
+        v_wgt.push_back(wgt);
+
+        i_input = v_src[k] * wgt;  // [D v_slen[k]] x[v_slen[k] 1] = [D 1]
+        v_input.push_back(i_input);
+    }
+
+    return v_input;
+}
+
+/**
+use the local attention position prediction, together with the global attention
+*/
+vector<Expression> attention_using_bilinear_with_local_attention(vector<Expression> & v_src, const vector<size_t>& v_slen,
+    Expression i_Wa, Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, Expression& fscale,
+    vector<Expression>& position)
+{
+    Expression i_c_t;
+    Expression i_e_t;
+    int slen = 0;
+    vector<Expression> i_wah_rep;
+
+    vector<Expression> v_position_weight;
+    int l = 0;
+    for (auto p : v_slen)
+    {
+        slen += p;
+        vector<Expression> pweight;
+        for (int k = 0; k < p; k++)
+            pweight.push_back(-(k - position[l]) * (k-position[l]) / (25));  /// D = 10, 2*sigma^2 = 2*100/4 = 25
+        l++;
+        v_position_weight.push_back(exp(concatenate(pweight)));
+    }
+
+    Expression i_wa = tanh(i_Wa * i_h_tm1);  /// [d nutt]
+    Expression i_wah_reshaped = reshape(i_wa, { long(nutt * a_dim) });
+
+    Expression i_alpha_t;
+
+    vector<Expression> v_input;
+    int istt = 0;
+    for (size_t k = 0; k < nutt; k++)
+    {
+        Expression i_input;
+        Expression i_bilinear = transpose(v_src[k]) * pickrange(i_wah_reshaped, k * a_dim, (k + 1)* a_dim); // [v_slen x 1]
+        vector<Expression> vscale(v_slen[k], fscale);
+//        Expression wgt = softmax(cwise_multiply(concatenate(vscale), i_bilinear));
+//        Expression each_utt_wgt = cwise_multiply(wgt, v_position_weight[k]);
+//        Expression each_utt_wgt = softmax(cwise_multiply(concatenate(vscale), cwise_multiply(i_bilinear, v_position_weight[k])));
+        Expression each_utt_wgt = softmax(cwise_multiply(i_bilinear, v_position_weight[k]));
+        v_wgt.push_back(each_utt_wgt);
+
+        i_input = v_src[k] * each_utt_wgt;  // [D v_slen[k]] x[v_slen[k] 1] = [D 1]
+        v_input.push_back(i_input);
+    }
+
+    return v_input;
+}
+
+vector<Expression> local_attention_to(ComputationGraph& cg, const vector<size_t>& v_slen,
     Expression i_Wlp, Expression i_blp, Expression i_vlp,
     Expression i_h_tm1, size_t nutt)
 {
@@ -271,9 +358,10 @@ vector<Expression> local_attention_to(ComputationGraph& cg, vector<int> v_slen,
     Expression i_wah_bias = concatenate_cols(vector<Expression>(nutt, i_blp));
     Expression i_position = logistic(i_vlp * tanh(i_wah + i_wah_bias));
 
+    Expression i_position_trans = reshape(i_position, { long(nutt), 1 });
     for (size_t k = 0; k < nutt; k++)
     {
-        Expression i_position_each = pick(i_position, k) * v_slen[k];
+        Expression i_position_each = pick(i_position_trans, k) * (v_slen[k] - 1);
 
         /// need to do subsampling
         v_attention_to.push_back(i_position_each);
@@ -479,14 +567,14 @@ void display_value(const Expression &source, ComputationGraph &cg, string what_t
     cg.incremental_forward();
     const Tensor &a = cg.get_value(source.i);
 
-    float I = a.d.cols();
-    float J = a.d.rows();
+    cnn::real I = a.d.cols();
+    cnn::real J = a.d.rows();
 
     if (what_to_say.size() > 0)
         cout << what_to_say << endl;
     for (int j = 0; j < J; ++j) {
         for (int i = 0; i < I; ++i) {
-            float v = TensorTools::AccessElement(a, Dim(j, i));
+            cnn::real v = TensorTools::AccessElement(a, Dim(j, i));
             std::cout << v << ' ';
         }
         std::cout << endl;

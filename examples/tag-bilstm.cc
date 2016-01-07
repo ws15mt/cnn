@@ -19,7 +19,7 @@
 using namespace std;
 using namespace cnn;
 
-float pdrop = 0.5;
+cnn::real pdrop = 0.5;
 long LAYERS = 1;
 long INPUT_DIM = 128;
 long HIDDEN_DIM = 128;
@@ -59,7 +59,7 @@ struct RNNLanguageModel {
   }
 
   // return Expression of total loss
-  Expression BuildTaggingGraph(const vector<int>& sent, const vector<int>& tags, ComputationGraph& cg, double* cor = 0, unsigned* ntagged = 0) {
+  Expression BuildTaggingGraph(const vector<int>& sent, const vector<int>& tags, ComputationGraph& cg, cnn::real* cor = 0, unsigned* ntagged = 0) {
     const unsigned slen = sent.size();
     l2rbuilder.new_graph(cg);  // reset RNN builder for new graph
     l2rbuilder.start_new_sequence();
@@ -95,8 +95,8 @@ struct RNNLanguageModel {
         //if (!eval) { i_th = dropout(i_th, pdrop); }
         Expression i_t = affine_transform({i_tbias, i_th2t, i_th});
         if (cor) {
-          vector<float> dist = as_vector(cg.incremental_forward());
-          double best = -9e99;
+          vector<cnn::real> dist = as_vector(cg.incremental_forward());
+          cnn::real best = -9e99;
           int besti = -1;
           for (int i = 0; i < dist.size(); ++i) {
             if (dist[i] > best) { best = dist[i]; besti = i; }
@@ -179,7 +179,7 @@ int main(int argc, char** argv) {
      << "-pid" << getpid() << ".params";
   const string fname = os.str();
   cerr << "Parameters will be written to: " << fname << endl;
-  double best = 9e+99;
+  cnn::real best = 9e+99;
 
   Model model;
   bool use_momentum = true;
@@ -208,9 +208,9 @@ int main(int argc, char** argv) {
   unsigned lines = 0;
   while(1) {
     Timer iteration("completed in");
-    double loss = 0;
+    cnn::real loss = 0;
     unsigned ttags = 0;
-    double correct = 0;
+    cnn::real correct = 0;
     for (unsigned i = 0; i < report_every_i; ++i) {
       if (si == training.size()) {
         si = 0;
@@ -235,9 +235,9 @@ int main(int argc, char** argv) {
     // show score on dev data?
     report++;
     if (report % dev_every_i_reports == 0) {
-      double dloss = 0;
+      cnn::real dloss = 0;
       unsigned dtags = 0;
-      double dcorr = 0;
+      cnn::real dcorr = 0;
       eval = true;
       //lm.p_th2t->scale_parameters(pdrop);
       for (auto& sent : dev) {
@@ -253,7 +253,7 @@ int main(int argc, char** argv) {
         boost::archive::text_oarchive oa(out);
         oa << model;
       }
-      cerr << "\n***DEV [epoch=" << (lines / (double)training.size()) << "] E = " << (dloss / dtags) << " ppl=" << exp(dloss / dtags) << " acc=" << (dcorr / dtags) << ' ';
+      cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dloss / dtags) << " ppl=" << exp(dloss / dtags) << " acc=" << (dcorr / dtags) << ' ';
     }
   }
   delete sgd;

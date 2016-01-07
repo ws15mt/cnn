@@ -1,5 +1,5 @@
 #include "cnn/rnn.h"
-
+#include <boost/lexical_cast.hpp>
 #include <string>
 #include <cassert>
 #include <vector>
@@ -31,8 +31,11 @@ SimpleRNNBuilder::SimpleRNNBuilder(unsigned ilayers,
                        unsigned input_dim,
                        unsigned hidden_dim,
                        Model* model,
-                       float iscale,
-                       bool support_lags) : lagging(support_lags) {
+                       cnn::real iscale,
+                       string name, 
+                       bool support_lags) : lagging(support_lags) 
+{
+  string i_name;
   layers = ilayers;
   long layer_input_dim = input_dim;
   input_dims = vector<unsigned>(layers, layer_input_dim);
@@ -40,12 +43,22 @@ SimpleRNNBuilder::SimpleRNNBuilder(unsigned ilayers,
   for (unsigned i = 0; i < layers; ++i) {
     input_dims[i] = layer_input_dim;
     
-    Parameters* p_x2h = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale);
-    Parameters* p_h2h = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
-    Parameters* p_hb = model->add_parameters({ long(hidden_dim) }, iscale);
+    if (name.size() > 0)
+        i_name = name + "p_x2h" + boost::lexical_cast<string>(i);
+    Parameters* p_x2h = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_h2h" + boost::lexical_cast<string>(i);
+    Parameters* p_h2h = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_hb" + boost::lexical_cast<string>(i);
+    Parameters* p_hb = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
     vector<Parameters*> ps = {p_x2h, p_h2h, p_hb};
     if (lagging)
-        ps.push_back(model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale));
+    {
+        if (name.size() > 0)
+            i_name = name + "lagging" + boost::lexical_cast<string>(i);
+        ps.push_back(model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name));
+    }
     params.push_back(ps);
     layer_input_dim = hidden_dim;
   }
@@ -132,11 +145,6 @@ Expression SimpleRNNBuilder::add_input_impl(const vector<Expression>& prev_histo
 
         if (prev_history.size() == layers)
             y = y + vars[1] * prev_history[i];
-        else
-        {
-            cerr << "wrong dimension for prev history in RNN" << endl;
-            throw("wrong dimension for prev history in RNN");
-        }
 
         x = h[t][i] = tanh(y);
     }

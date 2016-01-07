@@ -81,7 +81,7 @@ const Tensor& SimpleExecutionEngine::incremental_forward(VariableIndex i) {
         ++ai;
       }
       nfxs[num_nodes_evaluated].d = node->dim;
-      nfxs[num_nodes_evaluated].v = static_cast<float*>(fxs->allocate(node->dim.size() * sizeof(float)));
+      nfxs[num_nodes_evaluated].v = static_cast<cnn::real*>(fxs->allocate(node->dim.size() * sizeof(cnn::real)));
       if (nfxs[num_nodes_evaluated].v == nullptr) {
         cerr << "out of memory\n";
         abort();
@@ -102,13 +102,13 @@ const Tensor& SimpleExecutionEngine::incremental_forward(VariableIndex i) {
   return nfxs[i];
 }
 
-void SimpleExecutionEngine::backward(float * kScalarInit) {
+void SimpleExecutionEngine::backward(cnn::real * kScalarInit) {
     assert(nfxs.size() == cg.nodes.size());
     backward((VariableIndex)(cg.nodes.size() - 1), kScalarInit);
 }
 
 // TODO what is happening with parameter nodes if from_where > param_node_id ?
-void SimpleExecutionEngine::backward(VariableIndex from_where, float * kScalarInit) {
+void SimpleExecutionEngine::backward(VariableIndex from_where, cnn::real * kScalarInit) {
   assert(from_where+1 <= nfxs.size());
   assert(from_where+1 <= cg.nodes.size());
   if (nfxs[from_where].d.size() != 1) {
@@ -122,7 +122,7 @@ void SimpleExecutionEngine::backward(VariableIndex from_where, float * kScalarIn
   for (unsigned i = 0; i < num_nodes; ++i) {
     const auto dim = nfxs[i].d;
     ndEdfs[i].d = dim;
-    ndEdfs[i].v = static_cast<float*>(dEdfs->allocate(dim.size() * sizeof(float)));
+    ndEdfs[i].v = static_cast<cnn::real*>(dEdfs->allocate(dim.size() * sizeof(cnn::real)));
     assert(ndEdfs[i].v);
   }
   dEdfs->zero_allocated_memory();
