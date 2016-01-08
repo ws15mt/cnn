@@ -197,6 +197,13 @@ public:
         v_last_decoder_s = last_decoder_s;
     }
 
+    /**
+    1) save context hidden state
+    in last_cxt_s as [replicate_hidden_layers][nutt]
+    2) organize the context from decoder
+    data is organized in v_decoder_context as [nutt][replicate_hidden_layers]
+    after this process, last_decoder_s will save data in dimension [replicate_hidden_layers][nutt]
+    */
     void serialise_context(ComputationGraph& cg)
     {
         /// get the top output
@@ -237,6 +244,11 @@ public:
         last_decoder_s = v_last_d;
     }
 
+    /**
+    organize the context from decoder
+    data is organized in v_decoder_context as [nutt][replicate_hidden_layers]
+    after this process, to_cxt will be organized as [replicate_hidden_layers][nutt] 
+    */
     void save_context(ComputationGraph& cg)
     {
         to_cxt.clear();

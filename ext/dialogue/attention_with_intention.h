@@ -1551,6 +1551,7 @@ public:
         }
 
         save_context(cg);
+        serialise_context(cg);
 
         for (auto &p : this_errs)
             errs.push_back(sum(p));
