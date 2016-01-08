@@ -315,6 +315,52 @@ Corpus read_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS,
     return corpus;
 }
 
+Corpus read_corpus(ifstream & in, Dict& sd, int kSRC_SOS, int kSRC_EOS, long part_size)
+{
+    string line;
+
+    Corpus corpus;
+    Dialogue diag;
+    string prv_diagid = "-1";
+    int lc = 0, stoks = 0, ttoks = 0;
+
+    long iln = 0;
+    while (getline(in, line) && iln < part_size) {
+        trim_left(line);
+        trim_right(line);
+        if (line.length() == 0)
+            break;
+        ++lc;
+        Sentence source, target;
+        string diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, false, kSRC_SOS, kSRC_EOS, false);
+        if (diagid.size() == 0)
+            break;
+
+        if (diagid != prv_diagid)
+        {
+            if (diag.size() > 0)
+                corpus.push_back(diag);
+            diag.clear();
+            prv_diagid = diagid;
+        }
+        diag.push_back(SentencePair(source, target));
+        stoks += source.size();
+        ttoks += target.size();
+
+        if ((source.front() != kSRC_SOS && source.back() != kSRC_EOS)) {
+            cerr << "Sentence in " << lc << " didn't start or end with <s>, </s>\n";
+            abort();
+        }
+        
+        iln++;
+    }
+
+    if (diag.size() > 0)
+        corpus.push_back(diag);
+    cerr << lc << " lines, " << stoks << " & " << ttoks << " tokens (s & t), " << sd.size() << " & " << sd.size() << " types\n";
+    return corpus;
+}
+
 /**
 the data contains triplet
 user input ||| response ||| addition input such as intention
