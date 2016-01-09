@@ -7,7 +7,7 @@ namespace cnn {
 
 struct Tensor;
 
-void OrthonormalRandom(int dim, cnn::real g, Tensor& x);
+void OrthonormalRandom(unsigned dim, float g, Tensor& x);
 
 }
 

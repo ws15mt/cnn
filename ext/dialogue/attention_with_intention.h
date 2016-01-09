@@ -182,7 +182,7 @@ Expression AttentionWithIntention<Builder, Decoder>::decoder_step(vector<int> tr
         if (p >= 0)
             i_x_x = lookup(cg, p_cs, p);
         else
-            i_x_x = input(cg, { (long)hidden_dim[DECODER_LAYER] }, &zero);
+            i_x_x = input(cg, { hidden_dim[DECODER_LAYER] }, &zero);
         v_x_t.push_back(i_x_x);
     }
 #ifdef UNDERSTAND_AWI_ADD_ATTENTION
@@ -394,7 +394,7 @@ Expression GatedAttention<Builder, Decoder>::decoder_step(vector<int> trg_tok, C
         if (p >= 0)
             i_x_x = lookup(cg, p_cs, p);
         else
-            i_x_x = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+            i_x_x = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
         v_x_t.push_back(i_x_x);
     }
 
@@ -403,7 +403,7 @@ Expression GatedAttention<Builder, Decoder>::decoder_step(vector<int> trg_tok, C
     Expression i_att_gate = attention_gate(i_h_tm1);
     Expression i_obs = concatenate_cols(v_obs);
     Expression i_gated_attention = cwise_multiply(i_att_gate , i_obs);
-    Expression i_flatted = reshape(i_gated_attention, { (long)(nutt * 2 * hidden_dim[DECODER_LAYER]) });
+    Expression i_flatted = reshape(i_gated_attention, { (nutt * 2 * hidden_dim[DECODER_LAYER]) });
     vector<Expression> v_input;
     for (size_t k = 0; k < nutt; k++)
     {
@@ -458,7 +458,7 @@ public:
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_bias_mb + i_R * i_y_t;
 
-            Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
             for (size_t i = 0; i < nutt; i++)
             {
                 if (t < osent[i].size() - 1)
@@ -475,7 +475,7 @@ public:
                     vector<Expression> v_t;
                     for (auto p : v_decoder.back()->final_s())
                     {
-                        Expression i_tt = reshape(p, { (long)(nutt * hidden_dim[DECODER_LAYER]) });
+                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
                         int stt = i * hidden_dim[DECODER_LAYER];
                         int stp = stt + hidden_dim[DECODER_LAYER];
                         Expression i_t = pickrange(i_tt, stt, stp);
@@ -667,7 +667,7 @@ protected:
             if (p >= 0)
                 i_x_x = lookup(cg, p_cs, p);
             else
-                i_x_x = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+                i_x_x = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
             if (verbose)
                 display_value(i_x_x, cg, "i_x_x");
             v_x_t.push_back(i_x_x);
@@ -857,7 +857,7 @@ Expression AWI_Bilinear<Builder, Decoder>::decoder_step(vector<int> trg_tok, Com
         if (p >= 0)
             i_x_x = lookup(cg, p_cs, p);
         else
-            i_x_x = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+            i_x_x = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
         if (verbose)
             display_value(i_x_x, cg, "i_x_x");
         v_x_t.push_back(i_x_x);
@@ -1097,7 +1097,7 @@ public:
             for (auto p : p_tgt2enc_w)
                 i_tgt2enc_w.push_back(parameter(cg, p));
 
-            i_zero = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+            i_zero = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
 
             attention_layer.new_graph(cg);
             attention_layer.set_data_in_parallel(nutt);
@@ -1188,7 +1188,7 @@ public:
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_R * i_y_t;
 
-            Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
             for (size_t i = 0; i < nutt; i++)
             {
                 if (t < osent[i].size() - 1)
@@ -1205,7 +1205,7 @@ public:
                     vector<Expression> v_t;
                     for (auto p : decoder.final_s())
                     {
-                        Expression i_tt = reshape(p, { (long)(nutt * hidden_dim[DECODER_LAYER]) });
+                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
                         int stt = i * hidden_dim[DECODER_LAYER];
                         int stp = stt + hidden_dim[DECODER_LAYER];
                         Expression i_t = pickrange(i_tt, stt, stp);
@@ -1431,7 +1431,7 @@ public:
             for (auto p : p_tgt2enc_w)
                 i_tgt2enc_w.push_back(parameter(cg, p));
 
-            i_zero = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+            i_zero = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
 
             attention_layer.new_graph(cg);
             attention_layer.set_data_in_parallel(nutt);
@@ -1522,7 +1522,7 @@ public:
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_R * i_y_t;
 
-            Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
             for (size_t i = 0; i < nutt; i++)
             {
                 if (t < osent[i].size() - 1)
@@ -1539,7 +1539,7 @@ public:
                     vector<Expression> v_t;
                     for (auto p : decoder.final_s())
                     {
-                        Expression i_tt = reshape(p, { (long)(nutt * hidden_dim[DECODER_LAYER]) });
+                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
                         int stt = i * hidden_dim[DECODER_LAYER];
                         int stp = stt + hidden_dim[DECODER_LAYER];
                         Expression i_t = pickrange(i_tt, stt, stp);
@@ -1748,7 +1748,7 @@ public:
             for (auto p : p_tgt2enc_w)
                 i_tgt2enc_w.push_back(parameter(cg, p));
 
-            i_zero = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+            i_zero = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
 
             attention_layer.new_graph(cg);
             attention_layer.set_data_in_parallel(nutt);
@@ -1939,7 +1939,7 @@ public:
             for (auto p : p_tgt2enc_w)
                 i_tgt2enc_w.push_back(parameter(cg, p));
 
-            i_zero = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+            i_zero = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
 
             true_attention_layer.new_graph(cg);
             true_attention_layer.set_data_in_parallel(nutt);
@@ -2032,7 +2032,7 @@ public:
 
         true_attention_layer.set_data_in_parallel(slen);
         i_e_t = true_attention_layer.add_input(i_wah_m); 
-        i_e_t = reshape(i_e_t, { (long)slen, (long)1 });
+        i_e_t = reshape(i_e_t, { slen, 1 });
     
         Expression i_alpha_t;
 
@@ -2145,7 +2145,7 @@ public:
             if (p >= 0)
                 i_x_x = lookup(cg, p_cs, p);
             else
-                i_x_x = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+                i_x_x = input(cg, { hidden_dim[DECODER_LAYER] }, &zero);
             if (verbose)
                 display_value(i_x_x, cg, "i_x_x");
             v_x_t.push_back(i_x_x);
@@ -2307,7 +2307,7 @@ public:
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_bias_mb + i_R * i_y_t;
 
-            Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
             for (size_t i = 0; i < nutt; i++)
             {
                 if (t < osent[i].size() - 1)
@@ -2324,7 +2324,7 @@ public:
                     vector<Expression> v_t;
                     for (auto p : v_decoder.back()->final_s())
                     {
-                        Expression i_tt = reshape(p, { (long)nutt * hidden_dim[DECODER_LAYER] });
+                        Expression i_tt = reshape(p, { nutt * hidden_dim[DECODER_LAYER] });
                         int stt = i * hidden_dim[DECODER_LAYER];
                         int stp = stt + hidden_dim[DECODER_LAYER];
                         Expression i_t = pickrange(i_tt, stt, stp);
@@ -3081,7 +3081,7 @@ public:
             cout << endl;
         }
 
-        Expression x_r_t = reshape(i_r_t, { (long)vocab_size_tgt * (long)nutt });
+        Expression x_r_t = reshape(i_r_t, { vocab_size_tgt * nutt });
         for (size_t i = 0; i < nutt; i++)
         {
             /// only compute errors on with output labels

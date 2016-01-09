@@ -6,6 +6,12 @@
 #include <unordered_set>
 #include <iostream>
 
+#include <fstream>
+#include <sstream>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
+
+#define CNN_ALIGN 256
 #if HAVE_CUDA
 #include <thrust/version.h>
 #include "cnn/gpu-ops.h"
@@ -22,7 +28,8 @@ Parameters::Parameters(const Dim& d, cnn::real scale , std::string nodename) : d
   values.d = g.d = d;
   values.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
   TensorTools::Randomize(values, scale); 
-  g.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
+  g.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
+
   TensorTools::Zero(g);
 }
 
@@ -89,12 +96,12 @@ LookupParameters::LookupParameters(unsigned n, const Dim& d, cnn::real scale, st
   for (unsigned i = 0; i < n; ++i) {
     auto& v = values[i];
     v.d = d;
-    v.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
+    v.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
     TensorTools::Randomize(v, scale);
 
     auto& g = grads[i];
     g.d = d;
-    g.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
+    g.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
     TensorTools::Zero(g);
   }
 }
@@ -226,5 +233,23 @@ LookupParameters* Model::add_lookup_parameters(unsigned n, const Dim& d, cnn::re
   lookup_params.push_back(p);
   return p;
 }
+
+void Model::reset_gradient() {
+  for (auto p : params) { p->clear(); }
+  for (auto p : lookup_params) { p->clear(); }
+}
+
+void save_cnn_model(std::string filename, Model* model) {
+    std::ofstream out(filename);
+    boost::archive::text_oarchive oa(out);
+    oa << (*model);
+};
+
+void load_cnn_model(std::string filename, Model* model) {
+    std::ifstream in(filename);
+    boost::archive::text_iarchive ia(in);
+    ia >> (*model);
+};
+
 
 } // namespace cnn

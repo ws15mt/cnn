@@ -102,6 +102,11 @@ const Tensor& SimpleExecutionEngine::incremental_forward(VariableIndex i) {
   return nfxs[i];
 }
 
+void SimpleExecutionEngine::backward() {
+  assert(nfxs.size() == cg.nodes.size());
+  backward((VariableIndex)(cg.nodes.size()-1));
+}
+
 void SimpleExecutionEngine::backward(cnn::real * kScalarInit) {
     assert(nfxs.size() == cg.nodes.size());
     backward((VariableIndex)(cg.nodes.size() - 1), kScalarInit);
@@ -132,6 +137,11 @@ void SimpleExecutionEngine::backward(VariableIndex from_where, cnn::real * kScal
   else
       ndEdfs.back().v = kScalarInit;
   // here we find constant paths to avoid doing extra work
+  // by default, a node is constant unless
+  //   1) it is a parameter node
+  //   2) it depends on a non-constant node
+  // (thus, functions of constants and inputs end up being
+  //  false in this computation)
   vector<bool> needs_derivative(num_nodes, false);
   for (auto i : cg.parameter_nodes)
     needs_derivative[i] = true;

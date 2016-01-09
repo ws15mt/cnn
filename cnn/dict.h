@@ -74,20 +74,42 @@ class stDict {
       assert(id < (int)words_.size());
       return words_[id];
   }
+  
+  void SetUnk(const std::string& word) {
+    if (!frozen)
+      throw std::runtime_error("Please call SetUnk() only after dictionary is frozen");
+    if (map_unk)
+      throw std::runtime_error("Set UNK more than one time");
+  
+    // temporarily unfrozen the dictionary to allow the add of the UNK
+    frozen = false;
+    unk_id = Convert(word);
+    frozen = true;
+  
+    map_unk = true;
+  }
 
   void clear() { words_.clear(); d_.clear();  }
 
  private:
   bool frozen;
+  bool map_unk; // if true, map unknown word to unk_id
+  int unk_id; 
   std::vector<T> words_;
   Map d_;
 
-#if BOOST_VERSION >= 105600
   friend class boost::serialization::access;
+#if BOOST_VERSION >= 105600
   template<class Archive> void serialize(Archive& ar, const unsigned int) {
     ar & frozen;
-    ar & words_; 
+    ar & map_unk;
+    ar & unk_id;
+    ar & words_;
     ar & d_;
+  }
+#else
+  template<class Archive> void serialize(Archive& ar, const unsigned int) {
+    throw std::invalid_argument("Serializing dictionaries is only supported on versions of boost 1.56 or higher");
   }
 #endif
 };

@@ -3,17 +3,12 @@
 
 #include <vector>
 #include <unordered_set>
+#include <string>
 
 #include <boost/serialization/split_member.hpp>
 #include <boost/serialization/vector.hpp>
 
 #include "cnn/tensor.h"
-
-#ifdef USE_DOUBLE
-#define CNN_ALIGN 256
-#else
-#define CNN_ALIGN 256
-#endif
 
 namespace cnn {
 
@@ -121,6 +116,7 @@ class Model {
   Model() : gradient_norm_scratch() {}
   ~Model();
   cnn::real gradient_l2_norm() const;
+  void reset_gradient();
   // set scale to use custom initialization
   Parameters* add_parameters(const Dim& d, cnn::real scale = 1.0f, std::string nodename = "");
   LookupParameters* add_lookup_parameters(unsigned n, const Dim& d, cnn::real scale = 1.0f, std::string nodename = "");
@@ -166,6 +162,9 @@ class Model {
   std::vector<LookupParameters*> lookup_params;
   mutable cnn::real* gradient_norm_scratch;
 };
+void save_cnn_model(std::string filename, Model* model);
+void load_cnn_model(std::string filename, Model* model);
+
 
 } // namespace cnn
 

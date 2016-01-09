@@ -93,7 +93,7 @@ public:
 
 public:
     DialogueBuilder() {};
-    DialogueBuilder(cnn::Model& model, int vocab_size_src, int vocab_size_tgt, const vector<size_t>& layers, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, cnn::real iscale = 1.0) :
+    DialogueBuilder(cnn::Model& model, unsigned int vocab_size_src, int vocab_size_tgt, const vector<size_t>& layers, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, cnn::real iscale = 1.0) :
         layers(layers),
         decoder(layers[DECODER_LAYER], hidden_dims[DECODER_LAYER] + decoder_use_additional_input * hidden_dims[ENCODER_LAYER], hidden_dims[DECODER_LAYER], &model, iscale),
         encoder_fwd(layers[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
@@ -111,20 +111,20 @@ public:
             throw("wrong dimension of encoder and decoder layer. they should be the same, as they use the same lookup table");
         }
 
-        p_cs = model.add_lookup_parameters(long(vocab_size_src), { long(hidden_dim[ENCODER_LAYER]) }, iscale);
-        p_R = model.add_parameters({ long(vocab_size_tgt), long(hidden_dim[DECODER_LAYER]) }, iscale);
-        p_bias = model.add_parameters({ long(vocab_size_tgt) }, iscale);
+        p_cs = model.add_lookup_parameters(vocab_size_src, { hidden_dim[ENCODER_LAYER] }, iscale);
+        p_R = model.add_parameters({ vocab_size_tgt, hidden_dim[DECODER_LAYER] }, iscale);
+        p_bias = model.add_parameters({ vocab_size_tgt}, iscale);
 
-        p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(2 * hidden_dim[ENCODER_LAYER]) }, iscale);
+        p_U = model.add_parameters({ hidden_dim[ALIGN_LAYER], 2 * hidden_dim[ENCODER_LAYER]}, iscale);
 
         for (size_t i = 0; i < layers[ENCODER_LAYER] * rep_hidden; i++)
         {
-            p_h0.push_back(model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale));
+            p_h0.push_back(model.add_parameters({ hidden_dim[ENCODER_LAYER] }, iscale));
             p_h0.back()->reset_to_zero();
         }
         zero.resize(hidden_dim[ENCODER_LAYER], 0);  /// for the no obs observation
 
-        p_cxt2dec_w = model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_dim[INTENTION_LAYER]) }, iscale);
+        p_cxt2dec_w = model.add_parameters({ hidden_dim[DECODER_LAYER], hidden_dim[INTENTION_LAYER] }, iscale);
 
         i_h0.clear();
     };
@@ -284,9 +284,9 @@ public:
         {
             Expression iv;
             if (nutt > 1)
-                iv = input(cg, { long(p.size() / nutt), long(nutt) }, &p);
+                iv = input(cg, { p.size() / nutt, nutt}, &p);
             else
-                iv = input(cg, { long(p.size()) }, &p);
+                iv = input(cg, { p.size() }, &p);
             last_context_exp.push_back(iv);
         }
 
@@ -295,9 +295,9 @@ public:
         {
             Expression iv;
             if (nutt > 1)
-                iv = input(cg, { long(p.size() / nutt), long(nutt) }, &p);
+                iv = input(cg, { p.size() / nutt, nutt }, &p);
             else
-                iv = input(cg, { long(p.size()) }, &p);
+                iv = input(cg, { p.size() }, &p);
             v_last_d.push_back(iv);
         }
 
@@ -336,9 +336,9 @@ public:
         {
             Expression iv;
             if (nutt > 1)
-                iv = input(cg, { long(p.size() / nutt), long(nutt) }, &p);
+                iv = input(cg, { p.size() / nutt, nutt }, &p);
             else
-                iv = input(cg, { long(p.size()) }, &p);
+                iv = input(cg, { p.size() }, &p);
             last_context_exp.push_back(iv);
         }
 
@@ -347,9 +347,9 @@ public:
         {
             Expression iv;
             if (nutt > 1)
-                iv = input(cg, { long(p.size() / nutt), long(nutt) }, &p);
+                iv = input(cg, { p.size() / nutt, nutt }, &p);
             else
-                iv = input(cg, { long(p.size()) }, &p);
+                iv = input(cg, { p.size() }, &p);
             v_last_d.push_back(iv);
         }
 
@@ -454,7 +454,7 @@ public:
         while (need_decode)
         {
             Expression i_y_t = decoder_step(vtmp, cg);
-            Expression i_r_t = reshape(i_R * i_y_t, { long(nutt * vocab_size_tgt) });
+            Expression i_r_t = reshape(i_R * i_y_t, { nutt * vocab_size_tgt) });
             cg.incremental_forward();
             need_decode = false;
             vtmp.clear();

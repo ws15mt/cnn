@@ -1572,8 +1572,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     {
         if (vm.count("readdict") == 0)
         {
-            cerr << "must have either training corpus or dictionary" << endl;
-            abort();
+			throw std::invalid_argument("must have either training corpus or dictionary");
         }
     }
 
@@ -1681,8 +1680,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     {
         if (vm.count("outputfile") == 0)
         {
-            cerr << "missing recognition output file" << endl;
-            abort();
+			throw std::invalid_argument("missing recognition output file");
         }
         ptrTrainer->dialogue(model, hred, vm["outputfile"].as<string>(), sd);
     }
@@ -1742,8 +1740,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     {
         if (vm.count("outputfile") == 0)
         {
-            cerr << "missing recognition output file" << endl;
-            abort();
+			throw std::invalid_argument("missing recognition output file");
         }
         ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, test_numturn2did); 
     }

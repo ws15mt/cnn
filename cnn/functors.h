@@ -2,17 +2,25 @@
 #define CNN_GPU_FUNCTORS_H
 
 #include <cstdint>
+#include <limits>
 
 #if HAVE_CUDA
 #  define CNN_DEVICE_FUNC __device__
+#  define CNN_DEVICE_MIN -1.175494351e-38f
 #else
+#  include <boost/math/special_functions/digamma.hpp>
 #  define CNN_DEVICE_FUNC
+#  define CNN_DEVICE_MIN std::numeric_limits<float>::min()
 #endif
 
 // these functions are used both in CPU and in GPU computation
 // this file may be compiled with NVCC or a standard C++ tool.
 // if you need a new elementwise (nullary, unary, binary...)
 // functor, this is the place for it
+//
+// note: also see xfunctors.h - functors implemented there can
+// use Eigen's internal support for vectorized operations which
+// can give faster performance on some hardware
 
 #define cast_uint32_t static_cast<uint32_t>
 
@@ -136,6 +144,12 @@ struct FNegate {
   }
 };
 
+struct FErf {
+  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+    return erff(x);
+  }
+};
+
 struct FTanh {
   CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
 #ifdef FAST_TANH
@@ -149,15 +163,39 @@ struct FTanh {
   }
 };
 
+struct FLog {
+  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+    return logf(x);
+  }
+};
+
 struct FMaxBackwardInv {
   CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &u, const cnn::real &d) const {
     return (1.f - u) * d;
   }
 };
 
+struct FSqrtBackward {
+  CNN_DEVICE_FUNC inline cnn::real operator()(cnn::real t, cnn::real d) const {
+    return d / (2.f * t);
+  }
+};
+
+struct FErfBackward {
+  CNN_DEVICE_FUNC inline cnn::real operator()(cnn::real x, cnn::real d) const {
+    return 1.1283791670955125738961589f * expf(-x * x) * d;
+  }
+};
+
 struct FTanhBackward {
   CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &t, const cnn::real &d) const {
     return (1.f - t * t) * d;
+  }
+};
+
+struct FLogBackward {
+  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real & t, const cnn::real& d) const {
+    return (1.f / t) * d;
   }
 };
 
@@ -196,6 +234,16 @@ struct FSoftmaxBackward {
     return (off_diag_sum + d) * t;
   }
   cnn::real off_diag_sum;
+};
+struct FLogGammaBackward {
+  CNN_DEVICE_FUNC inline cnn::real operator()(cnn::real x, cnn::real d) const {
+#ifndef HAVE_CUDA
+    return boost::math::digamma(x) * d;
+#else
+    assert(false); // Not supported on GPUs?
+    return 0;
+#endif
+  }
 };
 
 struct FNegLogSoftmaxBackward {
@@ -311,14 +359,16 @@ struct FL2SGDUpdate {
 struct FBinaryLogLoss {
   CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x, const cnn::real &x_true) const {
     if (x_true == 1.f) {
-        cnn::real z = x;
-      if (x == 0.f) z = std::numeric_limits<cnn::real>::min();
-      return -1.f * x_true * log(z);
+      if (x == 0.f) x = CNN_DEVICE_MIN;
+      return -1.f * x_true * log(x);
     }
     else if (x_true == 0.f) {
-      return -1.f * (1.f - x_true) * log1p(-x);
+      if (x == 1.f) x = CNN_DEVICE_MIN;
+      return (x_true - 1.f) * log1p(-x);
     }
     else {
+      if (x == 0.f) x = CNN_DEVICE_MIN;
+      if (x == 1.f) x = CNN_DEVICE_MIN;
       return -1.f * (x_true * log(x) + (1.f - x_true) * log1p(-x));
     }
   }
@@ -328,7 +378,7 @@ struct FBinaryLogLossBackward {
   explicit FBinaryLogLossBackward(cnn::real d) : d(d) {}
   CNN_DEVICE_FUNC inline cnn::real operator()(cnn::real x, cnn::real x_true) const {
     if (x == x_true) return 0;
-    if (x == 0.f) x = std::numeric_limits<cnn::real>::min();
+    if (x == 0.f) x = CNN_DEVICE_MIN;
     if (x == 1.f) x = 0.9999999f;
     if (x_true == 1.f) {
       return d * -x_true / x;

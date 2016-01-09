@@ -83,7 +83,7 @@ public:
 
 public:
     EncModel() {};
-    EncModel(cnn::Model& model, int layers, int vocab_size_src, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, cnn::real iscale = 1.0) :
+    EncModel(cnn::Model& model, int layers, unsigned int vocab_size_src, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, cnn::real iscale = 1.0) :
         layers(layers),
         encoder_fwd(layers, hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
         encoder_bwd(layers, hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
@@ -99,28 +99,28 @@ public:
             throw("wrong dimension of encoder and decoder layer. they should be the same, as they use the same lookup table");
         }
 
-        p_cs = model.add_lookup_parameters(long(vocab_size_src), { long(hidden_dim[ENCODER_LAYER]) }, iscale);
+        p_cs = model.add_lookup_parameters(vocab_size_src, {hidden_dim[ENCODER_LAYER]} , iscale);
 
         p_parameters = {};
-        p_R = model.add_parameters({ long(vocab_size_src), long(hidden_dim[DECODER_LAYER]) }, iscale);
-        p_bias = model.add_parameters({ long(vocab_size_src) }, iscale);
+        p_R = model.add_parameters({ vocab_size_src, hidden_dim[DECODER_LAYER] }, iscale);
+        p_bias = model.add_parameters({ vocab_size_src }, iscale);
 
         /// parameter for prediction mean/variance
-        p_parameters.push_back(model.add_parameters({ long(hidden_dim[INTENTION_LAYER]), long(hidden_dim[DECODER_LAYER]) * 2 }, iscale));
-        p_parameters.push_back(model.add_parameters({ long(hidden_dim[INTENTION_LAYER]) }, iscale));
-        p_parameters.push_back(model.add_parameters({ long(hidden_dim[INTENTION_LAYER]), long(hidden_dim[DECODER_LAYER]) * 2 }, iscale));
-        p_parameters.push_back(model.add_parameters({ long(hidden_dim[INTENTION_LAYER]) }, iscale));
+        p_parameters.push_back(model.add_parameters({ hidden_dim[INTENTION_LAYER], hidden_dim[DECODER_LAYER] * 2 }, iscale));
+        p_parameters.push_back(model.add_parameters({ hidden_dim[INTENTION_LAYER] }, iscale));
+        p_parameters.push_back(model.add_parameters({ hidden_dim[INTENTION_LAYER], hidden_dim[DECODER_LAYER] * 2 }, iscale));
+        p_parameters.push_back(model.add_parameters({ hidden_dim[INTENTION_LAYER] }, iscale));
 
-        p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(2 * hidden_dim[ENCODER_LAYER]) }, iscale);
+        p_U = model.add_parameters({ hidden_dim[ALIGN_LAYER], 2 * hidden_dim[ENCODER_LAYER] }, iscale);
 
         for (size_t i = 0; i < layers * rep_hidden; i++)
         {
-            p_h0.push_back(model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale));
+            p_h0.push_back(model.add_parameters({ hidden_dim[ENCODER_LAYER] }, iscale));
             p_h0.back()->reset_to_zero();
         }
         zero.resize(hidden_dim[ENCODER_LAYER], 0);  /// for the no obs observation
 
-        p_cxt2dec_w = model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_dim[INTENTION_LAYER]) }, iscale);
+        p_cxt2dec_w = model.add_parameters({ hidden_dim[DECODER_LAYER], hidden_dim[INTENTION_LAYER] }, iscale);
 
         i_h0.clear();
     };

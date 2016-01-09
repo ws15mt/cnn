@@ -8,6 +8,7 @@
 #include "cnn/dict.h"
 #include "cnn/expr.h"
 #include <algorithm>
+#include <map>
 
 using namespace cnn;
 using namespace std;

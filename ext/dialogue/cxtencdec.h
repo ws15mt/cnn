@@ -123,7 +123,7 @@ public:
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_R * i_y_t;
 
-            Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
             for (size_t i = 0; i < nutt; i++)
             {
                 if (t < osent[i].size() - 1)
@@ -205,7 +205,7 @@ public:
             if (p >= 0)
                 i_x_x = lookup(cg, p_cs, p);
             else
-                i_x_x = input(cg, { (long)hidden_dim[DECODER_LAYER] }, &zero);
+                i_x_x = input(cg, { hidden_dim[DECODER_LAYER] }, &zero);
             v_x_t.push_back(i_x_x);
         }
         i_x_t = concatenate_cols(v_x_t);
@@ -296,7 +296,7 @@ public:
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_R * i_y_t;
 
-            Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
             for (size_t i = 0; i < nutt; i++)
             {
                 if (t < osent[i].size() - 1)
@@ -380,7 +380,7 @@ public:
             if (p >= 0)
                 i_x_x = lookup(cg, p_cs, p);
             else
-                i_x_x = input(cg, { (long)hidden_dim[DECODER_LAYER] }, &zero);
+                i_x_x = input(cg, { hidden_dim[DECODER_LAYER] }, &zero);
             v_x_t.push_back(i_x_x);
         }
         i_x_t = concatenate_cols(v_x_t);

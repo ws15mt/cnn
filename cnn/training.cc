@@ -8,6 +8,11 @@ namespace cnn {
 
 using namespace std;
 
+template <class Derived>
+bool is_valid(const Eigen::MatrixBase<Derived>& x) {
+  return ((x - x).array() == (x - x).array()).all();
+}
+
 Trainer::~Trainer() {}
 
 /** 
