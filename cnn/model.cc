@@ -25,8 +25,8 @@ ParametersBase::~ParametersBase() {}
 
 Parameters::Parameters(const Dim& d, cnn::real scale , std::string nodename) : dim(d), name(nodename) {
   values.d = g.d = d;
-  values.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
-  TensorTools::Randomize(values, scale); 
+  values.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
+  TensorTools::Randomize(values, scale);
   g.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
 
   TensorTools::Zero(g);
@@ -79,16 +79,6 @@ void Parameters::accumulate_grad(const Tensor& d) {
 
 void Parameters::clear() {
   TensorTools::Zero(g);
-}
-
-LookupParameters::~LookupParameters()
-{
-    for (unsigned i = 0; i < values.size(); ++i) {
-        auto& v = values[i];
-        cnn_mm_free(v.v);
-        auto& g = grads[i];
-        cnn_mm_free(g.v);
-    }
 }
 
 LookupParameters::LookupParameters(unsigned n, const Dim& d, cnn::real scale, std::string nodename) : dim(d), values(n), grads(n), name(nodename) {

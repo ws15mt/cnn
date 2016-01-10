@@ -106,6 +106,7 @@ namespace cnn {
         delete (rndeng); 
         delete (fxs);
         delete (dEdfs);
+        delete (ps);
         cerr << "Done.\n";
   }
 
