@@ -674,7 +674,7 @@ void Sqrt::backward_impl(const vector<const Tensor*>& xs,
 #endif
 }
 
-void Erf::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+/*void Erf::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
 #ifdef HAVE_CUDA
   throw std::runtime_error("Erf not yet implemented for CUDA");
 #else
@@ -695,6 +695,7 @@ void Erf::backward_impl(const vector<const Tensor*>& xs,
   *dEdxi += x.binaryExpr(*dEdf, scalar_erf_backward_op<float>());
 #endif
 }
+*/
 
 void Tanh::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
 #if HAVE_CUDA
@@ -783,6 +784,8 @@ void Exp::backward_impl(const vector<const Tensor*>& xs,
 #endif
 }
 
+/* eigen speciffunctions.h is not working 
+   TO-DO: need to figure out why
 void LogGamma::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
 #ifdef HAVE_CUDA
   throw std::runtime_error("LogGamma not yet implemented for CUDA");
@@ -804,6 +807,7 @@ void LogGamma::backward_impl(const vector<const Tensor*>& xs,
   *dEdxi += x.binaryExpr(*dEdf, FLogGammaBackward());
 #endif
 }
+*/
 
 void Log::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
 #if HAVE_CUDA

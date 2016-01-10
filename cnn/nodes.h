@@ -256,7 +256,7 @@ struct Sqrt : public Node {
 };
 
 // y = erf x_1
-struct Erf : public Node {
+/*struct Erf : public Node {
   explicit Erf(const std::initializer_list<VariableIndex>& a) : Node(a) {}
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
@@ -267,6 +267,7 @@ struct Erf : public Node {
                   unsigned i,
                   Tensor& dEdxi) const override;
 };
+*/
 
 // y = tanh x_1
 struct Tanh : public Node {
@@ -320,6 +321,10 @@ struct Exp : public Node {
                   Tensor& dEdxi) const override;
 };
 
+/**
+Eigen lgamma is not working 
+TO-DO : need to figure out why
+
 // y = lgamma x_1
 struct LogGamma : public Node {
   explicit LogGamma(const std::initializer_list<VariableIndex>& a) : Node(a) {}
@@ -332,6 +337,7 @@ struct LogGamma : public Node {
                      unsigned i,
                      Tensor& dEdxi) const override;
 };
+*/
 
 // y = log x_1  (base e, i.e., natural log)
 struct Log : public Node {

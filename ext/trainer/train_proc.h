@@ -1540,6 +1540,8 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
         ifstream in(fname, ifstream::in);
         boost::archive::text_iarchive ia(in);
 #endif
+        if (!in.is_open())
+            throw("cannot open " + fname);
         ia >> sd;
         sd.Freeze();
     }
