@@ -635,7 +635,7 @@ void Average::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
 #endif
 }
 
-void Average::backward(const vector<const Tensor*>& xs,
+void Average::backward_impl(const vector<const Tensor*>& xs,
                      const Tensor& fx,
                      const Tensor& dEdf,
                      unsigned i,

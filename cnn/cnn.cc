@@ -214,7 +214,6 @@ const Tensor& ComputationGraph::get_value(VariableIndex i) { return ee->get_valu
 const Tensor& ComputationGraph::get_value(const expr::Expression& e) { return this->get_value(e.i); }
 const Tensor& ComputationGraph::get_error(VariableIndex i) { return ee->get_error(i); }
 void ComputationGraph::invalidate() { ee->invalidate(); }
-void ComputationGraph::backward() { ee->backward(); }
 void ComputationGraph::backward(cnn::real * kInitError){ ee->backward(kInitError); }
 void ComputationGraph::backward(VariableIndex i) { ee->backward(i); }
 

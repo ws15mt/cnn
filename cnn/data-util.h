@@ -84,7 +84,7 @@ vector<vector<Expression>> pack_obs(FCorpusPointers raw, size_t mbsize, Computat
 
 /// utterance first ordering of data
 /// [s00 s01 s02 s10 s11 s12] where s1 is the second speaker, and s0 is the firest speaker
-vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, size_t mbsize, ComputationGraph& cg, const vector<size_t>& rand_stt);
+vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, unsigned mbsize, ComputationGraph& cg, const vector<size_t>& randstt);
 
 /// read one line of word embeddings
 /// dataformat is as follows
@@ -126,9 +126,9 @@ NumTurn2DialogId get_numturn2dialid(TupleCorpus corp);
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
 /// to 
 /// [v_spk1_time0 v_spk1_tim1 | v_spk2_time0 v_spk2_time1]
-Expression shuffle_data(Expression src, size_t nutt, size_t feat_dim, size_t slen);
+Expression shuffle_data(Expression src, unsigned nutt, unsigned feat_dim, unsigned slen);
 
-std::vector<Expression> shuffle_data(Expression src, size_t nutt, size_t feat_dim, const vector<std::size_t>& slen);
+vector<Expression> shuffle_data(Expression src, unsigned nutt, unsigned feat_dim, const vector<unsigned>& v_slen);
 
 void convertHumanQuery(const std::string& line, std::vector<int>& t, Dict& td);
 

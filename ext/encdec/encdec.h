@@ -63,7 +63,7 @@ protected:
     vector<Expression> v_src;
     Expression src;
     Expression i_sm0;  // the first input to decoder, even before observed
-    std::vector<size_t> src_len;
+    std::vector<unsigned> src_len;
     Expression src_fwd;
     unsigned slen;
 
@@ -73,7 +73,7 @@ protected:
 
     size_t turnid;
 
-    size_t nutt; // for multiple training utterance per inibatch
+    unsigned nutt; // for multiple training utterance per inibatch
     vector<cnn::real> zero;
 public:
     /// for criterion
@@ -197,7 +197,7 @@ public:
         src_len = each_sentence_length(source);
         src_fwd = bidirectional<Builder>(slen, source, cg, p_cs, zero, &encoder_fwd, &encoder_bwd, hidden_dim[ENCODER_LAYER]);
 
-        v_src = shuffle_data(src_fwd, (size_t)nutt, (size_t)2 * hidden_dim[ENCODER_LAYER], src_len);
+        v_src = shuffle_data(src_fwd, nutt, 2 * hidden_dim[ENCODER_LAYER], src_len);
 
         /// for contet
         vector<Expression> to;

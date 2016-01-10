@@ -42,7 +42,7 @@ namespace cnn {
         Expression s2txent;
 
         DialogueProcessInfo(cnn::Model& model,
-            const vector<size_t>& layers,
+            const vector<unsigned int>& layers,
             unsigned vocab_size_src,
             unsigned vocab_size_tgt,
             const vector<unsigned>& hidden_dim,
@@ -378,7 +378,7 @@ namespace cnn {
         vector<Expression> i_errs; 
     public:
         HREDModel(cnn::Model& model,
-            const vector<size_t>& layers,
+            const vector<unsigned int>& layers,
             unsigned vocab_size_src,
             unsigned vocab_size_tgt,
             const vector<unsigned>& hidden_dim,
@@ -486,7 +486,7 @@ namespace cnn {
 
     public:
         DialogueSeq2SeqModel(cnn::Model& model,
-            const vector<size_t>& layers,
+            const vector<unsigned int>& layers,
             unsigned vocab_size_src,
             unsigned vocab_size_tgt,
             const vector<unsigned>& hidden_dim,
@@ -663,7 +663,7 @@ namespace cnn {
         size_t align_dim;
     public:
         explicit AttentionWithIntentionModel(cnn::Model& model,
-            const vector<size_t>& layers,
+            const vector<unsigned int>& layers,
             unsigned vocab_size_src,
             unsigned vocab_size_tgt,
             const vector<unsigned>& hidden_dim,
@@ -843,7 +843,7 @@ namespace cnn {
         size_t align_dim;
     public:
         explicit AttentionalConversation(cnn::Model& model,
-            const vector<size_t>& layers,
+            const vector<unsigned int>& layers,
             unsigned vocab_size_src,
             unsigned vocab_size_tgt,
             const vector<unsigned>& hidden_dim,

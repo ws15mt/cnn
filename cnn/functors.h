@@ -5,12 +5,12 @@
 #include <limits>
 
 #if HAVE_CUDA
-#  define CNN_DEVICE_FUNC __device__
-#  define CNN_DEVICE_MIN -1.175494351e-38f
+#define CNN_DEVICE_FUNC __device__
+#define CNN_DEVICE_MIN -1.175494351e-38f
 #else
-#  include <boost/math/special_functions/digamma.hpp>
-#  define CNN_DEVICE_FUNC
-#  define CNN_DEVICE_MIN std::numeric_limits<float>::min()
+#include <boost/math/special_functions/digamma.hpp>
+#define CNN_DEVICE_FUNC
+#define CNN_DEVICE_MIN std::numeric_limits<cnn::real>::min()
 #endif
 
 // these functions are used both in CPU and in GPU computation
@@ -160,12 +160,6 @@ struct FTanh {
 #else
     return tanhf(x);
 #endif
-  }
-};
-
-struct FLog {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
-    return logf(x);
   }
 };
 
@@ -358,18 +352,19 @@ struct FL2SGDUpdate {
 
 struct FBinaryLogLoss {
   CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x, const cnn::real &x_true) const {
+    cnn::real x_tmp = x;
     if (x_true == 1.f) {
-      if (x == 0.f) x = CNN_DEVICE_MIN;
-      return -1.f * x_true * log(x);
+      if (x == 0.f) x_tmp = CNN_DEVICE_MIN;
+      return -1.f * x_true * log(x_tmp);
     }
     else if (x_true == 0.f) {
-      if (x == 1.f) x = CNN_DEVICE_MIN;
-      return (x_true - 1.f) * log1p(-x);
+      if (x == 1.f) x_tmp = CNN_DEVICE_MIN;
+      return (x_true - 1.f) * log1p(-x_tmp);
     }
     else {
-      if (x == 0.f) x = CNN_DEVICE_MIN;
-      if (x == 1.f) x = CNN_DEVICE_MIN;
-      return -1.f * (x_true * log(x) + (1.f - x_true) * log1p(-x));
+      if (x == 0.f) x_tmp = CNN_DEVICE_MIN;
+      if (x == 1.f) x_tmp = CNN_DEVICE_MIN;
+      return -1.f * (x_true * log(x_tmp) + (1.f - x_true) * log1p(-x_tmp));
     }
   }
 };
@@ -377,15 +372,16 @@ struct FBinaryLogLoss {
 struct FBinaryLogLossBackward {
   explicit FBinaryLogLossBackward(cnn::real d) : d(d) {}
   CNN_DEVICE_FUNC inline cnn::real operator()(cnn::real x, cnn::real x_true) const {
+    cnn::real x_tmp = x;
     if (x == x_true) return 0;
-    if (x == 0.f) x = CNN_DEVICE_MIN;
-    if (x == 1.f) x = 0.9999999f;
+    if (x == 0.f) x_tmp = CNN_DEVICE_MIN;
+    if (x == 1.f) x_tmp = 0.9999999f;
     if (x_true == 1.f) {
-      return d * -x_true / x;
+      return d * -x_true / x_tmp;
     } else if (x_true == 0.f) {
-      return d * (1.f - x_true) / (1.f - x);
+      return d * (1.f - x_true) / (1.f - x_tmp);
 	}
-    return d * ((1.f - x_true) / (1.f - x) + (-x_true / x));
+    return d * ((1.f - x_true) / (1.f - x_tmp) + (-x_true / x_tmp));
   }
   cnn::real d;
 };

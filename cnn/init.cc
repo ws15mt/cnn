@@ -1,7 +1,7 @@
 #include "cnn/init.h"
 #include "cnn/aligned-mem-pool.h"
 #include "cnn/cnn.h"
-
+#include "cnn/model.h"
 #include <iostream>
 #include <random>
 #include <cmath>
@@ -31,7 +31,7 @@ namespace cnn {
         return 0;
     }
 
-	zstatic void RemoveArgs(int& argc, char**& argv, int& argi, int n) {
+	static void RemoveArgs(int& argc, char**& argv, int& argi, int n) {
 	  for (int i = argi + n; i < argc; ++i)
 	    argv[i - n] = argv[i];
 	  argc -= n;
@@ -77,7 +77,7 @@ namespace cnn {
         {
             fxs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
             dEdfs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
-	  	    ps = new AlignedMemoryPool<ALIGN>(num_mb << 20, shared_parameters); // parameters
+	  	    ps = new AlignedMemoryPool<ALIGN>(num_mb << 20); // parameters
         }
         else
         {

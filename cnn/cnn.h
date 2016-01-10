@@ -107,7 +107,6 @@ struct ComputationGraph {
   // clears forward caches (for get_value etc).
   void invalidate();
   // computes backward gradients from the front-most evaluated node.
-  void backward();
   void backward(cnn::real * initError = nullptr);
   // computes backward gradients from node i (assuming it already been evaluated).
   void backward(VariableIndex i);

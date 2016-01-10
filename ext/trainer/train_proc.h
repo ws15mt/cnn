@@ -1641,7 +1641,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
         dims[INTENTION_LAYER] = (unsigned)vm["intentiondim"].as<int>();
 
 
-    std::vector<size_t> layers;
+    std::vector<unsigned int> layers;
     layers.resize(4, LAYERS);
     if (!vm.count("intentionlayers"))
         layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();
@@ -1935,7 +1935,7 @@ int tuple_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_addi
         dims[INTENTION_LAYER] = (unsigned)vm["intentiondim"].as<int>();
 
 
-    std::vector<size_t> layers;
+    std::vector<unsigned int> layers;
     layers.resize(4, LAYERS);
     if (!vm.count("intentionlayers"))
         layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();

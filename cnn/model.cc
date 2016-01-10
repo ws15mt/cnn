@@ -11,7 +11,6 @@
 #include <boost/archive/text_iarchive.hpp>
 #include <boost/archive/text_oarchive.hpp>
 
-#define CNN_ALIGN 256
 #if HAVE_CUDA
 #include <thrust/version.h>
 #include "cnn/gpu-ops.h"

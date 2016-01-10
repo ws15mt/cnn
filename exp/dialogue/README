@@ -1,0 +1,13 @@
+The experiments setup for dialogue modeling research.
+
+The model is the attention-with-intention model. Attention mechanism is a 2 layer feed-forward networks with RELU unit. 
+
+Run training with 
+s41.rmspropwithmomentum.gru.AWI_InputFeedingDropout.s01.eta.hd.i50.10k.bat 50.0 50 50
+
+For hidden dimension of 200, use 
+s41.rmspropwithmomentum.gru.AWI_InputFeedingDropout.s01.eta.hd.i50.10k.bat 50.0 50 200
+
+
+To test:
+s41.rmspropwithmomentum.gru.AWI_InputFeedingDropout.s01.eta.hd.i50.10k.test.bat 50.0 50 50

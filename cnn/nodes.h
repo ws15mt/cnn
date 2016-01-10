@@ -588,10 +588,10 @@ struct Average : public Node {
   Dim dim_forward(const std::vector<Dim>& xs) const override;
   void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
   void backward_impl(const std::vector<const Tensor*>& xs,
-                    const Tensor& fx,
-                    const Tensor& dEdf,
-                    unsigned i,
-                    Tensor& dEdxi) const override;
+      const Tensor& fx,
+      const Tensor& dEdf,
+      unsigned i,
+      Tensor& dEdxi) const override;
 };
 
 // this is used to implement poisson regression

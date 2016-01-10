@@ -39,7 +39,7 @@ protected:
     Parameters* p_cxt2dec_w;
     Expression i_cxt2dec_w;
 
-    vector<size_t> layers;
+    vector<unsigned int> layers;
     Decoder decoder;  // for decoder at each turn
     Builder encoder_fwd, encoder_bwd; /// for encoder at each turn
     Builder context; // for contexter
@@ -54,9 +54,9 @@ protected:
 
     Model model;
 
-    int vocab_size;
-    int vocab_size_tgt;
-    vector<unsigned> hidden_dim;
+    unsigned vocab_size;
+    unsigned vocab_size_tgt;
+    vector<unsigned int> hidden_dim;
     int rep_hidden;
     int decoder_use_additional_input;
 
@@ -64,7 +64,7 @@ protected:
     vector<Expression> v_src;
     Expression src;
     Expression i_sm0;  // the first input to decoder, even before observed
-    std::vector<size_t> src_len;
+    std::vector<unsigned> src_len;
     Expression src_fwd;
     unsigned slen;
 
@@ -83,7 +83,7 @@ protected:
 
     size_t turnid;
 
-    size_t nutt; // for multiple training utterance per inibatch
+    unsigned int nutt; // for multiple training utterance per inibatch
     vector<cnn::real> zero;
 public:
     /// for criterion
@@ -93,7 +93,7 @@ public:
 
 public:
     DialogueBuilder() {};
-    DialogueBuilder(cnn::Model& model, unsigned int vocab_size_src, int vocab_size_tgt, const vector<size_t>& layers, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, cnn::real iscale = 1.0) :
+    DialogueBuilder(cnn::Model& model, unsigned int vocab_size_src, unsigned int vocab_size_tgt, const vector<unsigned int>& layers, const vector<unsigned int>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, cnn::real iscale = 1.0) :
         layers(layers),
         decoder(layers[DECODER_LAYER], hidden_dims[DECODER_LAYER] + decoder_use_additional_input * hidden_dims[ENCODER_LAYER], hidden_dims[DECODER_LAYER], &model, iscale),
         encoder_fwd(layers[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
@@ -169,7 +169,7 @@ public:
         v_last_cxt_s = last_cxt_s;
 
         vector<vector<cnn::real>> v_last_d;
-        size_t nutt = v_decoder_context.size();
+        unsigned int nutt = v_decoder_context.size();
         size_t ndim = v_decoder_context[0].size();
         v_last_d.resize(ndim);
 
@@ -217,7 +217,7 @@ public:
         last_cxt_s = vm;
 
         vector<vector<cnn::real>> v_last_d;
-        size_t nutt = v_decoder_context.size();
+        unsigned int nutt = v_decoder_context.size();
         size_t ndim = v_decoder_context[0].size();
         v_last_d.resize(ndim);
 
@@ -270,7 +270,7 @@ public:
             to_cxt.push_back(concatenate_cols(p));
     }
 
-    void assign_cxt(ComputationGraph &cg, size_t nutt)
+    void assign_cxt(ComputationGraph &cg, unsigned int nutt)
     {
         if (turnid <= 0 || last_cxt_s.size() == 0 || last_decoder_s.size() == 0)
         {
@@ -284,9 +284,9 @@ public:
         {
             Expression iv;
             if (nutt > 1)
-                iv = input(cg, { p.size() / nutt, nutt}, &p);
+                iv = input(cg, { (unsigned int)p.size() / nutt, nutt}, &p);
             else
-                iv = input(cg, { p.size() }, &p);
+                iv = input(cg, { (unsigned int)p.size() }, &p);
             last_context_exp.push_back(iv);
         }
 
@@ -295,9 +295,9 @@ public:
         {
             Expression iv;
             if (nutt > 1)
-                iv = input(cg, { p.size() / nutt, nutt }, &p);
+                iv = input(cg, { (unsigned int)p.size() / nutt, nutt }, &p);
             else
-                iv = input(cg, { p.size() }, &p);
+                iv = input(cg, { (unsigned int)p.size() }, &p);
             v_last_d.push_back(iv);
         }
 
@@ -320,7 +320,7 @@ public:
     @v_last_cxt_s [parameter_index][values vector for this parameter]. this is to the context or intention network
     @v_last_decoder_s [parameter_index][values vector for this parameter]. this is to the decoder network
     */
-    void assign_cxt(ComputationGraph &cg, size_t nutt,
+    void assign_cxt(ComputationGraph &cg, unsigned int nutt,
         vector<vector<cnn::real>>& v_last_cxt_s, 
         vector<vector<cnn::real>>& v_last_decoder_s)
     {
@@ -336,9 +336,9 @@ public:
         {
             Expression iv;
             if (nutt > 1)
-                iv = input(cg, { p.size() / nutt, nutt }, &p);
+                iv = input(cg, { (unsigned int) p.size() / nutt, nutt }, &p);
             else
-                iv = input(cg, { p.size() }, &p);
+                iv = input(cg, { (unsigned int) p.size() }, &p);
             last_context_exp.push_back(iv);
         }
 
@@ -347,9 +347,9 @@ public:
         {
             Expression iv;
             if (nutt > 1)
-                iv = input(cg, { p.size() / nutt, nutt }, &p);
+                iv = input(cg, { (unsigned int) p.size() / nutt, nutt }, &p);
             else
-                iv = input(cg, { p.size() }, &p);
+                iv = input(cg, { (unsigned int)p.size() }, &p);
             v_last_d.push_back(iv);
         }
 
@@ -366,7 +366,7 @@ public:
 
     }
 
-    void assign_cxt(ComputationGraph &cg, size_t nutt,
+    void assign_cxt(ComputationGraph &cg, unsigned int nutt,
         std::vector<std::vector<std::vector<cnn::real>>>& v_last_cxt_s)
     {
     }
@@ -435,7 +435,7 @@ public:
         const int sos_sym = tdict.Convert("<s>");
         const int eos_sym = tdict.Convert("</s>");
 
-        size_t nutt = source.size();
+        unsigned int nutt = source.size();
         std::vector<Sentence> target(nutt, vector<int>(1, sos_sym));
 
         int t = 0;
@@ -454,7 +454,7 @@ public:
         while (need_decode)
         {
             Expression i_y_t = decoder_step(vtmp, cg);
-            Expression i_r_t = reshape(i_R * i_y_t, { nutt * vocab_size_tgt) });
+            Expression i_r_t = reshape(i_R * i_y_t, { nutt * vocab_size_tgt });
             cg.incremental_forward();
             need_decode = false;
             vtmp.clear();
@@ -582,7 +582,7 @@ public:
      }
 
      vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
-         size_t nutt = source.size();
+         unsigned int nutt = source.size();
          start_new_instance(source, cg);
 
          vector<vector<Expression>> this_errs;
@@ -613,7 +613,7 @@ public:
              Expression i_y_t = decoder_step(vobs, cg);
              Expression i_r_t = i_bias_mb + i_R * i_y_t;
 
-             Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+             Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
              for (size_t i = 0; i < nutt; i++)
              {
                  if (t < osent[i].size() - 1)
@@ -629,7 +629,7 @@ public:
                      vector<Expression> v_t; 
                      for (auto p : v_decoder.back()->final_s())
                      {
-                         Expression i_tt = reshape(p, { (long)(nutt * hidden_dim[DECODER_LAYER]) });
+                         Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
                          int stt = i * hidden_dim[DECODER_LAYER];
                          int stp = stt + hidden_dim[DECODER_LAYER];
                          Expression i_t = pickrange(i_tt, stt, stp);
@@ -684,7 +684,7 @@ public:
          Builder * context,
          Builder *decoder)
      {
-         size_t nutt;
+         unsigned int nutt;
          start_new_instance(source, cg, encoder_fwd, encoder_bwd, context, decoder);
 
          // decoder
@@ -716,7 +716,7 @@ public:
              Expression i_r_t = i_bias_mb + i_R * i_y_t;
              cg.incremental_forward();
 
-             Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+             Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
              for (size_t i = 0; i < nutt; i++)
              {
                  if (t < osent[i].size() - 1)
@@ -732,7 +732,7 @@ public:
                      vector<Expression> v_t;
                      for (auto p : decoder->final_s())
                      {
-                         Expression i_tt = reshape(p, { (long)nutt * hidden_dim });
+                         Expression i_tt = reshape(p, { nutt * hidden_dim });
                          int stt = i * hidden_dim;
                          int stp = stt + hidden_dim;
                          Expression i_t = pickrange(i_tt, stt, stp);

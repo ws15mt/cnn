@@ -10,6 +10,8 @@
 
 #include "cnn/tensor.h"
 
+#define CNN_ALIGN 256
+
 namespace cnn {
 
 // to deal with sparse updates, there are two parameter classes:
