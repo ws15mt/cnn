@@ -26,7 +26,11 @@ ParametersBase::~ParametersBase() {}
 Parameters::Parameters(const Dim& d, cnn::real scale , std::string nodename) : dim(d), name(nodename) {
   values.d = g.d = d;
   values.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
-  TensorTools::Randomize(values, scale);
+  if (scale == 1.0)
+	  /// fix scale to sqrt(6) / sqrt(d.d.sum_dims())
+	  TensorTools::Randomize(values);
+  else 
+	  TensorTools::Randomize(values, scale);
   g.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
 
   TensorTools::Zero(g);
@@ -86,7 +90,11 @@ LookupParameters::LookupParameters(unsigned n, const Dim& d, cnn::real scale, st
     auto& v = values[i];
     v.d = d;
     v.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
-    TensorTools::Randomize(v, scale);
+	if (scale == 1.0)
+		/// fix scale to sqrt(6) / sqrt(d.d.sum_dims())
+		TensorTools::Randomize(v);
+	else
+		TensorTools::Randomize(v, scale);
 
     auto& g = grads[i];
     g.d = d;
@@ -215,7 +223,7 @@ Parameters* Model::add_parameters(const Dim& d, cnn::real scale, std::string nod
   return p;
 }
 
-LookupParameters* Model::add_lookup_parameters(unsigned n, const Dim& d, cnn::real scale, std::string nodename) {
+LookupParameters* Model::add_lookup_parameters(unsigned n, const Dim& d, cnn::real scale, ::string nodename) {
   LookupParameters* p = new LookupParameters(n,d, scale, nodename);
   if (nodename != "") p->name = nodename;
   all_params.push_back(p);

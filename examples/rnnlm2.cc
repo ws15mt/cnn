@@ -9,6 +9,7 @@
 #include "cnn/dict.h"
 #include "cnn/expr.h"
 #include "cnn/cnn-helper.h"
+#include "cnn/expr-xtra.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -23,10 +24,12 @@
 using namespace std;
 using namespace cnn;
 
-long LAYERS = 2;
-long INPUT_DIM = 8;  //256
-long HIDDEN_DIM = 24;  // 1024
-long VOCAB_SIZE = 0;
+unsigned int LAYERS = 2;
+unsigned int INPUT_DIM = 8;  //256
+unsigned int HIDDEN_DIM = 24;  // 1024
+unsigned int VOCAB_SIZE = 0;
+
+int verbose = 0; 
 
 cnn::Dict d;
 int kSOS;
@@ -40,8 +43,8 @@ struct RNNLanguageModel {
   Builder builder;
   explicit RNNLanguageModel(Model& model) : builder(LAYERS, INPUT_DIM, HIDDEN_DIM, &model) {
     p_c = model.add_lookup_parameters(VOCAB_SIZE, {INPUT_DIM}); 
-    p_R = model.add_parameters({VOCAB_SIZE, HIDDEN_DIM});
-    p_bias = model.add_parameters({VOCAB_SIZE});
+	p_R = model.add_parameters({ VOCAB_SIZE, HIDDEN_DIM });
+	p_bias = model.add_parameters({ VOCAB_SIZE });
   }
 
   // return Expression of total loss
@@ -51,13 +54,18 @@ struct RNNLanguageModel {
     builder.start_new_sequence();
     Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
     Expression i_bias = parameter(cg, p_bias);  // word bias
-    vector<Expression> errs;
+	if (verbose)
+		display_value(i_R, cg, "IR at ");
+	if (verbose)
+		display_value(i_bias, cg, "ibias at ");
+	vector<Expression> errs;
     for (unsigned t = 0; t < slen; ++t) {
       Expression i_x_t = lookup(cg, p_c, sent[t]);
       // y_t = RNN(x_t)
       Expression i_y_t = builder.add_input(i_x_t);
       Expression i_r_t =  i_bias + i_R * i_y_t;
-      
+	  if (verbose)
+		  display_value(i_r_t, cg, "response at " + t);
       // we can easily look at intermidiate values
 //      std::vector<cnn::real> r_t = as_vector(i_r_t.value());
   //    for (cnn::real f : r_t) cout << f << " "; cout << endl;
@@ -310,8 +318,7 @@ int main(int argc, char** argv) {
       training.push_back(ReadSentence(line, &d));
       ttoks += training.back().size();
       if (training.back().front() != kSOS && training.back().back() != kEOS) {
-        cerr << "Training sentence in " << infile << ":" << tlc << " didn't start or end with <s>, </s>\n";
-        abort();
+		  throw("Training sentence in %s : %d didnt start or end with <s>, </s>", infile.c_str(), tlc );
       }
     }
     cerr << tlc << " lines, " << ttoks << " tokens, " << d.size() << " types\n";
@@ -332,10 +339,9 @@ int main(int argc, char** argv) {
               ++dlc;
               dev.push_back(ReadSentence(line, &d));
               dtoks += dev.back().size();
-              if (dev.back().front() != kSOS && dev.back().back() != kEOS) {
-                  cerr << "Dev sentence in " << devfile << ":" << tlc << " didn't start or end with <s>, </s>\n";
-                  abort();
-              }
+			  if (dev.back().front() != kSOS && dev.back().back() != kEOS) {
+				  throw("Dev sentence in %s : %d didn't start or end with <s>, </s> ", devfile.c_str(), tlc);
+			  }
           }
           cerr << dlc << " lines, " << dtoks << " tokens\n";
       }
@@ -375,10 +381,9 @@ int main(int argc, char** argv) {
               ++dlc;
               test.push_back(ReadSentence(line, &d));
               dtoks += test.back().size();
-              if (test.back().front() != kSOS && test.back().back() != kEOS) {
-                  cerr << "Dev sentence in " << testfile << ":" << tlc << " didn't start or end with <s>, </s>\n";
-                  abort();
-              }
+			  if (test.back().front() != kSOS && test.back().back() != kEOS) {
+				  throw("Dev sentence in %s : %d didnt start or end with <s>, </s> ", testfile.c_str(), tlc);
+			  }
           }
           cerr << dlc << " lines, " << dtoks << " tokens\n";
       }
