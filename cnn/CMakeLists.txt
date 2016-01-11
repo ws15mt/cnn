@@ -71,6 +71,19 @@ set(cnn_library_HDRS
     metric-util.h
 )
 
+# Headers:
+set(dialogue_library_HDRS
+    ../ext/dialogue/dialogue_process.h
+    ../ext/dialogue/attention_with_intention.h
+    ../ext/dialogue/dialogue.h
+)
+
+# Headers:
+set(trainer_library_HDRS
+    ../ext/trainer/train_proc.h
+    ../ext/trainer/eval_proc.h
+)
+
 if(WITH_CUDA_BACKEND)
   list(APPEND cnn_library_SRCS
        cuda.cc)
@@ -100,9 +113,9 @@ file(GLOB TEST_SRCS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tests/*.cc)
 
 # actual target:
 if(WITH_CUDA_BACKEND)
-add_library(cnn STATIC ${cnn_library_SRCS} ${cnn_library_HDRS} ${LIBS})
+add_library(cnn STATIC ${cnn_library_SRCS} ${cnn_library_HDRS} ${dialogue_library_HDRS} ${trainer_library_HDRS} ${LIBS})
 else()
-add_library(cnn ${cnn_library_SRCS} ${cnn_library_HDRS} ${LIBS})
+add_library(cnn ${cnn_library_SRCS} ${cnn_library_HDRS} ${dialogue_library_HDRS} ${trainer_library_HDRS} ${LIBS})
 endif(WITH_CUDA_BACKEND)
 
 #add_library(cnn SHARED ${cnn_library_SRCS} ${cnn_library_HDRS} ${LIBS})
