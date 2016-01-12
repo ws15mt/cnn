@@ -37,13 +37,13 @@ template <class Builder, class Decoder>
 class AttentionWithIntention : public DialogueBuilder<Builder, Decoder>{
 public:
     AttentionWithIntention(Model& model,
-        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
+        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
         const vector<unsigned> & hidden_dim, unsigned hidden_replicates, int additional_input = 0, int mem_slots = 0, cnn::real iscale = 1.0);
 
     void setAlignDim(cnn::Model& model, unsigned alignd, cnn::real iscale);
 
-    void assign_cxt(ComputationGraph &cg, size_t nutt) ;
-    void assign_cxt(ComputationGraph &cg, size_t nutt, vector<vector<cnn::real>>&, vector<vector<cnn::real>>&);
+    void assign_cxt(ComputationGraph &cg, unsigned int nutt) ;
+    void assign_cxt(ComputationGraph &cg, unsigned int nutt, vector<vector<cnn::real>>&, vector<vector<cnn::real>>&);
     void assign_cxt(ComputationGraph &cg, const vector<vector<int>>&) {
         throw("not implemented");
     };
@@ -87,7 +87,7 @@ protected:
 
 template<class Builder, class Decoder>
 AttentionWithIntention<Builder, Decoder>::AttentionWithIntention(cnn::Model& model,
-    unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers, const vector<unsigned>& hidden_dim, unsigned hidden_replicates, int additional_input, int mem_slots = 0, cnn::real iscale = 1.0)
+    unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers, const vector<unsigned>& hidden_dim, unsigned hidden_replicates, int additional_input, int mem_slots = 0, cnn::real iscale = 1.0)
     : DialogueBuilder<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
 {
     /// default uses the same hidden dimenion for alignment dimension
@@ -97,15 +97,15 @@ AttentionWithIntention<Builder, Decoder>::AttentionWithIntention(cnn::Model& mod
 template<class Builder, class Decoder>
 void AttentionWithIntention<Builder, Decoder>::setAlignDim(cnn::Model& model, unsigned alignd, cnn::real iscale)
 {
-    unsigned align_dim = alignd;
-    p_Wa = model.add_parameters({ long(align_dim), long(layers[DECODER_LAYER] * hidden_dim[DECODER_LAYER]) }, iscale);
-    p_va = model.add_parameters({ long(align_dim) }, iscale);
-    p_Q = model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(rep_hidden * hidden_dim[DECODER_LAYER]) }, iscale);
+    unsigned int align_dim = alignd;
+    p_Wa = model.add_parameters({ align_dim, layers[DECODER_LAYER] * hidden_dim[DECODER_LAYER] }, iscale);
+    p_va = model.add_parameters({ align_dim }, iscale);
+    p_Q = model.add_parameters({ hidden_dim[DECODER_LAYER], rep_hidden * hidden_dim[DECODER_LAYER] }, iscale);
 }
 
 
 template<class Builder, class Decoder>
-void AttentionWithIntention<Builder, Decoder>::assign_cxt(ComputationGraph &cg, size_t nutt){
+void AttentionWithIntention<Builder, Decoder>::assign_cxt(ComputationGraph &cg, unsigned int nutt){
     i_U = parameter(cg, p_U);
     i_Wa = parameter(cg, p_Wa);
     i_va = parameter(cg, p_va);
@@ -117,7 +117,7 @@ void AttentionWithIntention<Builder, Decoder>::assign_cxt(ComputationGraph &cg, 
 }
 
 template<class Builder, class Decoder>
-void AttentionWithIntention<Builder, Decoder>::assign_cxt(ComputationGraph &cg, size_t nutt,
+void AttentionWithIntention<Builder, Decoder>::assign_cxt(ComputationGraph &cg, unsigned int nutt,
     vector<vector<cnn::real>>& v_last_s, vector<vector<cnn::real>>& v_decoder_s){
     i_U = parameter(cg, p_U);
     i_Wa = parameter(cg, p_Wa);
@@ -172,7 +172,7 @@ template<class Builder, class Decoder>
 Expression AttentionWithIntention<Builder, Decoder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
 {
     Expression i_c_t;
-    size_t nutt = trg_tok.size();
+    unsigned int nutt = trg_tok.size();
     Expression i_h_tm1 = concatenate(v_decoder.back()->final_h());
 
     vector<Expression> v_x_t;
@@ -182,7 +182,7 @@ Expression AttentionWithIntention<Builder, Decoder>::decoder_step(vector<int> tr
         if (p >= 0)
             i_x_x = lookup(cg, p_cs, p);
         else
-            i_x_x = input(cg, { (long)hidden_dim[DECODER_LAYER] }, &zero);
+            i_x_x = input(cg, { hidden_dim[DECODER_LAYER] }, &zero);
         v_x_t.push_back(i_x_x);
     }
 #ifdef UNDERSTAND_AWI_ADD_ATTENTION
@@ -343,18 +343,18 @@ template <class Builder, class Decoder>
 class GatedAttention : public AttentionWithIntention<Builder, Decoder>{
 public:
     GatedAttention(Model& model,
-    unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
+    unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, int additional_input, int mem_slots = 0, cnn::real iscale = 1.0)
         : AttentionWithIntention(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
     {
-        p_att_gate_A = model.add_parameters({ long(2 * hidden_dim[DECODER_LAYER]), long(layers[DECODER_LAYER] * hidden_dim[DECODER_LAYER]) }, iscale);
-        p_att_gate_b = model.add_parameters({ long(2 * hidden_dim[DECODER_LAYER]) }, iscale);
+        p_att_gate_A = model.add_parameters({ 2 * hidden_dim[DECODER_LAYER], layers[DECODER_LAYER] * hidden_dim[DECODER_LAYER] }, iscale);
+        p_att_gate_b = model.add_parameters({ 2 * hidden_dim[DECODER_LAYER] }, iscale);
     }
 
 protected:
     void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg) override
     {
-        size_t nutt = source.size();
+        unsigned int nutt = source.size();
 
         AttentionWithIntention<Builder, Decoder>::start_new_instance(source, cg);
 
@@ -384,7 +384,7 @@ template<class Builder, class Decoder>
 Expression GatedAttention<Builder, Decoder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
 {
     Expression i_c_t;
-    size_t nutt = trg_tok.size();
+    unsigned int nutt = trg_tok.size();
     Expression i_h_tm1 = concatenate(decoder.final_h());
 
     vector<Expression> v_x_t;
@@ -394,7 +394,7 @@ Expression GatedAttention<Builder, Decoder>::decoder_step(vector<int> trg_tok, C
         if (p >= 0)
             i_x_x = lookup(cg, p_cs, p);
         else
-            i_x_x = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+            i_x_x = input(cg, { hidden_dim[DECODER_LAYER] }, &zero);
         v_x_t.push_back(i_x_x);
     }
 
@@ -403,7 +403,7 @@ Expression GatedAttention<Builder, Decoder>::decoder_step(vector<int> trg_tok, C
     Expression i_att_gate = attention_gate(i_h_tm1);
     Expression i_obs = concatenate_cols(v_obs);
     Expression i_gated_attention = cwise_multiply(i_att_gate , i_obs);
-    Expression i_flatted = reshape(i_gated_attention, { (long)(nutt * 2 * hidden_dim[DECODER_LAYER]) });
+    Expression i_flatted = reshape(i_gated_attention, { nutt * 2 * hidden_dim[DECODER_LAYER] });
     vector<Expression> v_input;
     for (size_t k = 0; k < nutt; k++)
     {
@@ -419,18 +419,18 @@ template <class Builder, class Decoder>
 class AWI : public AttentionWithIntention < Builder, Decoder > {
 public:
     AWI(Model& model,
-        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
+        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
         : AttentionWithIntention<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
     {
-        p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(hidden_dim[ENCODER_LAYER]) }, iscale);
+        p_U = model.add_parameters({ hidden_dim[ALIGN_LAYER], hidden_dim[ENCODER_LAYER] }, iscale);
     }
 
     void setAlignDim(cnn::Model& model, unsigned alignd, cnn::real iscale);
 
     vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
     {
-        size_t nutt = source.size();
+        unsigned int nutt = source.size();
         start_new_instance(source, cg);
 
         vector<vector<Expression>> this_errs(nutt);
@@ -458,7 +458,7 @@ public:
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_bias_mb + i_R * i_y_t;
 
-            Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
             for (size_t i = 0; i < nutt; i++)
             {
                 if (t < osent[i].size() - 1)
@@ -475,7 +475,7 @@ public:
                     vector<Expression> v_t;
                     for (auto p : v_decoder.back()->final_s())
                     {
-                        Expression i_tt = reshape(p, { (long)(nutt * hidden_dim[DECODER_LAYER]) });
+                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
                         int stt = i * hidden_dim[DECODER_LAYER];
                         int stp = stt + hidden_dim[DECODER_LAYER];
                         Expression i_t = pickrange(i_tt, stt, stp);
@@ -654,7 +654,7 @@ protected:
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
-        size_t nutt = trg_tok.size();
+        unsigned int nutt = trg_tok.size();
         vector<Expression> v_h = v_decoder.back()->final_h();
         Expression i_h_tm1 = concatenate(v_h);
         if (verbose)
@@ -667,7 +667,7 @@ protected:
             if (p >= 0)
                 i_x_x = lookup(cg, p_cs, p);
             else
-                i_x_x = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+                i_x_x = input(cg, { hidden_dim[DECODER_LAYER] }, &zero);
             if (verbose)
                 display_value(i_x_x, cg, "i_x_x");
             v_x_t.push_back(i_x_x);
@@ -700,7 +700,7 @@ template <class Builder, class Decoder>
 class AWI_Bilinear : public AWI< Builder , Decoder> {
 public:
     AWI_Bilinear(Model& model,
-    unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
+        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
     const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
     : AWI<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
     {
@@ -711,8 +711,8 @@ public:
         }
         for (size_t k = 0; k < hidden_replicates * layers[DECODER_LAYER]; k++)
         {
-            p_tgt2enc_b.push_back(model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale));
-            p_tgt2enc_w.push_back(model.add_parameters({ long(hidden_dim[ENCODER_LAYER]), long(hidden_dim[DECODER_LAYER]) }, iscale));
+            p_tgt2enc_b.push_back(model.add_parameters({ hidden_dim[ENCODER_LAYER] }, iscale));
+            p_tgt2enc_w.push_back(model.add_parameters({ hidden_dim[ENCODER_LAYER], hidden_dim[DECODER_LAYER] }, iscale));
         }
     }
 
@@ -844,7 +844,7 @@ template<class Builder, class Decoder>
 Expression AWI_Bilinear<Builder, Decoder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
 {
     Expression i_c_t;
-    size_t nutt = trg_tok.size();
+    unsigned int nutt = trg_tok.size();
     vector<Expression> v_h = v_decoder.back()->final_h();
     Expression i_h_tm1 = concatenate(v_h);
     if (verbose)
@@ -857,7 +857,7 @@ Expression AWI_Bilinear<Builder, Decoder>::decoder_step(vector<int> trg_tok, Com
         if (p >= 0)
             i_x_x = lookup(cg, p_cs, p);
         else
-            i_x_x = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+            i_x_x = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
         if (verbose)
             display_value(i_x_x, cg, "i_x_x");
         v_x_t.push_back(i_x_x);
@@ -888,7 +888,7 @@ template <class Builder, class Decoder>
 class AWI_Bilinear_Simpler : public AWI_Bilinear < Builder, Decoder> {
 public:
     AWI_Bilinear_Simpler(Model& model,
-    unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
+        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
     const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
     : AWI_Bilinear<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
     {
@@ -1037,18 +1037,18 @@ private:
 
 public:
     AWI_LocalGeneralInputFeeding(Model& model,
-    unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
+        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
     const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
     : AWI_Bilinear_Simpler<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale),
     attention_layer(1, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], &model, iscale, "attention_layer")
     {
-        p_Wa_local = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(hidden_dim[DECODER_LAYER]) }, iscale);
-        p_ba_local = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]) }, iscale);
-        p_va_local = model.add_parameters({ long(1), long(hidden_dim[ALIGN_LAYER]) }, iscale);
+        p_Wa_local = model.add_parameters({ hidden_dim[ALIGN_LAYER], hidden_dim[DECODER_LAYER] }, iscale);
+        p_ba_local = model.add_parameters({ hidden_dim[ALIGN_LAYER] }, iscale);
+        p_va_local = model.add_parameters({ 1, hidden_dim[ALIGN_LAYER] }, iscale);
 
-        p_Wa = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]), long(hidden_dim[DECODER_LAYER]) }, iscale);
+        p_Wa = model.add_parameters({ hidden_dim[ENCODER_LAYER], hidden_dim[DECODER_LAYER] }, iscale);
 
-        p_scale = model.add_parameters({ long(1) }, 0.0);
+        p_scale = model.add_parameters({ 1 }, 0.0);
     }
 
     void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg) override
@@ -1097,7 +1097,7 @@ public:
             for (auto p : p_tgt2enc_w)
                 i_tgt2enc_w.push_back(parameter(cg, p));
 
-            i_zero = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+            i_zero = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
 
             attention_layer.new_graph(cg);
             attention_layer.set_data_in_parallel(nutt);
@@ -1161,7 +1161,7 @@ public:
     /// return errors[nutt]
     vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
     {
-        size_t nutt = source.size();
+        unsigned int nutt = source.size();
         start_new_instance(source, cg);
 
         vector<vector<Expression>> this_errs(nutt);
@@ -1188,7 +1188,7 @@ public:
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_R * i_y_t;
 
-            Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
             for (size_t i = 0; i < nutt; i++)
             {
                 if (t < osent[i].size() - 1)
@@ -1205,7 +1205,7 @@ public:
                     vector<Expression> v_t;
                     for (auto p : decoder.final_s())
                     {
-                        Expression i_tt = reshape(p, { (long)(nutt * hidden_dim[DECODER_LAYER]) });
+                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
                         int stt = i * hidden_dim[DECODER_LAYER];
                         int stp = stt + hidden_dim[DECODER_LAYER];
                         Expression i_t = pickrange(i_tt, stt, stp);
@@ -1281,7 +1281,7 @@ public:
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
-        size_t nutt = trg_tok.size();
+        unsigned int nutt = trg_tok.size();
         Expression i_h_t;  /// the decoder output before attention
         Expression i_h_attention_t; /// the attention state
         vector<Expression> v_x_t;
@@ -1380,13 +1380,13 @@ protected:
 
 public:
     AWI_GeneralInputFeeding(Model& model,
-        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
+        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
         : AWI_Bilinear_Simpler<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale),
         attention_layer(1, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], &model, iscale, "attention_layer")
     {
-            p_Wa = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]), long(hidden_dim[DECODER_LAYER]) }, iscale);
-            p_scale = model.add_parameters({ long(1) }, 0.0);
+            p_Wa = model.add_parameters({ hidden_dim[ENCODER_LAYER], hidden_dim[DECODER_LAYER] }, iscale);
+            p_scale = model.add_parameters({ 1 }, 0.0);
         }
 
     void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg) override
@@ -1431,7 +1431,7 @@ public:
             for (auto p : p_tgt2enc_w)
                 i_tgt2enc_w.push_back(parameter(cg, p));
 
-            i_zero = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+            i_zero = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
 
             attention_layer.new_graph(cg);
             attention_layer.set_data_in_parallel(nutt);
@@ -1495,7 +1495,7 @@ public:
     /// return errors[nutt]
     vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
     {
-        size_t nutt = source.size();
+        unsigned int nutt = source.size();
         start_new_instance(source, cg);
 
         vector<vector<Expression>> this_errs(nutt);
@@ -1522,7 +1522,7 @@ public:
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_R * i_y_t;
 
-            Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
             for (size_t i = 0; i < nutt; i++)
             {
                 if (t < osent[i].size() - 1)
@@ -1539,7 +1539,7 @@ public:
                     vector<Expression> v_t;
                     for (auto p : decoder.final_s())
                     {
-                        Expression i_tt = reshape(p, { (long)(nutt * hidden_dim[DECODER_LAYER]) });
+                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
                         int stt = i * hidden_dim[DECODER_LAYER];
                         int stp = stt + hidden_dim[DECODER_LAYER];
                         Expression i_t = pickrange(i_tt, stt, stp);
@@ -1551,6 +1551,7 @@ public:
         }
 
         save_context(cg);
+        serialise_context(cg);
 
         for (auto &p : this_errs)
             errs.push_back(sum(p));
@@ -1615,7 +1616,7 @@ public:
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
-        size_t nutt = trg_tok.size();
+        unsigned int nutt = trg_tok.size();
         Expression i_h_t;  /// the decoder output before attention
         Expression i_h_attention_t; /// the attention state
         vector<Expression> v_x_t;
@@ -1698,7 +1699,7 @@ protected:
     cnn::real dropout_rate; 
 public:
     AWI_GeneralInputFeedingWDropout(Model& model,
-        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
+        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
         : AWI_GeneralInputFeeding<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
     {
@@ -1747,7 +1748,7 @@ public:
             for (auto p : p_tgt2enc_w)
                 i_tgt2enc_w.push_back(parameter(cg, p));
 
-            i_zero = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+            i_zero = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
 
             attention_layer.new_graph(cg);
             attention_layer.set_data_in_parallel(nutt);
@@ -1811,7 +1812,7 @@ public:
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
-        size_t nutt = trg_tok.size();
+        unsigned int nutt = trg_tok.size();
         Expression i_h_t;  /// the decoder output before attention
         Expression i_h_attention_t; /// the attention state
         vector<Expression> v_x_t;
@@ -1888,7 +1889,7 @@ protected:
 
 public:
     AWI_InputFeedingWithNNAttention(Model& model,
-        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
+        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
         : AWI_GeneralInputFeedingWDropout<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale),
         true_attention_layer(2, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], 1, &model, iscale, "true attention layer"),
@@ -1938,7 +1939,7 @@ public:
             for (auto p : p_tgt2enc_w)
                 i_tgt2enc_w.push_back(parameter(cg, p));
 
-            i_zero = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+            i_zero = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
 
             true_attention_layer.new_graph(cg);
             true_attention_layer.set_data_in_parallel(nutt);
@@ -2003,19 +2004,19 @@ public:
 
     /** use a nn to extraction attention
     */
-    vector<Expression> attention_to_source_using_nn(vector<Expression> & v_src, const vector<size_t>& v_slen, 
-        Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, Expression fscale)
+    vector<Expression> attention_to_source_using_nn(vector<Expression> & v_src, const vector<unsigned>& v_slen, 
+        Expression i_h_tm1, unsigned int a_dim, unsigned int nutt, vector<Expression>& v_wgt, Expression fscale)
     {
         Expression i_c_t;
         Expression i_e_t;
-        int slen = 0;
+        unsigned int slen = 0;
         vector<Expression> i_wah_rep;
 
         for (auto p : v_slen)
             slen += p;
 
         Expression i_wah = i_h_tm1;  /// [d nutt]
-        Expression i_wah_reshaped = reshape(i_wah, { long(nutt * a_dim) });
+        Expression i_wah_reshaped = reshape(i_wah, { nutt * a_dim });
         for (size_t k = 0; k < nutt; k++)
         {
             Expression i_wah_each = pickrange(i_wah_reshaped, k * a_dim, (k + 1)*a_dim);  /// [d]
@@ -2031,7 +2032,7 @@ public:
 
         true_attention_layer.set_data_in_parallel(slen);
         i_e_t = true_attention_layer.add_input(i_wah_m); 
-        i_e_t = reshape(i_e_t, { (long)slen, (long)1 });
+        i_e_t = reshape(i_e_t, { slen, 1 });
     
         Expression i_alpha_t;
 
@@ -2059,7 +2060,7 @@ public:
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
-        size_t nutt = trg_tok.size();
+        unsigned int nutt = trg_tok.size();
         Expression i_h_t;  /// the decoder output before attention
         Expression i_h_attention_t; /// the attention state
         vector<Expression> v_x_t;
@@ -2084,7 +2085,7 @@ public:
         }
         else
         {
-            i_input = concatenate({ i_obs, dropout(attention_output_for_this_turn.back(), dropout_rate) });
+            i_input = concatenate({ i_obs, attention_output_for_this_turn.back() });
         }
 
         i_h_t = decoder.add_input(i_input);
@@ -2122,7 +2123,7 @@ template<class Builder, class Decoder>
 class HirearchicalEncDec : public AWI_Bilinear_Simpler< Builder, Decoder > {
 public:
     HirearchicalEncDec(Model& model,
-    unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
+        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
         : AWI_Bilinear_Simpler<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
     {
@@ -2131,7 +2132,7 @@ public:
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
-        size_t nutt = trg_tok.size();
+        unsigned int nutt = trg_tok.size();
         vector<Expression> v_h = v_decoder.back()->final_h();
         Expression i_h_tm1 = concatenate(v_h);
         if (verbose)
@@ -2144,7 +2145,7 @@ public:
             if (p >= 0)
                 i_x_x = lookup(cg, p_cs, p);
             else
-                i_x_x = input(cg, { (long)(hidden_dim[DECODER_LAYER]) }, &zero);
+                i_x_x = input(cg, { hidden_dim[DECODER_LAYER] }, &zero);
             if (verbose)
                 display_value(i_x_x, cg, "i_x_x");
             v_x_t.push_back(i_x_x);
@@ -2161,7 +2162,7 @@ template<class Builder, class Decoder>
 class AWI_Bilinear_Simpler_AE : public AWI_Bilinear_Simpler< Builder, Decoder > {
 public:
     AWI_Bilinear_Simpler_AE(Model& model,
-    unsigned vocab_size_src, const vector<size_t>& layers,
+        unsigned vocab_size_src, const vector<unsigned int>& layers,
     const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
     : AWI_Bilinear_Simpler<Builder, Decoder>(model, vocab_size_src, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale)
     {
@@ -2273,7 +2274,7 @@ public:
 
     vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg)
     {
-        size_t nutt = source.size();
+        unsigned int nutt = source.size();
         start_new_instance(source, cg);
 
         vector<vector<Expression>> this_errs(nutt);
@@ -2306,7 +2307,7 @@ public:
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_bias_mb + i_R * i_y_t;
 
-            Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
             for (size_t i = 0; i < nutt; i++)
             {
                 if (t < osent[i].size() - 1)
@@ -2323,7 +2324,7 @@ public:
                     vector<Expression> v_t;
                     for (auto p : v_decoder.back()->final_s())
                     {
-                        Expression i_tt = reshape(p, { (long)nutt * hidden_dim[DECODER_LAYER] });
+                        Expression i_tt = reshape(p, { nutt * hidden_dim[DECODER_LAYER] });
                         int stt = i * hidden_dim[DECODER_LAYER];
                         int stp = stt + hidden_dim[DECODER_LAYER];
                         Expression i_t = pickrange(i_tt, stt, stp);
@@ -2423,7 +2424,7 @@ public:
         unsigned vocab_size_src, const vector<size_t>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, int additional_input = 2, int mem_slots = MEM_SIZE, cnn::real iscale = 1.0)
         : GatedAttention(model, vocab_size_src, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale),
-        m_mem_network(long(layers), long(hidden_dim[ENCODER_LAYER]), long(hidden_dim[ENCODER_LAYER]), long(hidden_dim[ALIGN_LAYER]), { long(hidden_dim[ALIGN_LAYER]), long(mem_slots) }, { long(hidden_dim[ALIGN_LAYER]), long(mem_slots) }, &model, iscale), m_hidden_replicates(hidden_replicates)
+        m_mem_network(layers), hidden_dim[ENCODER_LAYER], hidden_dim[ENCODER_LAYER], hidden_dim[ALIGN_LAYER], { hidden_dim[ALIGN_LAYER], mem_slots) }, { hidden_dim[ALIGN_LAYER], mem_slots) }, &model, iscale), m_hidden_replicates(hidden_replicates)
     {
         unsigned align_dim = hidden_dim[ALIGN_LAYER];
         size_t k = 0;
@@ -2434,7 +2435,7 @@ public:
             k = 0;
             while (k < hidden_replicates - 2)
             {
-                Parameters *pp = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale);
+                Parameters *pp = model.add_parameters({ hidden_dim[ENCODER_LAYER] }, iscale);
                 if (k==0)
                     v_c.push_back(pp);
                 if (k == 1)
@@ -2444,13 +2445,13 @@ public:
 
             if (k > hidden_replicates - 1)
                 break;
-            Parameters *pp = model.add_parameters({ long(align_dim), long(mem_slots) }, iscale);  /// key 
+            Parameters *pp = model.add_parameters({ align_dim, mem_slots }, iscale);  /// key 
             v_M.push_back(pp);
             k++;
 
             if (k > hidden_replicates - 1)
                 break;
-            Parameters *pv = model.add_parameters({ long(align_dim), long(mem_slots) }, iscale);  /// value
+            Parameters *pv = model.add_parameters({ align_dim, mem_slots }, iscale);  /// value
             v_K.push_back(pv);
             k++;
 
@@ -2465,7 +2466,7 @@ public:
 
 
 public:
-    void assign_cxt(ComputationGraph &cg, size_t nutt) override
+    void assign_cxt(ComputationGraph &cg, unsigned int nutt) override
     {
 
         GatedAttention<Builder>::assign_cxt(cg, nutt);
@@ -2518,9 +2519,9 @@ public:
             if (k < (m_hidden_replicates - 2) * layers)
             {
                 if (nutt > 1)
-                    iv = input(cg, { long(p.size() / nutt), long(nutt) }, &p);
+                    iv = input(cg, { p.size() / nutt, nutt }, &p);
                 else
-                    iv = input(cg, { long(p.size()) }, &p);
+                    iv = input(cg, { p.size() }, &p);
             }
             else
             {
@@ -2536,7 +2537,7 @@ public:
         m_mem_network.final_s() = ve; 
     }
 
-    void assign_cxt(ComputationGraph &cg, size_t nutt,
+    void assign_cxt(ComputationGraph &cg, unsigned int nutt,
         vector<vector<cnn::real>>& v_last_s, vector<vector<cnn::real>>& v_decoder_s) override
     {
 
@@ -2590,9 +2591,9 @@ public:
             if (k < (m_hidden_replicates - 2) * layers)
             {
                 if (nutt > 1)
-                    iv = input(cg, { long(p.size() / nutt), long(nutt) }, &p);
+                    iv = input(cg, { p.size() / nutt), nutt) }, &p);
                 else
-                    iv = input(cg, { long(p.size()) }, &p);
+                    iv = input(cg, { p.size()) }, &p);
             }
             else
             {
@@ -2812,7 +2813,7 @@ protected:
 
     size_t turnid;
 
-    size_t nutt; // for multiple training utterance per inibatch
+    unsigned int nutt; // for multiple training utterance per inibatch
     vector<cnn::real> zero;
 
 public:
@@ -2824,7 +2825,7 @@ public:
 public:
 
     DynamicMemoryNetDialogue(Model& model,
-        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<size_t>& layers,
+        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
         :   layers(layers),
             decoder(layers[DECODER_LAYER], hidden_replicates * layers[INTENTION_LAYER] * hidden_dim[INTENTION_LAYER], hidden_dim[DECODER_LAYER], &model, iscale, "decoder"),
@@ -2836,49 +2837,49 @@ public:
             hidden_dim(hidden_dim),
             rep_hidden(hidden_replicates)
     {
-        p_cs = model.add_lookup_parameters(long(vocab_size_src), { long(hidden_dim[ENCODER_LAYER]) }, iscale, "p_cs");
-        p_R = model.add_parameters({ long(vocab_size_tgt), long(hidden_dim[DECODER_LAYER]) }, iscale, "p_R");
-        p_bias = model.add_parameters({ long(vocab_size_tgt) }, iscale , "p_bias");
+        p_cs = model.add_lookup_parameters(vocab_size_src, { hidden_dim[ENCODER_LAYER] }, iscale, "p_cs");
+        p_R = model.add_parameters({ vocab_size_tgt, hidden_dim[DECODER_LAYER] }, iscale, "p_R");
+        p_bias = model.add_parameters({ vocab_size_tgt }, iscale , "p_bias");
 
-        p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(2 * hidden_dim[ENCODER_LAYER]) }, iscale, "p_U");
+        p_U = model.add_parameters({ hidden_dim[ALIGN_LAYER], 2 * hidden_dim[ENCODER_LAYER] }, iscale, "p_U");
 
         for (size_t i = 0; i < layers[ENCODER_LAYER] * rep_hidden; i++)
         {
-            p_h0.push_back(model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale, "p_h0" + boost::lexical_cast<string>(i)));
+            p_h0.push_back(model.add_parameters({ hidden_dim[ENCODER_LAYER] }, iscale, "p_h0" + boost::lexical_cast<string>(i)));
             p_h0.back()->reset_to_zero();
         }
         zero.resize(hidden_dim[ENCODER_LAYER], 0);  /// for the no obs observation
 
         i_h0.clear();
 
-        p_fact_encoder_state = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]), long(hidden_dim[ENCODER_LAYER] * encoder_fwd.num_h0_components()) }, iscale, "p_fact_encoder_state");
-        p_fact_encoder_state_bias = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale, "p_fact_encoder_state_bias");
+        p_fact_encoder_state = model.add_parameters({ hidden_dim[ENCODER_LAYER], hidden_dim[ENCODER_LAYER] * encoder_fwd.num_h0_components() }, iscale, "p_fact_encoder_state");
+        p_fact_encoder_state_bias = model.add_parameters({ hidden_dim[ENCODER_LAYER] }, iscale, "p_fact_encoder_state_bias");
 
-        p_fact_encoder_state_to_cxt = model.add_parameters({ long(hidden_dim[ENCODER_LAYER] * encoder_fwd.num_h0_components()), long(hidden_dim[ENCODER_LAYER]) }, iscale, "p_fact_encoder_state_to_cxt");
-        p_fact_encoder_state_to_cxt_bias = model.add_parameters({ long(hidden_dim[ENCODER_LAYER] * encoder_fwd.num_h0_components()) }, iscale, "p_fact_encoder_state_to_cxt_bias");
+        p_fact_encoder_state_to_cxt = model.add_parameters({ hidden_dim[ENCODER_LAYER] * encoder_fwd.num_h0_components(), hidden_dim[ENCODER_LAYER] }, iscale, "p_fact_encoder_state_to_cxt");
+        p_fact_encoder_state_to_cxt_bias = model.add_parameters({ hidden_dim[ENCODER_LAYER] * encoder_fwd.num_h0_components() }, iscale, "p_fact_encoder_state_to_cxt_bias");
 
-        p_cxt_to_encoder = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]), long(hidden_dim[INTENTION_LAYER]) }, iscale, "p_cxt_to_encoder");
-        p_cxt_to_encoder_bias = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, iscale, "p_cxt_to_encoder_bias");
+        p_cxt_to_encoder = model.add_parameters({ hidden_dim[ENCODER_LAYER], hidden_dim[INTENTION_LAYER] }, iscale, "p_cxt_to_encoder");
+        p_cxt_to_encoder_bias = model.add_parameters({ hidden_dim[ENCODER_LAYER] }, iscale, "p_cxt_to_encoder_bias");
 
-        p_cxt_to_decoder = model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_dim[INTENTION_LAYER]) }, iscale, "p_cxt_to_decoder");
-        p_cxt_to_decoder_bias = model.add_parameters({ long(hidden_dim[DECODER_LAYER]) }, iscale, "p_cxt_to_decoder_bias");
+        p_cxt_to_decoder = model.add_parameters({ hidden_dim[DECODER_LAYER], hidden_dim[INTENTION_LAYER] }, iscale, "p_cxt_to_decoder");
+        p_cxt_to_decoder_bias = model.add_parameters({ hidden_dim[DECODER_LAYER] }, iscale, "p_cxt_to_decoder_bias");
 
-        p_U = model.add_parameters({ long(hidden_dim[ALIGN_LAYER]), long(hidden_dim[ENCODER_LAYER]) }, iscale , "p_U");
+        p_U = model.add_parameters({ hidden_dim[ALIGN_LAYER], hidden_dim[ENCODER_LAYER] }, iscale , "p_U");
 
         unsigned align_dim = hidden_dim[ALIGN_LAYER];
-        p_Wa = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]), long(hidden_replicates * layers[INTENTION_LAYER] * hidden_dim[INTENTION_LAYER]) }, iscale, "p_Wa");
-        p_va = model.add_parameters({ long(hidden_dim[ENCODER_LAYER]) }, 0, "p_va");
-        p_Q = model.add_parameters({ long(hidden_dim[DECODER_LAYER]), long(hidden_replicates * hidden_dim[DECODER_LAYER]) }, iscale, "p_Q");
+        p_Wa = model.add_parameters({ hidden_dim[ENCODER_LAYER], hidden_replicates * layers[INTENTION_LAYER] * hidden_dim[INTENTION_LAYER] }, iscale, "p_Wa");
+        p_va = model.add_parameters({ hidden_dim[ENCODER_LAYER] }, 0, "p_va");
+        p_Q = model.add_parameters({ hidden_dim[DECODER_LAYER], hidden_replicates * hidden_dim[DECODER_LAYER] }, iscale, "p_Q");
 
-        p_scale = model.add_parameters({ long(1) }, 0.0, "p_scale");
+        p_scale = model.add_parameters({ 1 }, 0.0, "p_scale");
     }
 
-    void assign_cxt(ComputationGraph& cg, size_t nutt, vector<vector<cnn::real>>& v_cxt_s, vector<vector<cnn::real>>& v_decoder_s)
+    void assign_cxt(ComputationGraph& cg, unsigned int nutt, vector<vector<cnn::real>>& v_cxt_s, vector<vector<cnn::real>>& v_decoder_s)
     {
         throw("not implemented");
     }
     
-    void assign_cxt(ComputationGraph& cg, size_t nutt)
+    void assign_cxt(ComputationGraph& cg, unsigned int nutt)
     {
         throw("not implemented");
     }
@@ -2898,7 +2899,7 @@ public:
             return;
         }
 
-        size_t nutt = query.size();
+        unsigned int nutt = query.size();
         unsigned slen;
         encoder_fwd.new_graph(cg);
         encoder_fwd.set_data_in_parallel(nutt);
@@ -3041,7 +3042,7 @@ public:
     {
         // decoder
         vector<Expression> errs;
-        size_t nutt;
+        unsigned int nutt;
         start_new_instance(source, cg);
 
         if (osent.size() == 0 || osent[0].size() == 0)
@@ -3080,7 +3081,7 @@ public:
             cout << endl;
         }
 
-        Expression x_r_t = reshape(i_r_t, { (long)vocab_size_tgt * (long)nutt });
+        Expression x_r_t = reshape(i_r_t, { vocab_size_tgt * nutt });
         for (size_t i = 0; i < nutt; i++)
         {
             /// only compute errors on with output labels

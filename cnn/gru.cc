@@ -22,7 +22,7 @@ GRUBuilder::GRUBuilder(unsigned ilayers,
                        string name) : hidden_dim(hidden_dim) {
   layers = ilayers; 
   string i_name;
-  long layer_input_dim = input_dim;
+  unsigned layer_input_dim = input_dim;
   input_dims = vector<unsigned>(layers, layer_input_dim);
   for (unsigned i = 0; i < layers; ++i) {
     input_dims[i] = layer_input_dim;
@@ -30,35 +30,35 @@ GRUBuilder::GRUBuilder(unsigned ilayers,
     // z
     if (name.size() > 0)
         i_name = name + "p_x2z" + boost::lexical_cast<string>(i);
-    Parameters* p_x2z = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+    Parameters* p_x2z = model->add_parameters({ hidden_dim, layer_input_dim }, iscale, i_name);
     if (name.size() > 0)
         i_name = name + "p_h2z" + boost::lexical_cast<string>(i);
-    Parameters* p_h2z = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+    Parameters* p_h2z = model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name);
     if (name.size() > 0)
         i_name = name + "p_bz" + boost::lexical_cast<string>(i);
-    Parameters* p_bz = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
+    Parameters* p_bz = model->add_parameters({ hidden_dim }, iscale, i_name);
     
     // r
     if (name.size() > 0)
         i_name = name + "p_x2r" + boost::lexical_cast<string>(i);
-    Parameters* p_x2r = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+    Parameters* p_x2r = model->add_parameters({ hidden_dim, layer_input_dim }, iscale, i_name);
     if (name.size() > 0)
         i_name = name + "p_h2r" + boost::lexical_cast<string>(i);
-    Parameters* p_h2r = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+    Parameters* p_h2r = model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name);
     if (name.size() > 0)
         i_name = name + "p_br" + boost::lexical_cast<string>(i);
-    Parameters* p_br = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
+    Parameters* p_br = model->add_parameters({ hidden_dim }, iscale, i_name);
 
     // h
     if (name.size() > 0)
         i_name = name + "p_x2h" + boost::lexical_cast<string>(i);
-    Parameters* p_x2h = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+    Parameters* p_x2h = model->add_parameters({ hidden_dim, layer_input_dim }, iscale, i_name);
     if (name.size() > 0)
         i_name = name + "p_h2h" + boost::lexical_cast<string>(i);
-    Parameters* p_h2h = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+    Parameters* p_h2h = model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name);
     if (name.size() > 0)
         i_name = name + "p_bh" + boost::lexical_cast<string>(i);
-    Parameters* p_bh = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
+    Parameters* p_bh = model->add_parameters({ hidden_dim }, iscale, i_name);
     layer_input_dim = hidden_dim;  // output (hidden) from 1st layer is input to next
 
     vector<Parameters*> ps = {p_x2z, p_h2z, p_bz, p_x2r, p_h2r, p_br, p_x2h, p_h2h, p_bh};

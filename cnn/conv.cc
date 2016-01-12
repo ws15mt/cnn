@@ -34,7 +34,7 @@ Dim AddVectorToAllColumns::dim_forward(const vector<Dim>& xs) const {
   return xs[0];
 }
 
-void AddVectorToAllColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void AddVectorToAllColumns::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
 #if HAVE_CUDA
     gpu::addVectorToAllColumns(xs[0]->d[0] * xs[0]->d[1], xs[0]->v, xs[1]->d[0], xs[1]->v, fx.v);
 #else
@@ -45,7 +45,7 @@ void AddVectorToAllColumns::forward(const vector<const Tensor*>& xs, Tensor& fx)
 #endif
 }
 
-void AddVectorToAllColumns::backward(const vector<const Tensor*>& xs,
+void AddVectorToAllColumns::backward_impl(const vector<const Tensor*>& xs,
                         const Tensor& fx,
                         const Tensor& dEdf,
                         unsigned i,
@@ -69,15 +69,15 @@ string FoldRows::as_string(const vector<string>& arg_names) const {
 }
 
 Dim FoldRows::dim_forward(const vector<Dim>& xs) const {
-  int orows = xs[0].rows() / nrows;
+  unsigned orows = xs[0].rows() / nrows;
   if ((orows * nrows != xs[0].rows()) || xs.size() != 1 || xs[0].ndims() != 2) {
     cerr << "Bad input dimensions in FoldRows: " << xs << endl;
     throw std::invalid_argument("bad input dimensions in FoldRows");
   }
-  return Dim({orows, (long)xs[0].cols()});
+  return Dim({orows, xs[0].cols()});
 }
 
-void FoldRows::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void FoldRows::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
 #if HAVE_CUDA
   gpu::foldRows(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, nrows, xs[0]->d.rows() / nrows, fx.v);
 #else
@@ -95,7 +95,7 @@ void FoldRows::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
 #endif
 }
 
-void FoldRows::backward(const vector<const Tensor*>& xs,
+void FoldRows::backward_impl(const vector<const Tensor*>& xs,
                         const Tensor& fx,
                         const Tensor& dEdf,
                         unsigned i,
@@ -123,17 +123,20 @@ Dim Conv1DNarrow::dim_forward(const vector<Dim>& xs) const {
     cerr << "Conv1DNarrow requires two inputs: " << xs << endl;
     throw std::invalid_argument("Conv1DNarrow requires 2 dimensions");
   }
-  int ocols = xs[0].cols() - xs[1].cols() + 1;
+  unsigned ocols = xs[0].cols() - xs[1].cols() + 1;
   if (xs[0].ndims() != 2 || xs[1].ndims() != 2 ||
       xs[0].rows() != xs[1].rows() ||
       ocols < 1) {
     cerr << "Bad input dimensions in Conv1DNarrow: " << xs << endl;
     throw std::invalid_argument("bad input dimensions in Conv1DNarrow");
   }
-  return Dim({(long)xs[0].rows(), ocols});
+  return Dim({xs[0].rows(), ocols});
 }
 
-void Conv1DNarrow::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void Conv1DNarrow::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Conv1DNarrow::forward not implemented for CUDA");
+#else
     auto x = **xs[0];  // input
       auto f = **xs[1];  // filter
       auto y = *fx;
@@ -148,13 +151,17 @@ void Conv1DNarrow::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
           y(i, j) = t;
         }
       }
+#endif
 }
 
-void Conv1DNarrow::backward(const vector<const Tensor*>& xs,
+void Conv1DNarrow::backward_impl(const vector<const Tensor*>& xs,
                             const Tensor& fx,
                             const Tensor& dEdf,
                             unsigned i,
                             Tensor& dEdxi) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Conv1DNarrow::backward not implemented for CUDA");
+#else
   // TODO this is a bad implementation- rewrite to use unsupported Eigen tensor library
   assert(i < 2);
   const unsigned rows = xs[0]->d.rows();
@@ -179,6 +186,7 @@ void Conv1DNarrow::backward(const vector<const Tensor*>& xs,
       }
     }
   }
+#endif
 }
 
 string Conv1DWide::as_string(const vector<string>& arg_names) const {
@@ -192,16 +200,16 @@ Dim Conv1DWide::dim_forward(const vector<Dim>& xs) const {
     cerr << "Conv1DWide requires two inputs: " << xs << endl;
     throw std::invalid_argument("Conv1DWide requires two inputs");
   }
-  int ocols = xs[0].cols() + xs[1].cols() - 1;
+  unsigned ocols = xs[0].cols() + xs[1].cols() - 1;
   if (xs[0].ndims() != 2 || xs[1].ndims() != 2 ||
       xs[0].rows() != xs[1].rows()) {
     cerr << "Bad input dimensions in Conv1DWide: " << xs << endl;
     throw std::invalid_argument("bad input dimensions in Conv1DWide");
   }
-  return Dim({(long)xs[0].rows(), ocols});
+  return Dim({xs[0].rows(), ocols});
 }
 
-void Conv1DWide::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void Conv1DWide::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
     TensorTools::Zero(fx);
     auto x = **xs[0];  // input
     auto f = **xs[1];  // filter
@@ -234,7 +242,7 @@ void Conv1DWide::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
 #endif
 }
 
-void Conv1DWide::backward(const vector<const Tensor*>& xs,
+void Conv1DWide::backward_impl(const vector<const Tensor*>& xs,
                           const Tensor& fx,
                           const Tensor& dEdf,
                           unsigned i,
@@ -297,7 +305,7 @@ Dim KMaxPooling::dim_forward(const vector<Dim>& xs) const {
     cerr << "Bad input dimensions in KMaxPooling: " << xs << endl;
     throw std::invalid_argument("bad input dimensions in KMaxPooling");
   }
-  return Dim({long(xs[0].rows()), long(k)});
+  return Dim({xs[0].rows(), k});
 }
 
 size_t KMaxPooling::aux_storage_size() const {
@@ -305,16 +313,15 @@ size_t KMaxPooling::aux_storage_size() const {
   return sizeof(int) * dim.size();
 }
 
-void KMaxPooling::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  int mi = 0;
+void KMaxPooling::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
 #if HAVE_CUDA
   gpu::kMaxPooling(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, k, fx.v, static_cast<int*>(aux_mem));
 #else
   auto x = **xs[0];
   auto y=*fx;
-  boost::shared_ptr<cnn::real> shared_tmp(new cnn::real[x.cols()]); 
-  cnn::real * tmp = shared_tmp.get();
-
+  float tmp[1024];
+  assert(x.cols() < 1024);
+  unsigned mi = 0;
   const unsigned rows = x.rows();
   const unsigned xcols = x.cols();
   int* maxmap = static_cast<int*>(aux_mem);
@@ -342,7 +349,7 @@ void KMaxPooling::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
 #endif
 }
 
-void KMaxPooling::backward(const vector<const Tensor*>& xs,
+void KMaxPooling::backward_impl(const vector<const Tensor*>& xs,
                            const Tensor& fx,
                            const Tensor& dEdf,
                            unsigned i,

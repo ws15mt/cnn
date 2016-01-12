@@ -8,7 +8,6 @@ set WORKDIR=\\gcr\scratch\b99\kaisheny\exp\lm
 set DATADIR=\\gcr\scratch\b99\kaisheny\data\ptddata
 set BINDIR=\\gcr\scratch\b99\kaisheny\bin\windows
 
-
 mkdir %WORKDIR%\logs
 mkdir %WORKDIR%\models
 
@@ -17,6 +16,11 @@ call %BINDIR%\rnnlm2.exe --lstm --layers 2 --seed 127 --parameters %WORKDIR%\mod
 
 call %BINDIR%\rnnlm2.exe --lstm --layers 2 --seed 127 --initialise %WORKDIR%\models\lstm.l2.h200.mdl --hidden 200 -t %DATADIR%\ptb.trn --test %DATADIR%\ptb.tst  > %WORKDIR%\logs\tst.lstm.l2.hd200.log 2>&1
 
+REM run with the following argument in a local machine
+REM  C:\dev\cnn\msbuild\examples\Release\rnnlm2.exe --lstm --layers 2 --seed 127 --parameters c:/temp/models/lstm.l2.h200.mdl --hidden 200 -t c:/data/ptbdata/ptb.trn -d c:/data/ptbdata/ptb.dev
+REM cuda
+REM C:\dev\cnn2\msbuild\examples\Release\rnnlm2.exe --verbose --lstm --layers 2 --seed 127 --parameters c:/temp/models/lstm.l2.h200.mdl --hidden 200 -t c:/data/ptbdata/ptb.trn.1 -d c:/data/ptbdata/ptb.trn.1
+REM C:\dev\cnn2\msbuild\examples\Release\rnnlm2.exe --verbose --lstm --layers 2 --seed 127 --parameters c:/temp/models/lstm.l2.h200.mdl.2 --hidden 200 -t c:/data/ptbdata/ptb.trn.1 -d c:/data/ptbdata/ptb.trn.1
 
 goto exit
 

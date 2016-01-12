@@ -26,6 +26,7 @@ namespace cnn {
 
 extern AlignedMemoryPool<6>* fxs;
 extern AlignedMemoryPool<6>* dEdfs;
+extern AlignedMemoryPool<6>* ps;
 extern cnn::real* kSCALAR_MINUSONE;
 extern cnn::real* kSCALAR_ONE;
 extern cnn::real* kSCALAR_ZERO;
@@ -51,20 +52,28 @@ struct ComputationGraph {
   // structures and make them available to the computation
   VariableIndex add_input(real s);  // add scalar
   VariableIndex add_input(const real* ps);  // add pointer to scalar
+  VariableIndex add_input(const Dim& d, const std::vector<cnn::real>& pdata);
   VariableIndex add_input(const Dim& d, const std::vector<cnn::real>* pdata);
+
 
   // PARAMETERS
   // parameters are things that are optimized. in contrast to a system like
   // Torch where computational modules may have their own parameters, in CNN
   // parameters are just parameters
   VariableIndex add_parameters(Parameters* p);
+  VariableIndex add_const_parameters(Parameters* p);
+
   // use pindex to point to a memory location where the index will live
   // that the caller owns
   VariableIndex add_lookup(LookupParameters* p, const unsigned* pindex);
   VariableIndex add_lookup(LookupParameters* p, unsigned index);
+  VariableIndex add_lookup(LookupParameters* p, const std::vector<unsigned>* pindices);
+  VariableIndex add_lookup(LookupParameters* p, const std::vector<unsigned>& indices);
   // just like add_lookup, but don't optimize the lookup parameters
   VariableIndex add_const_lookup(LookupParameters* p, const unsigned* pindex);
   VariableIndex add_const_lookup(LookupParameters* p, unsigned index);
+  VariableIndex add_const_lookup(LookupParameters* p, const std::vector<unsigned>* pindices);
+  VariableIndex add_const_lookup(LookupParameters* p, const std::vector<unsigned>& indices);
 
   // COMPUTATIONS
   template <class Function> inline VariableIndex add_function(const std::initializer_list<VariableIndex>& arguments);
@@ -137,14 +146,29 @@ struct Node {
   virtual size_t aux_storage_size() const;
 
   // computation
+  virtual void forward_impl(const std::vector<const Tensor*>& xs,
+                            Tensor& fx) const = 0;
+  // accumulates the derivative of E with respect to the ith argument to f, that is, xs[i]
+  virtual void backward_impl(const std::vector<const Tensor*>& xs,
+                             const Tensor& fx,
+                             const Tensor& dEdf,
+                             unsigned i,
+                             Tensor& dEdxi) const = 0;
+
+  // whether this node supports computing multiple batches in one call.
+  // if true, forward and backward will be called once with a multi-batch tensor.
+  // if false, forward and backward will be called multiple times for each item.
+  virtual bool supports_multibatch() const { return false; }
+
+  // perform the forward/backward passes in one or multiple calls
   virtual void forward(const std::vector<const Tensor*>& xs,
-                       Tensor& fx) const = 0;
+                       Tensor& fx) const final;
   // accumulates the derivative of E with respect to the ith argument to f, that is, xs[i]
   virtual void backward(const std::vector<const Tensor*>& xs,
                         const Tensor& fx,
                         const Tensor& dEdf,
                         unsigned i,
-                        Tensor& dEdxi) const = 0;
+                        Tensor& dEdxi) const final;
 
   // number of arguments to the function
   inline unsigned arity() const { return args.size(); }

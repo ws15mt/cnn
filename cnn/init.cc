@@ -1,7 +1,7 @@
 #include "cnn/init.h"
 #include "cnn/aligned-mem-pool.h"
 #include "cnn/cnn.h"
-
+#include "cnn/model.h"
 #include <iostream>
 #include <random>
 #include <cmath>
@@ -18,6 +18,7 @@ namespace cnn {
     #define ALIGN 6
     AlignedMemoryPool<ALIGN>* fxs = nullptr;
     AlignedMemoryPool<ALIGN>* dEdfs = nullptr;
+	AlignedMemoryPool<ALIGN>* ps = nullptr;
     mt19937* rndeng = nullptr;
 
     char* getCmdOption(char ** begin, char ** end, const std::string & option)
@@ -30,6 +31,13 @@ namespace cnn {
         return 0;
     }
 
+	static void RemoveArgs(int& argc, char**& argv, int& argi, int n) {
+	  for (int i = argi + n; i < argc; ++i)
+	    argv[i - n] = argv[i];
+	  argc -= n;
+	  assert(argc >= 0);
+	}
+	
     bool cmdOptionExists(char** begin, char** end, const std::string& option)
     {
         return std::find(begin, end, option) != end;
@@ -64,10 +72,12 @@ namespace cnn {
         rndeng = new mt19937(random_seed);
 
         cerr << "Allocating memory...\n";
+		unsigned long num_mb = 512UL;
         if (demo)
         {
             fxs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
             dEdfs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
+	  	    ps = new AlignedMemoryPool<ALIGN>(num_mb << 20); // parameters
         }
         else
         {
@@ -75,8 +85,12 @@ namespace cnn {
             fxs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
             dEdfs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
 #else
-            fxs = new AlignedMemoryPool<ALIGN>(8191UL * (1UL << 21));
-            dEdfs = new AlignedMemoryPool<ALIGN>(8191UL * (1UL << 21));
+            num_mb = 8191UL;
+//            fxs = new AlignedMemoryPool<ALIGN>(8191UL * (1UL << 21));
+//            dEdfs = new AlignedMemoryPool<ALIGN>(8191UL * (1UL << 21));
+            fxs = new AlignedMemoryPool<ALIGN>(num_mb << 20);
+            dEdfs = new AlignedMemoryPool<ALIGN>(num_mb << 20);
+	  	    ps = new AlignedMemoryPool<ALIGN>(num_mb << 20); // parameters
 #endif
         }
         cerr << "Done.\n";
@@ -92,6 +106,7 @@ namespace cnn {
         delete (rndeng); 
         delete (fxs);
         delete (dEdfs);
+        delete (ps);
         cerr << "Done.\n";
   }
 

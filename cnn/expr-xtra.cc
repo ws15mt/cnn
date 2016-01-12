@@ -19,7 +19,7 @@ Expression arange(ComputationGraph &cg, unsigned begin, unsigned end, bool log_t
     aux_mem->clear();
     for (unsigned i = begin; i < end; ++i) 
         aux_mem->push_back((log_transform) ? log(1.0 + i) : i);
-    return Expression(&cg, cg.add_input(Dim({(long) (end-begin)}), aux_mem));
+    return Expression(&cg, cg.add_input(Dim({ (end-begin)}), aux_mem));
 }
 
 // Chris -- this should be a library function
@@ -27,7 +27,7 @@ Expression repeat(ComputationGraph &cg, unsigned num, cnn::real value, std::vect
 {
     aux_mem->clear();
     aux_mem->resize(num, value);
-    return Expression(&cg, cg.add_input(Dim({long(num)}), aux_mem));
+    return Expression(&cg, cg.add_input(Dim({num}), aux_mem));
 }
 
 // Chris -- this should be a library function
@@ -69,7 +69,7 @@ Expression leq(const Expression &expr, cnn::real value, Expression &one, cnn::re
 
 /// source [1..T][1..NUTT] is time first and then content from each utterance
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
-vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, size_t feat_dim)
+vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, unsigned feat_dim)
 {
     size_t nutt = source.size();
     /// get the maximum length of utternace from all speakers
@@ -88,7 +88,7 @@ vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source,
             if (source[k].size() > t)
                 vm.push_back(lookup(cg, p_cs, source[k][t]));
             else
-                vm.push_back(input(cg, { (long)feat_dim }, &zero));
+                vm.push_back(input(cg, { feat_dim }, &zero));
         }
         i_x_t = concatenate_cols(vm);
         source_embeddings.push_back(i_x_t);
@@ -98,7 +98,7 @@ vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source,
 }
 
 /// return an expression for the time embedding weight
-Expression time_embedding_weight(size_t t, size_t feat_dim, size_t slen, ComputationGraph& cg, map<size_t, map<size_t, tExpression>> & m_time_embedding_weight)
+Expression time_embedding_weight(size_t t, unsigned feat_dim, unsigned slen, ComputationGraph& cg, map<size_t, map<size_t, tExpression>> & m_time_embedding_weight)
 {
     if (m_time_embedding_weight.find(t) == m_time_embedding_weight.end() || m_time_embedding_weight[t].find(feat_dim) == m_time_embedding_weight[t].end()
         || m_time_embedding_weight[t][feat_dim].find(slen) == m_time_embedding_weight[t][feat_dim].end()){
@@ -108,7 +108,7 @@ Expression time_embedding_weight(size_t t, size_t feat_dim, size_t slen, Computa
         {
             lj[k] -= (k + 1.0) / feat_dim * (1 - 2.0 * (t  + 1.0) / slen );
         }
-        Expression wgt = input(cg, { (long)feat_dim }, &lj);
+        Expression wgt = input(cg, { feat_dim }, &lj);
         cg.incremental_forward();
         m_time_embedding_weight[t][feat_dim][slen] = wgt;
     }
@@ -146,11 +146,10 @@ vector<Expression> time_embedding(unsigned & slen, const vector<vector<int>>& so
     return source_embeddings;
 }
 
-
-vector<size_t> each_sentence_length(const vector<vector<int>>& source)
+vector<unsigned> each_sentence_length(const vector<vector<int>>& source)
 {
     /// get each sentence length
-    vector<size_t> slen;
+    vector<unsigned> slen;
     for (auto p : source)
         slen.push_back(p.size());
     return slen;
@@ -173,9 +172,9 @@ bool similar_length(const vector<vector<int>>& source)
 
 /// src is without reduntent info
 /// v_src is without reduntent info
-vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
+vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<unsigned>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, cnn::real fscale )
+    Expression i_h_tm1, unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, cnn::real fscale )
 {
     Expression i_c_t;
     Expression i_e_t;
@@ -186,7 +185,7 @@ vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<
         slen += p;
 
     Expression i_wah = i_Wa * i_h_tm1;  /// [d nutt]
-    Expression i_wah_reshaped = reshape(i_wah, { long(nutt * a_dim) });
+    Expression i_wah_reshaped = reshape(i_wah, { nutt * a_dim });
     for (size_t k = 0; k < nutt; k++)
     {
         Expression i_wah_each = pickrange(i_wah_reshaped, k * a_dim, (k + 1)*a_dim);  /// [d]
@@ -219,9 +218,9 @@ vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<
 }
 
 /// use bilinear model for attention
-vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, const vector<size_t>& v_slen,
+vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, const vector<unsigned>& v_slen,
     Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, const cnn::real fscale)
+    Expression i_h_tm1, unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, const cnn::real fscale)
 {
     Expression i_c_t;
     Expression i_e_t;
@@ -239,7 +238,7 @@ vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, cons
     }
     else
         i_wah = i_wa + i_va;
-    Expression i_wah_reshaped = reshape(i_wah, { long(nutt * a_dim) });
+    Expression i_wah_reshaped = reshape(i_wah, { nutt * a_dim });
 
     Expression i_alpha_t;
 
@@ -263,8 +262,8 @@ vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, cons
 different from attention_to_source_bilinear
 this function doesn't add a bias to input
 */
-vector<Expression> attention_using_bilinear(vector<Expression> & v_src, const vector<size_t>& v_slen,
-    Expression i_Wa, Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, Expression& fscale)
+vector<Expression> attention_using_bilinear(vector<Expression> & v_src, const vector<unsigned>& v_slen,
+    Expression i_Wa, Expression i_h_tm1, unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, Expression& fscale)
 {
     Expression i_c_t;
     Expression i_e_t;
@@ -275,7 +274,7 @@ vector<Expression> attention_using_bilinear(vector<Expression> & v_src, const ve
         slen += p;
 
     Expression i_wa = i_Wa * i_h_tm1;  /// [d nutt]
-    Expression i_wah_reshaped = reshape(i_wa, { long(nutt * a_dim) });
+    Expression i_wah_reshaped = reshape(i_wa, { nutt * a_dim });
 
     Expression i_alpha_t;
 
@@ -299,8 +298,8 @@ vector<Expression> attention_using_bilinear(vector<Expression> & v_src, const ve
 /**
 use the local attention position prediction, together with the global attention
 */
-vector<Expression> attention_using_bilinear_with_local_attention(vector<Expression> & v_src, const vector<size_t>& v_slen,
-    Expression i_Wa, Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, Expression& fscale,
+vector<Expression> attention_using_bilinear_with_local_attention(vector<Expression> & v_src, const vector<unsigned>& v_slen,
+    Expression i_Wa, Expression i_h_tm1, unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, Expression& fscale,
     vector<Expression>& position)
 {
     Expression i_c_t;
@@ -321,7 +320,7 @@ vector<Expression> attention_using_bilinear_with_local_attention(vector<Expressi
     }
 
     Expression i_wa = tanh(i_Wa * i_h_tm1);  /// [d nutt]
-    Expression i_wah_reshaped = reshape(i_wa, { long(nutt * a_dim) });
+    Expression i_wah_reshaped = reshape(i_wa, { nutt * a_dim });
 
     Expression i_alpha_t;
 
@@ -345,9 +344,9 @@ vector<Expression> attention_using_bilinear_with_local_attention(vector<Expressi
     return v_input;
 }
 
-vector<Expression> local_attention_to(ComputationGraph& cg, const vector<size_t>& v_slen,
+vector<Expression> local_attention_to(ComputationGraph& cg, const vector<unsigned>& v_slen,
     Expression i_Wlp, Expression i_blp, Expression i_vlp,
-    Expression i_h_tm1, size_t nutt)
+    Expression i_h_tm1, unsigned nutt)
 {
     Expression i_c_t;
     Expression i_e_t;
@@ -358,7 +357,7 @@ vector<Expression> local_attention_to(ComputationGraph& cg, const vector<size_t>
     Expression i_wah_bias = concatenate_cols(vector<Expression>(nutt, i_blp));
     Expression i_position = logistic(i_vlp * tanh(i_wah + i_wah_bias));
 
-    Expression i_position_trans = reshape(i_position, { long(nutt), 1 });
+    Expression i_position_trans = reshape(i_position, { nutt, 1 });
     for (size_t k = 0; k < nutt; k++)
     {
         Expression i_position_each = pick(i_position_trans, k) * (v_slen[k] - 1);
@@ -370,9 +369,9 @@ vector<Expression> local_attention_to(ComputationGraph& cg, const vector<size_t>
 }
 
 
-vector<Expression> convert_to_vector(Expression & in, size_t dim, size_t nutt)
+vector<Expression> convert_to_vector(Expression & in, unsigned dim, unsigned nutt)
 {
-    Expression i_d = reshape(in, { long(dim * nutt) });
+    Expression i_d = reshape(in, { dim * nutt });
     vector<Expression> v_d;
 
     for (size_t k = 0; k < nutt; k++)
@@ -384,8 +383,8 @@ vector<Expression> convert_to_vector(Expression & in, size_t dim, size_t nutt)
 }
 
 /// use key to find value, return a vector with element for each utterance
-vector<Expression> attention_weight(const vector<size_t>& v_slen, const Expression& src_key, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt)
+vector<Expression> attention_weight(const vector<unsigned>& v_slen, const Expression& src_key, Expression i_va, Expression i_Wa,
+    Expression i_h_tm1, unsigned a_dim, unsigned nutt)
 {
     Expression i_c_t;
     Expression i_e_t;
@@ -396,7 +395,7 @@ vector<Expression> attention_weight(const vector<size_t>& v_slen, const Expressi
         slen += p;
 
     Expression i_wah = i_Wa * i_h_tm1;  /// [d nutt]
-    Expression i_wah_reshaped = reshape(i_wah, { long(nutt * a_dim) });
+    Expression i_wah_reshaped = reshape(i_wah, { nutt * a_dim });
 
     for (size_t k = 0; k < nutt; k++)
     {
@@ -428,8 +427,8 @@ vector<Expression> attention_weight(const vector<size_t>& v_slen, const Expressi
 }
 
 /// use key to find value, return a vector with element for each utterance
-vector<Expression> attention_to_key_and_retreive_value(const Expression& M_t, const vector<size_t>& v_slen,
-    const vector<Expression> & i_attention_weight, size_t nutt)
+vector<Expression> attention_to_key_and_retreive_value(const Expression& M_t, const vector<unsigned>& v_slen,
+    const vector<Expression> & i_attention_weight, unsigned nutt)
 {
 
     vector<Expression> v_input;
@@ -459,11 +458,11 @@ Expression bidirectional(int slen, const vector<vector<cnn::real>>& source, Comp
     src_bwd.resize(slen);
 
     for (int t = 0; t < source.size(); ++t) {
-        long fdim = source[t].size();
+        unsigned fdim = source[t].size();
         src_fwd[t] = input(cg, { fdim }, &source[t]);
     }
     for (int t = source.size() - 1; t >= 0; --t) {
-        long fdim = source[t].size();
+        unsigned fdim = source[t].size();
         src_bwd[t] = input(cg, { fdim }, &source[t]);
     }
 
@@ -476,13 +475,13 @@ Expression bidirectional(int slen, const vector<vector<cnn::real>>& source, Comp
 }
 
 /// returns init hidden for each utt in each layer
-vector<vector<Expression>> rnn_h0_for_each_utt(vector<Expression> v_h0, size_t nutt, size_t feat_dim)
+vector<vector<Expression>> rnn_h0_for_each_utt(vector<Expression> v_h0, unsigned nutt, unsigned feat_dim)
 {
     vector<vector<Expression>> v_each_h0;
     v_each_h0.resize(v_h0.size());
     for (size_t ly = 0; ly < v_h0.size(); ly++)
     {
-        Expression i_h = reshape(v_h0[ly], { (long)(nutt * feat_dim) });
+        Expression i_h = reshape(v_h0[ly], { (nutt * feat_dim) });
         for (size_t k = 0; k < nutt; k++)
         {
             v_each_h0[ly].push_back(pickrange(i_h, k * feat_dim, (k + 1)*feat_dim));
@@ -514,9 +513,9 @@ vector<cnn::real> get_error(Expression nd, ComputationGraph& cg)
 
 
 /// return alignment matrix to source
-vector<Expression> alignmatrix_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
+vector<Expression> alignmatrix_to_source(vector<Expression> & v_src, const vector<unsigned>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t feat_dim, size_t nutt, ComputationGraph& cg)
+    Expression i_h_tm1, unsigned a_dim, unsigned feat_dim, unsigned nutt, ComputationGraph& cg)
 {
     Expression i_c_t;
     Expression i_e_t;
@@ -530,7 +529,7 @@ vector<Expression> alignmatrix_to_source(vector<Expression> & v_src, const vecto
     display_value(i_Wa, cg);
     Expression i_wah = i_Wa * i_h_tm1;  /// [d nutt]
     display_value(i_wah, cg);
-    Expression i_wah_reshaped = reshape(i_wah, { long(nutt * a_dim) });
+    Expression i_wah_reshaped = reshape(i_wah, { nutt * a_dim });
     for (size_t k = 0; k < nutt; k++)
     {
         Expression i_wah_each = pickrange(i_wah_reshaped, k * a_dim, (k + 1)*a_dim);  /// [d]
@@ -572,9 +571,9 @@ void display_value(const Expression &source, ComputationGraph &cg, string what_t
 
     if (what_to_say.size() > 0)
         cout << what_to_say << endl;
-    for (int j = 0; j < J; ++j) {
-        for (int i = 0; i < I; ++i) {
-            cnn::real v = TensorTools::AccessElement(a, Dim(j, i));
+    for (unsigned j = 0; j < J; ++j) {
+        for (unsigned i = 0; i < I; ++i) {
+            cnn::real v = TensorTools::AccessElement(a, {j, i});
             std::cout << v << ' ';
         }
         std::cout << endl;

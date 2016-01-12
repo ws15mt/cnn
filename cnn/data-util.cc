@@ -38,7 +38,7 @@ using namespace boost::locale;
 vector<vector<Expression>> pack_obs(FCorpusPointers raw, size_t mbsize, ComputationGraph& cg, const vector<size_t>& randstt)
 {
     int nCorpus = raw.size();
-    long nutt = raw[0]->size();
+    unsigned nutt = raw[0]->size();
 
     vector<vector<Expression>> ret;
     random_device rd;
@@ -46,7 +46,7 @@ vector<vector<Expression>> pack_obs(FCorpusPointers raw, size_t mbsize, Computat
     vector<vector<cnn::real>> tgt;
     assert(randstt.size() == nutt);
 
-    int feat_dim = (*raw[0])[0][0].size();
+    unsigned feat_dim = (*raw[0])[0][0].size();
     for (auto cc : raw)
     {
         vector<vector<cnn::real>> obs;
@@ -71,7 +71,7 @@ vector<vector<Expression>> pack_obs(FCorpusPointers raw, size_t mbsize, Computat
         vector<Expression> vx(mbsize);
         for (unsigned i = 0; i < mbsize; ++i)
         {
-            vx[i] = input(cg, { (long)feat_dim, nutt }, &obs[i]);
+            vx[i] = input(cg, { feat_dim, nutt }, &obs[i]);
             cg.incremental_forward();
         }
         ret.push_back(vx); 
@@ -82,17 +82,17 @@ vector<vector<Expression>> pack_obs(FCorpusPointers raw, size_t mbsize, Computat
 
 /// utterance first ordering of data
 /// [s00 s01 s02 s10 s11 s12] where s1 is the second speaker, and s0 is the firest speaker
-vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, size_t mbsize, ComputationGraph& cg, const vector<size_t>& randstt)
+vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, unsigned mbsize, ComputationGraph& cg, const vector<size_t>& randstt)
 {
     int nCorpus = raw.size();
-    long nutt = raw[0]->size();
+    unsigned nutt= raw[0]->size();
 
     vector<vector<Expression>> ret;
     random_device rd;
 
     assert(randstt.size() == nutt);
     vector<vector<cnn::real>> tgt;
-    int feat_dim = (*raw[0])[0][0].size();
+    unsigned feat_dim= (*raw[0])[0][0].size();
 
     for (auto cc : raw)
     {
@@ -119,7 +119,7 @@ vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, size_t mbsize,
         vector<Expression> vx(nutt);
         for (unsigned i = 0; i < nutt; ++i)
         {
-            vx[i] = input(cg, { (long)feat_dim, (long)mbsize}, &obs[i]);
+            vx[i] = input(cg, { feat_dim, mbsize}, &obs[i]);
             cg.incremental_forward();
         }
         ret.push_back(vx);
@@ -307,6 +307,52 @@ Corpus read_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS,
             cerr << "Sentence in " << filename << ":" << lc << " didn't start or end with <s>, </s>\n";
             abort();
         }
+    }
+
+    if (diag.size() > 0)
+        corpus.push_back(diag);
+    cerr << lc << " lines, " << stoks << " & " << ttoks << " tokens (s & t), " << sd.size() << " & " << sd.size() << " types\n";
+    return corpus;
+}
+
+Corpus read_corpus(ifstream & in, Dict& sd, int kSRC_SOS, int kSRC_EOS, long part_size)
+{
+    string line;
+
+    Corpus corpus;
+    Dialogue diag;
+    string prv_diagid = "-1";
+    int lc = 0, stoks = 0, ttoks = 0;
+
+    long iln = 0;
+    while (getline(in, line) && iln < part_size) {
+        trim_left(line);
+        trim_right(line);
+        if (line.length() == 0)
+            break;
+        ++lc;
+        Sentence source, target;
+        string diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, false, kSRC_SOS, kSRC_EOS, false);
+        if (diagid.size() == 0)
+            break;
+
+        if (diagid != prv_diagid)
+        {
+            if (diag.size() > 0)
+                corpus.push_back(diag);
+            diag.clear();
+            prv_diagid = diagid;
+        }
+        diag.push_back(SentencePair(source, target));
+        stoks += source.size();
+        ttoks += target.size();
+
+        if ((source.front() != kSRC_SOS && source.back() != kSRC_EOS)) {
+            cerr << "Sentence in " << lc << " didn't start or end with <s>, </s>\n";
+            abort();
+        }
+        
+        iln++;
     }
 
     if (diag.size() > 0)
@@ -592,9 +638,9 @@ NumTurn2DialogId get_numturn2dialid(TupleCorpus corp)
 /// to 
 /// [v_spk1_time0 v_spk1_tim1 | v_spk2_time0 v_spk2_time1]
 /// this assumes same length
-Expression shuffle_data(Expression src, size_t nutt, size_t feat_dim, size_t slen)
+Expression shuffle_data(Expression src, unsigned nutt, unsigned feat_dim, unsigned slen)
 {
-    Expression i_src = reshape(src, {(long) (nutt * slen * feat_dim)});
+    Expression i_src = reshape(src, {nutt * slen * feat_dim});
 
     int stride = nutt * feat_dim;
     vector<Expression> i_all_spk;
@@ -621,13 +667,13 @@ Expression shuffle_data(Expression src, size_t nutt, size_t feat_dim, size_t sle
 /// [v_spk1_time0 v_spk1_tim1 | v_spk2_time0 v_spk2_time1]
 /// this assumes different source length
 /// the result vector for each element doesn't have redundence, i.e., all elements are valid.
-vector<Expression> shuffle_data(Expression src, size_t nutt, size_t feat_dim, const vector<size_t>& v_slen)
+vector<Expression> shuffle_data(Expression src, unsigned nutt, unsigned feat_dim, const vector<unsigned>& v_slen)
 {
     /// the input data is arranged into a big matrix, assuming same length of utterance
     /// but they are different length
-    size_t slen = *std::max_element(v_slen.begin(), v_slen.end());
+    unsigned slen = *std::max_element(v_slen.begin(), v_slen.end());
 
-    Expression i_src = reshape(src, { (long)(nutt * slen * feat_dim) });
+    Expression i_src = reshape(src, { nutt * slen * feat_dim });
 
     int stride = nutt * feat_dim;
     vector<Expression> i_all_spk;
@@ -770,7 +816,7 @@ int read_one_line_facebook_qa(const std::string& line, std::vector<int>& v, Dict
 Expression vec2exp(const vector<cnn::real>& v_data, ComputationGraph& cg)
 {
     Expression iv;
-    iv = input(cg, { long(v_data.size()) }, &v_data);
+    iv = input(cg, { (unsigned) v_data.size() }, &v_data);
 
     return iv;
 }

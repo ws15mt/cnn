@@ -44,7 +44,17 @@ vector<real> as_vector(const Tensor& v) {
   return res;
 }
 
-cnn::real TensorTools::AccessElement(const Tensor& v, const Dim& index) {
+float TensorTools::AccessElement(const Tensor& v, int index) {
+#if HAVE_CUDA
+  float ret;
+  cudaMemcpyAsync(&ret, &v.v[index], sizeof(real), cudaMemcpyDeviceToHost);
+  return ret;
+#else
+  return v.v[index];
+#endif
+}
+
+float TensorTools::AccessElement(const Tensor& v, const Dim& index) {
 #if HAVE_CUDA
   abort();
 #else
@@ -52,7 +62,15 @@ cnn::real TensorTools::AccessElement(const Tensor& v, const Dim& index) {
 #endif
 }
 
-void TensorTools::SetElements(const Tensor& v, const vector<cnn::real>& vec) {
+void TensorTools::SetElement(const Tensor& v, int index, float value) {
+#if HAVE_CUDA
+  cudaMemcpyAsync(&v.v[index], &value, sizeof(real), cudaMemcpyHostToDevice);
+#else
+  v.v[index] = value;
+#endif
+}
+
+void TensorTools::SetElements(const Tensor& v, const vector<float>& vec) {
 #if HAVE_CUDA
   cudaMemcpyAsync(v.v, &vec[0], sizeof(real) * vec.size(), cudaMemcpyHostToDevice);
 #else

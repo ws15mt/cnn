@@ -36,68 +36,68 @@ DGLSTMBuilder::DGLSTMBuilder(unsigned ilayers,
     string i_name;
     layers = ilayers;
     Parameters * p_x2k, *p_c2k, *p_q2k, *p_bk, *p_x2k0;
-    long layer_input_dim = input_dim;
+    unsigned layer_input_dim = input_dim;
     input_dims = vector<unsigned>(layers, layer_input_dim);
-    p_x2k0 = model->add_parameters({ long(hidden_dim), long(layer_input_dim) }, iscale);
+    p_x2k0 = model->add_parameters({ hidden_dim, layer_input_dim }, iscale);
     for (unsigned i = 0; i < layers; ++i) {
         input_dims[i] = layer_input_dim;
         // i
         if (name.size() > 0)
             i_name = name + "p_x2i" + boost::lexical_cast<string>(i);
-        Parameters* p_x2i = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+        Parameters* p_x2i = model->add_parameters({ hidden_dim, layer_input_dim }, iscale, i_name);
         if (name.size() > 0)
             i_name = name + "p_h2i" + boost::lexical_cast<string>(i);
-        Parameters* p_h2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+        Parameters* p_h2i = model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name);
         if (name.size() > 0)
             i_name = name + "p_c2i" + boost::lexical_cast<string>(i);
-        Parameters* p_c2i = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+        Parameters* p_c2i = model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name);
         if (name.size() > 0)
             i_name = name + "p_bi" + boost::lexical_cast<string>(i);
-        Parameters* p_bi = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
+        Parameters* p_bi = model->add_parameters({ hidden_dim }, iscale, i_name);
 #ifdef USE_STANDARD_LSTM_DEFINE
         // f
-        Parameters* p_x2f = model->add_parameters({ long(hidden_dim), layer_input_dim });
-        Parameters* p_h2f = model->add_parameters({ long(hidden_dim), long(hidden_dim) });
-        Parameters* p_c2f = model->add_parameters({ long(hidden_dim), long(hidden_dim) });
-        Parameters* p_bf = model->add_parameters({ long(hidden_dim) });
+        Parameters* p_x2f = model->add_parameters({ hidden_dim, layer_input_dim });
+        Parameters* p_h2f = model->add_parameters({ hidden_dim, hidden_dim });
+        Parameters* p_c2f = model->add_parameters({ hidden_dim, hidden_dim });
+        Parameters* p_bf = model->add_parameters({ hidden_dim });
 #endif
         // o
         if (name.size() > 0)
             i_name = name + "p_x2o" + boost::lexical_cast<string>(i);
-        Parameters* p_x2o = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+        Parameters* p_x2o = model->add_parameters({ hidden_dim, layer_input_dim }, iscale, i_name);
         if (name.size() > 0)
             i_name = name + "p_h2o" + boost::lexical_cast<string>(i);
-        Parameters* p_h2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+        Parameters* p_h2o = model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name);
         if (name.size() > 0)
             i_name = name + "p_c2o" + boost::lexical_cast<string>(i);
-        Parameters* p_c2o = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+        Parameters* p_c2o = model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name);
         if (name.size() > 0)
             i_name = name + "p_bo" + boost::lexical_cast<string>(i);
-        Parameters* p_bo = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
+        Parameters* p_bo = model->add_parameters({ hidden_dim }, iscale, i_name);
 
         // c
         if (name.size() > 0)
             i_name = name + "p_x2c" + boost::lexical_cast<string>(i);
-        Parameters* p_x2c = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale,i_name);
+        Parameters* p_x2c = model->add_parameters({ hidden_dim, layer_input_dim }, iscale,i_name);
         if (name.size() > 0)
             i_name = name + "p_h2c" + boost::lexical_cast<string>(i);
-        Parameters* p_h2c = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+        Parameters* p_h2c = model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name);
         if (name.size() > 0)
             i_name = name + "p_bc" + boost::lexical_cast<string>(i);
-        Parameters* p_bc = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
+        Parameters* p_bc = model->add_parameters({ hidden_dim }, iscale, i_name);
 
         if (name.size() > 0)
             i_name = name + "p_x2k" + boost::lexical_cast<string>(i);
-        p_x2k = model->add_parameters({ long(hidden_dim), long(layer_input_dim) }, iscale, i_name);
+        p_x2k = model->add_parameters({ hidden_dim, layer_input_dim }, iscale, i_name);
         if (name.size() > 0)
             i_name = name + "p_c2k" + boost::lexical_cast<string>(i);
-        p_c2k = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
+        p_c2k = model->add_parameters({ hidden_dim }, iscale, i_name);
         if (name.size() > 0)
             i_name = name + "p_bk" + boost::lexical_cast<string>(i);
-        p_bk = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
+        p_bk = model->add_parameters({ hidden_dim }, iscale, i_name);
         if (name.size() > 0)
             i_name = name + "p_q2k" + boost::lexical_cast<string>(i);
-        p_q2k = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
+        p_q2k = model->add_parameters({ hidden_dim }, iscale, i_name);
 
         layer_input_dim = hidden_dim;  // output (hidden) from 1st layer is input to next
 

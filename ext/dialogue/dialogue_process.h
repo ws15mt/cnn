@@ -42,7 +42,7 @@ namespace cnn {
         Expression s2txent;
 
         DialogueProcessInfo(cnn::Model& model,
-            const vector<size_t>& layers,
+            const vector<unsigned int>& layers,
             unsigned vocab_size_src,
             unsigned vocab_size_tgt,
             const vector<unsigned>& hidden_dim,
@@ -378,7 +378,7 @@ namespace cnn {
         vector<Expression> i_errs; 
     public:
         HREDModel(cnn::Model& model,
-            const vector<size_t>& layers,
+            const vector<unsigned int>& layers,
             unsigned vocab_size_src,
             unsigned vocab_size_tgt,
             const vector<unsigned>& hidden_dim,
@@ -486,7 +486,7 @@ namespace cnn {
 
     public:
         DialogueSeq2SeqModel(cnn::Model& model,
-            const vector<size_t>& layers,
+            const vector<unsigned int>& layers,
             unsigned vocab_size_src,
             unsigned vocab_size_tgt,
             const vector<unsigned>& hidden_dim,
@@ -663,7 +663,7 @@ namespace cnn {
         size_t align_dim;
     public:
         explicit AttentionWithIntentionModel(cnn::Model& model,
-            const vector<size_t>& layers,
+            const vector<unsigned int>& layers,
             unsigned vocab_size_src,
             unsigned vocab_size_tgt,
             const vector<unsigned>& hidden_dim,
@@ -828,6 +828,189 @@ namespace cnn {
 #endif
         {
 //            s2tmodel.assign_tocxt(cg, 1);
+            vector<int> results
+                = s2tmodel.decode(cur_source, cg, td);
+            twords = results.size() - 1;
+            swords = cur_source.size() - 1;
+
+            serialise_cxt(cg);
+            return results;
+        }
+    };
+
+    template <class DBuilder>
+    class AttentionalConversation: public DialogueProcessInfo<DBuilder>{
+        size_t align_dim;
+    public:
+        explicit AttentionalConversation(cnn::Model& model,
+            const vector<unsigned int>& layers,
+            unsigned vocab_size_src,
+            unsigned vocab_size_tgt,
+            const vector<unsigned>& hidden_dim,
+            unsigned hidden_replicates,
+            unsigned decoder_additional_input = 0,
+            unsigned mem_slots = MEM_SIZE,
+            cnn::real iscale = 1.0)
+            : DialogueProcessInfo<DBuilder>(model, layers, vocab_size_src, vocab_size_tgt, hidden_dim, hidden_replicates, decoder_additional_input, mem_slots, iscale)
+        {}
+
+        // return Expression of total loss
+        // only has one pair of sentence so far
+        vector<Expression> build_graph(const Dialogue & cur_sentence, ComputationGraph& cg) override
+        {
+            vector<Expression> object;
+
+            twords = 0;
+            swords = 0;
+            nbr_turns = 1;
+            vector<Sentence> insent, osent;
+            for (auto p : cur_sentence)
+            {
+                insent.push_back(p.first);
+                osent.push_back(p.second);
+
+                twords += p.second.size() - 1;
+                swords += p.first.size() - 1;
+            }
+
+            s2tmodel.reset();
+            object = s2tmodel.build_graph(insent, osent, cg);
+
+            s2txent = sum(object);
+            assert(twords == s2tmodel.tgt_words);
+            assert(swords == s2tmodel.src_words);
+
+            return object;
+        }
+
+        /// for all speakers with history
+        /// for feedforward network
+        vector<Expression> build_graph(const Dialogue& prv_sentence, const Dialogue& cur_sentence, ComputationGraph& cg) override
+        {
+            vector<Sentence> insent, osent;
+            nbr_turns++;
+            twords = 0;
+            swords = 0;
+
+            for (auto p : cur_sentence)
+            {
+                insent.push_back(p.first);
+                osent.push_back(p.second);
+
+                twords += p.second.size() - 1;
+                swords += p.first.size() - 1;
+            }
+
+            s2tmodel.assign_cxt(cg, insent.size());
+            vector<Expression> s2terr = s2tmodel.build_graph(insent, osent, cg);
+            Expression i_err = sum(s2terr);
+            s2txent = i_err;
+
+            assert(twords == s2tmodel.tgt_words);
+            assert(swords == s2tmodel.src_words);
+
+            return s2terr;
+        }
+
+        // return Expression of total loss
+        // only has one pair of sentence so far
+        Expression build_graph(const TupleDialogue & cur_sentence, ComputationGraph& cg) override
+        {
+            Expression object;
+
+            twords = 0;
+            swords = 0;
+            nbr_turns = 1;
+            vector<Sentence> insent, osent, intention;
+            for (auto p : cur_sentence)
+            {
+                insent.push_back(p.first);
+                osent.push_back(p.middle);
+                intention.push_back(p.last);
+
+                /// no recurrent
+                twords += p.middle.size();  /// target doesn't have </s> so use the full observations
+                swords += (p.first.size()> 0) ? (p.first.size() - 1) : 0;
+            }
+
+            s2tmodel.reset();
+            s2tmodel.assign_cxt(cg, intention);
+            vector<Expression> obj = s2tmodel.build_comp_graph(insent, osent, cg);
+            if (obj.size() > 0)
+            {
+                object = sum(obj);
+
+                s2txent = object;
+                assert(twords == s2tmodel.tgt_words);
+                assert(swords == s2tmodel.src_words);
+            }
+            return object;
+        }
+
+        /// for all speakers with history
+        Expression build_graph(const TupleDialogue & prv_sentence, const TupleDialogue & cur_sentence, ComputationGraph& cg) override
+        {
+            vector<Sentence> insent, osent, intention;
+            nbr_turns++;
+
+            for (auto p : cur_sentence)
+            {
+                insent.push_back(p.first);
+                osent.push_back(p.middle);
+                intention.push_back(p.last);
+
+                /// no recurrent
+                twords += p.middle.size();  /// target doesn't have </s> so use the full observations
+                swords += (p.first.size()> 0) ? (p.first.size() - 1) : 0;
+            }
+
+            s2tmodel.assign_cxt(cg, intention);
+            vector<Expression> obj = s2tmodel.build_comp_graph(insent, osent, cg);
+            if (obj.size() > 0)
+            {
+                s2txent = sum(obj);
+                assert(twords == s2tmodel.tgt_words);
+                assert(swords == s2tmodel.src_words);
+            }
+
+            return s2txent;
+        }
+
+        void clear()
+        {
+            s2tmodel.clear();
+        }
+
+        // return Expression of total loss
+        // only has one pair of sentence so far
+#ifdef INPUT_UTF8
+        vector<int> decode(const Sentence& source, ComputationGraph& cg, Dict<std::wstring>&  td)
+#else
+        vector<int> decode(const Sentence& source, ComputationGraph& cg, Dict &  td)
+#endif
+        {
+            vector<int> results;
+
+            s2tmodel.reset();
+
+            results = s2tmodel.decode(source, cg, td);
+            twords = results.size() - 1;
+            swords = source.size() - 1;
+
+            serialise_cxt(cg);
+
+            return results;
+        }
+
+        // return Expression of total loss
+        // only has one pair of sentence so far
+#ifdef INPUT_UTF8
+        vector<int> decode(const Sentence& prv_response, const Sentence& cur_source, ComputationGraph& cg, Dict<std::wstring>&  td)
+#else
+        vector<int> decode(const Sentence& prv_response, const Sentence& cur_source, ComputationGraph& cg, Dict &  td)
+#endif
+        {
+            //            s2tmodel.assign_tocxt(cg, 1);
             vector<int> results
                 = s2tmodel.decode(cur_source, cg, td);
             twords = results.size() - 1;

@@ -94,7 +94,7 @@ public:
     void prt_model_info(size_t LAYERS, size_t VOCAB_SIZE_SRC, const vector<unsigned>& dims, size_t nreplicate, size_t decoder_additiona_input_to, size_t mem_slots, cnn::real scale);
 
     void batch_train(Model &model, Proc &am, Corpus &training, Corpus &devel,
-        Trainer &sgd, string out_file, int max_epochs, int nparallel);
+        Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real& largest_cost, bool do_segmental_training);
     void supervised_pretrain(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, cnn::real target_ppl, int min_diag_id,
         bool bcharlevel = false, bool nosplitdialogue = false);
@@ -103,6 +103,7 @@ public:
         bool bcharlevel = false, bool nosplitdialogue = false);
     void train(Model &model, Proc &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs);
     void REINFORCEtrain(Model &model, Proc &am, Proc &am_agent_mirrow, Corpus &training, Corpus &devel, Trainer &sgd, string out_file, Dict & td, int max_epochs, int nparallel, cnn::real& largest_cost, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0);
+    void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training);
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo, const string& score_embedding_fn = "");
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & sd);
     void test(Model &model, Proc &am, TupleCorpus &devel, string out_file, Dict & sd, Dict & td);
@@ -112,8 +113,8 @@ public:
 
     void nosegmental_forward_backward(Model &model, Proc &am, PDialogue &v_v_dialogues, int nutt,
         cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr);
-    void segmental_forward_backward(Model &model, Proc &am, const PDialogue &v_v_dialogues, Trainer &sgd, bool bupdate, int nutt,
-        cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t);
+    void segmental_forward_backward(Model &model, Proc &am, PDialogue &v_v_dialogues, int nutt,
+        cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr);
     void REINFORCE_nosegmental_forward_backward(Model &model, Proc &am, Proc &am_mirrow, PDialogue &v_v_dialogues, int nutt,
         cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, Trainer* sgd, Dict& sd, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0,
         bool update_model = true);
@@ -647,66 +648,48 @@ void TrainProcess<AM_t>::nosegmental_forward_backward(Model &model, AM_t &am, PD
     }
 }
 
-/**
-Deal with very long input
-Use multiple segments back-propagation
-1) first pass to do forward prop. save the last state of one segment. 
-2) delete graph of this segment, 
-3) do forward propagation on the following segment, with initial state from the last segment, which has been recorded
-4) do 1-3) untill all segments are processed
-5) check if forward prop states are there. if not, do forward prop on this segment, with the initial state from the last segment
-6) do backward prop on this segment, with the last state errors from the future segment. 
-7) do 5-6) until all segments are processed
-8) do sgd update
-*/
 template <class AM_t>
-void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, const PDialogue &v_v_dialogues, Trainer &sgd, bool bupdate, int nutt,
-    cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t)
+void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDialogue &v_v_dialogues, int nutt,
+    cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr)
 {
-    size_t seg_len = 1; /// one turn 
-    int turn_id = 0;
-    size_t seg_id = 0;
+    size_t turn_id = init_turn_id;
+    size_t i_turns = 0;
     PTurn prv_turn;
 
-    PDialogue vpd;
-    vector<PDialogue> v_vpd;
-    vector<size_t> seg2turn; 
-
-    am.reset();
-
-    /// first pass 
-    for (auto v_p : v_v_dialogues)
+    for (auto turn : v_v_dialogues)
     {
-        vpd.push_back(v_p);
-        if (turn_id % seg_len == 0)
+        ComputationGraph cg;
+        if (resetmodel)
         {
-            v_vpd.push_back(vpd);
-            nosegmental_forward_backward(model, am, vpd, nutt, dloss, dchars_s, dchars_t, seg_id == 0, turn_id);
-            seg2turn.push_back(turn_id);
-            vpd.clear();
-            seg_id++;
+            am.reset();
         }
-        turn_id++;
-    }
-    if (vpd.size() > 0)
-    {
-        v_vpd.push_back(vpd);
-        nosegmental_forward_backward(model, am, vpd, nutt, dloss, dchars_s, dchars_t, seg_id == 0, turn_id);
-        seg_id++;
-        seg2turn.push_back(turn_id);
-    }
 
-    /// second pass to update parameters
-    for (auto v_p : boost::adaptors::reverse(v_vpd))
-    {
-        seg_id--;
-        nosegmental_forward_backward(model, am, v_p, bupdate, nutt, dloss, dchars_s, dchars_t, false, seg2turn[seg_id]);
-        if (bupdate)
+        if (turn_id == 0)
+        {
+            am.build_graph(turn, cg);
+        }
+        else
+        {
+            am.build_graph(prv_turn, turn, cg);
+        }
+
+        cg.incremental_forward();
+        if (sgd != nullptr)
         {
             cg.backward();
-            sgd.update(nutt * v_p.size());
+            sgd->update(am.twords);
         }
+
+        dloss += as_scalar(cg.get_value(am.s2txent.i));
+
+        dchars_s += am.swords;
+        dchars_t += am.twords;
+
+        prv_turn = turn;
+        turn_id++;
+        i_turns++;
     }
+
 }
 
 /**
@@ -826,9 +809,8 @@ but I comment it out
 */
 template <class AM_t>
 void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
-    Trainer &sgd, string out_file, int max_epochs, int nparallel)
+    Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training)
 {
-    cnn::real best = 9e+99;
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
     unsigned si = training.size(); /// number of dialgoues in training
@@ -839,11 +821,6 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
     int report = 0;
     unsigned lines = 0;
     int epoch = 0;
-
-    ofstream out(out_file, ofstream::out);
-    boost::archive::text_oarchive oa(out);
-    oa << model;
-    out.close();
 
     reset_smoothed_ppl();
 
@@ -894,7 +871,10 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
                     cerr << endl;
                 }
 
-                nosegmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, true, 0, &sgd);
+                if (segmental_training)
+                    segmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, false, 0, &sgd);
+                else
+                    nosegmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, true, 0, &sgd);
 
                 si+=nutt;
                 lines+=nutt;
@@ -907,7 +887,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
 
         // show score on dev data?
         report++;
-        if (floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0  || fmod(lines, (cnn::real)training.size()) == 0.0) {
+        if (devel.size() > 0 && floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0 || fmod(lines, (cnn::real)training.size()) == 0.0) {
             cnn::real ddloss = 0;
             cnn::real ddchars_s = 0;
             cnn::real ddchars_t = 0;
@@ -1525,6 +1505,7 @@ Trainer* select_trainer(variables_map vm, Model* model)
     if (vm["trainer"].as<string>() == "rmspropwithmomentum")
         sgd = new RmsPropWithMomentumTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
     sgd->clip_threshold = vm["clip"].as<float>();
+    sgd->eta_decay = vm["eta_decay"].as<cnn::real>();
 
     return sgd;
 }
@@ -1546,7 +1527,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     typedef pair<Sentence, Sentence> SentencePair;
     Corpus training, devel, testcorpus;
     string line;
-
+    cnn::real largest_dev_cost = 9e+99;
     TrainProc  * ptrTrainer = nullptr;
 
     if (vm.count("readdict"))
@@ -1559,11 +1540,13 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
         ifstream in(fname, ifstream::in);
         boost::archive::text_iarchive ia(in);
 #endif
+        if (!in.is_open())
+            throw("cannot open " + fname);
         ia >> sd;
         sd.Freeze();
     }
 
-    if (vm.count("train") > 0)
+    if (vm.count("train") > 0 && vm["epochsize"].as<int>() == -1)
     {
         cerr << "Reading training data from " << vm["train"].as<string>() << "...\n";
         training = read_corpus(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), vm.count("appendBOSEOS")> 0,
@@ -1591,8 +1574,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     {
         if (vm.count("readdict") == 0)
         {
-            cerr << "must have either training corpus or dictionary" << endl;
-            abort();
+			throw std::invalid_argument("must have either training corpus or dictionary");
         }
     }
 
@@ -1661,7 +1643,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
         dims[INTENTION_LAYER] = (unsigned)vm["intentiondim"].as<int>();
 
 
-    std::vector<size_t> layers;
+    std::vector<unsigned int> layers;
     layers.resize(4, LAYERS);
     if (!vm.count("intentionlayers"))
         layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();
@@ -1700,8 +1682,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     {
         if (vm.count("outputfile") == 0)
         {
-            cerr << "missing recognition output file" << endl;
-            abort();
+			throw std::invalid_argument("missing recognition output file");
         }
         ptrTrainer->dialogue(model, hred, vm["outputfile"].as<string>(), sd);
     }
@@ -1744,9 +1725,14 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
             ptrTrainer->REINFORCEtrain(model, hred, hred_agent_mirrow, training, devel, *sgd, fname, sd, each_epoch * n_reinforce_train, vm["nparallel"].as<int>(), largest_cost, vm["reward_baseline"].as<cnn::real>(), threshold_prob);
         }
     }
+    else if (vm["epochsize"].as<int>() >1 && !vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
+    {   // split data into nparts and train
+        training.clear();
+        ptrTrainer->split_data_batch_train(vm["train"].as<string>(), model, hred, devel, *sgd, fname, vm["epochs"].as<int>(), vm["nparallel"].as<int>(), vm["epochsize"].as<int>(), vm["segmental_training"].as<bool>());
+    }
     else if (vm.count("nparallel") && !vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
     {
-        ptrTrainer->batch_train(model, hred, training, devel, *sgd, fname, vm["epochs"].as<int>(), vm["nparallel"].as<int>());
+        ptrTrainer->batch_train(model, hred, training, devel, *sgd, fname, vm["epochs"].as<int>(), vm["nparallel"].as<int>(), largest_dev_cost, vm["segmental_training"].as<bool>());
     }
     else if (!vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
     {
@@ -1756,8 +1742,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     {
         if (vm.count("outputfile") == 0)
         {
-            cerr << "missing recognition output file" << endl;
-            abort();
+			throw std::invalid_argument("missing recognition output file");
         }
         ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, test_numturn2did); 
     }
@@ -1766,6 +1751,38 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     delete ptrTrainer;
 
     return EXIT_SUCCESS;
+}
+
+/** 
+since the tool loads data into memory and that can cause memory exhaustion, this function do sampling of data for each epoch.
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &model, AM_t &am, Corpus &devel, 
+    Trainer &sgd, string out_file, 
+    int max_epochs, int nparallel, int epochsize, bool segmental_training)
+{
+    // a mirrow of the agent to generate decoding results so that their results can be evaluated
+    // this is not efficient implementation, better way is to share model parameters
+    cnn::real largest_cost = 9e+99;
+
+    ifstream ifs(train_filename);
+    for (size_t ne = 0; ne < max_epochs; ne++)
+    {
+        cerr << "Reading training data from " << train_filename << "...\n";
+        Corpus training = read_corpus(ifs, sd, kSRC_SOS, kSRC_EOS, epochsize);
+        training_numturn2did = get_numturn2dialid(training);
+
+        if (training.size() == 0)
+        {
+            ifs.seekg(0, ifs.beg);
+        }
+
+        batch_train(model, am, training, devel, sgd, out_file, ne + 1, nparallel, largest_cost, segmental_training);
+
+        if (sgd.epoch > max_epochs)
+            break;
+    }
+    ifs.close();
 }
 
 /**
@@ -1920,7 +1937,7 @@ int tuple_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_addi
         dims[INTENTION_LAYER] = (unsigned)vm["intentiondim"].as<int>();
 
 
-    std::vector<size_t> layers;
+    std::vector<unsigned int> layers;
     layers.resize(4, LAYERS);
     if (!vm.count("intentionlayers"))
         layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();

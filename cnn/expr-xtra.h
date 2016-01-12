@@ -8,6 +8,7 @@
 #include "cnn/dict.h"
 #include "cnn/expr.h"
 #include <algorithm>
+#include <map>
 
 using namespace cnn;
 using namespace std;
@@ -40,17 +41,17 @@ Expression bidirectional(int slen, const vector<int>& source, ComputationGraph& 
 
 /// source [1..T][1..NUTT] is time first and then content from each utterance
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
-vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, size_t feat_dim);
+vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, unsigned feat_dim);
 
 /// return an expression for the time embedding weight
 typedef std::map<size_t, Expression> tExpression;
-Expression time_embedding_weight(size_t t, size_t feat_dim, size_t slen, ComputationGraph & cg, map<size_t, map<size_t, tExpression>> & m_time_embedding_weight);
+Expression time_embedding_weight(size_t t, unsigned feat_dim, unsigned slen, ComputationGraph & cg, map<size_t, map<size_t, tExpression>> & m_time_embedding_weight);
 
 /// following Facebook's MemNN time encoding
 /// representation of a sentence using a single vector
 vector<Expression> time_embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, size_t feat_dim, map<size_t, map<size_t, tExpression >> &m_time_embedding_weight);
 
-vector<size_t> each_sentence_length(const vector<vector<int>>& source);
+vector<unsigned> each_sentence_length(const vector<vector<int>>& source);
 
 bool similar_length(const vector<vector<int>>& source);
 
@@ -102,7 +103,7 @@ Expression bidirectional(unsigned & slen, const vector<int>& source, Computation
 }
 
 /// returns init hidden for each utt in each layer
-std::vector<std::vector<Expression>> rnn_h0_for_each_utt(std::vector<Expression> v_h0, size_t nutt, size_t feat_dim);
+std::vector<std::vector<Expression>> rnn_h0_for_each_utt(std::vector<Expression> v_h0, unsigned nutt, unsigned feat_dim);
 
 /**
 data in return has the following format
@@ -113,9 +114,9 @@ the index 0,1,2,3,and 4 below are the sentence indices
 i.e., the redundence is put to the end of a matrix*/
 template<class Builder>
 std::vector<Expression> forward_directional(unsigned & slen, const std::vector<std::vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, std::vector<cnn::real>& zero,
-    Builder & encoder_fwd, size_t feat_dim)
+    Builder & encoder_fwd, unsigned int feat_dim)
 {
-    size_t nutt = source.size();
+    unsigned int nutt= source.size();
     /// get the maximum length of utternace from all speakers
     slen = 0;
     for (auto p : source)
@@ -134,7 +135,7 @@ std::vector<Expression> forward_directional(unsigned & slen, const std::vector<s
             if (source[k].size() > t)
                 vm.push_back(lookup(cg, p_cs, source[k][t]));
             else
-                vm.push_back(input(cg, { (long)feat_dim }, &zero));
+                vm.push_back(input(cg, { feat_dim }, &zero));
         }
         i_x_t = concatenate_cols(vm);
         src_fwd[t] = encoder_fwd.add_input(i_x_t);
@@ -155,10 +156,10 @@ now need to process the data so that the output is
 i.e., the redundence is put to the end of a matrix*/
 template<class Builder>
 vector<Expression> backward_directional(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero,
-    Builder& encoder_bwd, size_t feat_dim)
+    Builder& encoder_bwd, unsigned int feat_dim)
 {
     size_t ly; 
-    size_t nutt = source.size();
+    unsigned int nutt= source.size();
     /// get the maximum length of utternace from all speakers
     vector<int> vlen; 
     bool bsamelength = true; 
@@ -201,7 +202,7 @@ vector<Expression> backward_directional(unsigned & slen, const vector<vector<int
             }
             else
             {
-                vm.push_back(input(cg, { (long)feat_dim }, &zero));
+                vm.push_back(input(cg, { feat_dim }, &zero));
                 for (ly = 0; ly < v_h0.size(); ly++)
                     vhh_sub[ly][k] = v_each_h0[ly][k];
             }
@@ -225,7 +226,7 @@ vector<Expression> backward_directional(unsigned & slen, const vector<vector<int
 
 /// do forward and backward embedding on continuous valued vectors
 template<class Builder>
-Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, Builder * encoder_fwd, Builder* encoder_bwd, size_t feat_dim)
+Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, Builder * encoder_fwd, Builder* encoder_bwd, unsigned int feat_dim)
 {
     std::vector<Expression> source_embeddings;
 
@@ -239,35 +240,34 @@ Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, Com
     return src;
 }
 
-vector<Expression> convert_to_vector(Expression & in, size_t dim, size_t nutt);
+vector<Expression> convert_to_vector(Expression & in, unsigned dim, unsigned nutt);
 
-vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
+vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<unsigned>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& wgt, cnn::real fscale = 1.0);
-vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, const vector<size_t>& v_slen,
+    Expression i_h_tm1, unsigned a_dim, unsigned nutt, vector<Expression>& wgt, cnn::real fscale = 1.0);
+vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, const vector<unsigned>& v_slen,
     Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, cnn::real fscale = 1.0);
-vector<Expression> attention_using_bilinear(vector<Expression> & v_src, const vector<size_t>& v_slen,
-    Expression i_Wa, Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, Expression& fscale);
-vector<Expression> attention_using_bilinear_with_local_attention(vector<Expression> & v_src, const vector<size_t>& v_slen,
-    Expression i_Wa, Expression i_h_tm1, size_t a_dim, size_t nutt, vector<Expression>& v_wgt, Expression& fscale,
+    Expression i_h_tm1, unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, cnn::real fscale = 1.0);
+vector<Expression> attention_using_bilinear(vector<Expression> & v_src, const vector<unsigned>& v_slen,
+    Expression i_Wa, Expression i_h_tm1, unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, Expression& fscale);
+vector<Expression> attention_using_bilinear_with_local_attention(vector<Expression> & v_src, const vector<unsigned>& v_slen,
+    Expression i_Wa, Expression i_h_tm1, unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, Expression& fscale,
     vector<Expression>& position);
-
-vector<Expression> local_attention_to(ComputationGraph& cg, const vector<size_t> & v_slen,
+vector<Expression> local_attention_to(ComputationGraph& cg, const vector<unsigned> & v_slen,
     Expression i_Wlp, Expression i_blp, Expression i_vlp,
-    Expression i_h_tm1, size_t nutt);
+    Expression i_h_tm1, unsigned nutt);
 
 /// use key to find value, return a vector with element for each utterance
-vector<Expression> attention_weight(const vector<size_t>& v_slen, const Expression& src_key, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t nutt);
+vector<Expression> attention_weight(const vector<unsigned>& v_slen, const Expression& src_key, Expression i_va, Expression i_Wa,
+    Expression i_h_tm1, unsigned a_dim, unsigned nutt);
 
 /// use key to find value, return a vector with element for each utterance
-vector<Expression> attention_to_key_and_retreive_value(const Expression & M_t, const vector<size_t>& v_slen,
-    const vector<Expression> & i_attention_weight, size_t nutt);
+vector<Expression> attention_to_key_and_retreive_value(const Expression & M_t, const vector<unsigned>& v_slen,
+    const vector<Expression> & i_attention_weight, unsigned nutt);
 
-vector<Expression> alignmatrix_to_source(vector<Expression> & v_src, const vector<size_t>& v_slen,
+vector<Expression> alignmatrix_to_source(vector<Expression> & v_src, const vector<unsigned>& v_slen,
     Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, size_t a_dim, size_t feat_dim, size_t nutt, ComputationGraph& cg);
+    Expression i_h_tm1, unsigned a_dim, unsigned feat_dim, unsigned nutt, ComputationGraph& cg);
     
 vector<cnn::real> get_value(Expression nd, ComputationGraph& cg);
 vector<cnn::real> get_error(Expression nd, ComputationGraph& cg);
