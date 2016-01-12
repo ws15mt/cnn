@@ -39,7 +39,6 @@ void vnegate_backward(int n, const float* dEdf, float* dEdx);
 void vrelu(int n, const float* x, float* y);
 void vrelu_backward(int n, const float* fx, const float* dEdf, float* dEdx);
 void vexp(int n, const float* x, float* y);
-void vlog(int n, const float* x, float* y);
 void vtanh(int n, const float* x, float* y);
 void vtanh_backward(int n, const float* fx, const float* dEdf, float* dEdx);
 void vlog(int n, const float* x, float* y);
