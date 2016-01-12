@@ -37,7 +37,7 @@ SimpleRNNBuilder::SimpleRNNBuilder(unsigned ilayers,
 {
   string i_name;
   layers = ilayers;
-  long layer_input_dim = input_dim;
+  unsigned layer_input_dim = input_dim;
   input_dims = vector<unsigned>(layers, layer_input_dim);
   
   for (unsigned i = 0; i < layers; ++i) {
@@ -45,19 +45,19 @@ SimpleRNNBuilder::SimpleRNNBuilder(unsigned ilayers,
     
     if (name.size() > 0)
         i_name = name + "p_x2h" + boost::lexical_cast<string>(i);
-    Parameters* p_x2h = model->add_parameters({ long(hidden_dim), layer_input_dim }, iscale, i_name);
+    Parameters* p_x2h = model->add_parameters({ hidden_dim, layer_input_dim }, iscale, i_name);
     if (name.size() > 0)
         i_name = name + "p_h2h" + boost::lexical_cast<string>(i);
-    Parameters* p_h2h = model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name);
+    Parameters* p_h2h = model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name);
     if (name.size() > 0)
         i_name = name + "p_hb" + boost::lexical_cast<string>(i);
-    Parameters* p_hb = model->add_parameters({ long(hidden_dim) }, iscale, i_name);
+    Parameters* p_hb = model->add_parameters({ hidden_dim }, iscale, i_name);
     vector<Parameters*> ps = {p_x2h, p_h2h, p_hb};
     if (lagging)
     {
         if (name.size() > 0)
             i_name = name + "lagging" + boost::lexical_cast<string>(i);
-        ps.push_back(model->add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale, i_name));
+        ps.push_back(model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name));
     }
     params.push_back(ps);
     layer_input_dim = hidden_dim;

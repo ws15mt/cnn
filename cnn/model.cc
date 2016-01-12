@@ -6,6 +6,11 @@
 #include <unordered_set>
 #include <iostream>
 
+#include <fstream>
+#include <sstream>
+#include <boost/archive/text_iarchive.hpp>
+#include <boost/archive/text_oarchive.hpp>
+
 #if HAVE_CUDA
 #include <thrust/version.h>
 #include "cnn/gpu-ops.h"
@@ -20,9 +25,14 @@ ParametersBase::~ParametersBase() {}
 
 Parameters::Parameters(const Dim& d, cnn::real scale , std::string nodename) : dim(d), name(nodename) {
   values.d = g.d = d;
-  values.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
-  TensorTools::Randomize(values, scale); 
-  g.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
+  values.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
+  if (scale == 1.0)
+	  /// fix scale to sqrt(6) / sqrt(d.d.sum_dims())
+	  TensorTools::Randomize(values);
+  else 
+	  TensorTools::Randomize(values, scale);
+  g.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
+
   TensorTools::Zero(g);
 }
 
@@ -75,26 +85,20 @@ void Parameters::clear() {
   TensorTools::Zero(g);
 }
 
-LookupParameters::~LookupParameters()
-{
-    for (unsigned i = 0; i < values.size(); ++i) {
-        auto& v = values[i];
-        cnn_mm_free(v.v);
-        auto& g = grads[i];
-        cnn_mm_free(g.v);
-    }
-}
-
 LookupParameters::LookupParameters(unsigned n, const Dim& d, cnn::real scale, std::string nodename) : dim(d), values(n), grads(n), name(nodename) {
   for (unsigned i = 0; i < n; ++i) {
     auto& v = values[i];
     v.d = d;
-    v.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
-    TensorTools::Randomize(v, scale);
+    v.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
+	if (scale == 1.0)
+		/// fix scale to sqrt(6) / sqrt(d.d.sum_dims())
+		TensorTools::Randomize(v);
+	else
+		TensorTools::Randomize(v, scale);
 
     auto& g = grads[i];
     g.d = d;
-    g.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
+    g.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
     TensorTools::Zero(g);
   }
 }
@@ -219,12 +223,30 @@ Parameters* Model::add_parameters(const Dim& d, cnn::real scale, std::string nod
   return p;
 }
 
-LookupParameters* Model::add_lookup_parameters(unsigned n, const Dim& d, cnn::real scale, std::string nodename) {
+LookupParameters* Model::add_lookup_parameters(unsigned n, const Dim& d, cnn::real scale, ::string nodename) {
   LookupParameters* p = new LookupParameters(n,d, scale, nodename);
   if (nodename != "") p->name = nodename;
   all_params.push_back(p);
   lookup_params.push_back(p);
   return p;
 }
+
+void Model::reset_gradient() {
+  for (auto p : params) { p->clear(); }
+  for (auto p : lookup_params) { p->clear(); }
+}
+
+void save_cnn_model(std::string filename, Model* model) {
+    std::ofstream out(filename);
+    boost::archive::text_oarchive oa(out);
+    oa << (*model);
+};
+
+void load_cnn_model(std::string filename, Model* model) {
+    std::ifstream in(filename);
+    boost::archive::text_iarchive ia(in);
+    ia >> (*model);
+};
+
 
 } // namespace cnn

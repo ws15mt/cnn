@@ -33,7 +33,7 @@ private :
     Expression i_R;
 
 public:
-    CxtEncDecModel(cnn::Model& model, int vocab_size_src, int vocab_size_tgt, const vector<size_t>& layers, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, cnn::real iscale = 1.0) :
+    CxtEncDecModel(cnn::Model& model, int vocab_size_src, int vocab_size_tgt, const vector<unsigned int>& layers, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, cnn::real iscale = 1.0) :
         DialogueBuilder(model, vocab_size_src, vocab_size_tgt, layers, hidden_dims, hidden_replicates, decoder_use_additional_input, mem_slots, iscale)
     {
     }
@@ -97,10 +97,10 @@ public:
     };
 
     vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
-        size_t nutt = source.size();
+        unsigned int nutt = source.size();
         start_new_instance(source, cg);
 
-        vector<vector<Expression>> this_errs;
+        vector<vector<Expression>> this_errs(nutt);
         vector<Expression> errs;
 
         nutt = osent.size();
@@ -123,7 +123,7 @@ public:
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_R * i_y_t;
 
-            Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
             for (size_t i = 0; i < nutt; i++)
             {
                 if (t < osent[i].size() - 1)
@@ -195,7 +195,7 @@ public:
 
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
-        size_t nutt = trg_tok.size();
+        unsigned int nutt = trg_tok.size();
 
         Expression i_x_t;
         vector<Expression> v_x_t;
@@ -205,7 +205,7 @@ public:
             if (p >= 0)
                 i_x_x = lookup(cg, p_cs, p);
             else
-                i_x_x = input(cg, { (long)hidden_dim[DECODER_LAYER] }, &zero);
+                i_x_x = input(cg, { hidden_dim[DECODER_LAYER] }, &zero);
             v_x_t.push_back(i_x_x);
         }
         i_x_t = concatenate_cols(v_x_t);
@@ -225,7 +225,7 @@ private:
     Expression i_R;
 
 public:
-    Seq2SeqEncDecModel(cnn::Model& model, int vocab_size_src, int vocab_size_tgt, const vector<size_t>& layers, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, cnn::real iscale = 1.0) :
+    Seq2SeqEncDecModel(cnn::Model& model, unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers, const vector<unsigned>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, cnn::real iscale = 1.0) :
         DialogueBuilder(model, vocab_size_src, vocab_size_tgt, layers, hidden_dims, hidden_replicates, decoder_use_additional_input, mem_slots, iscale)
     {
     }
@@ -261,7 +261,7 @@ public:
         /// get the backward direction encoding of the source
         src_fwd = concatenate_cols(backward_directional<Builder>(slen, source, cg, p_cs, zero, encoder_bwd, hidden_dim[ENCODER_LAYER]));
 
-        v_src = shuffle_data(src_fwd, (size_t)nutt, (size_t)hidden_dim[ENCODER_LAYER], src_len);
+        v_src = shuffle_data(src_fwd, nutt, hidden_dim[ENCODER_LAYER], src_len);
 
         /// for contet
         /// have input to context RNN
@@ -273,14 +273,13 @@ public:
     };
 
     vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
-        size_t nutt = source.size();
+        unsigned int nutt = source.size();
         start_new_instance(source, cg);
 
-        vector<vector<Expression>> this_errs;
+        vector<vector<Expression>> this_errs(nutt);
         vector<Expression> errs;
 
-        nutt = osent.size();
-
+        this_errs.resize(nutt);
         int oslen = 0;
         for (auto p : osent)
             oslen = (oslen < p.size()) ? p.size() : oslen;
@@ -297,7 +296,7 @@ public:
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_R * i_y_t;
 
-            Expression x_r_t = reshape(i_r_t, { (long)vocab_size * (long)nutt });
+            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
             for (size_t i = 0; i < nutt; i++)
             {
                 if (t < osent[i].size() - 1)
@@ -371,7 +370,7 @@ public:
 
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
-        size_t nutt = trg_tok.size();
+        unsigned int nutt = trg_tok.size();
 
         Expression i_x_t;
         vector<Expression> v_x_t;
@@ -381,7 +380,7 @@ public:
             if (p >= 0)
                 i_x_x = lookup(cg, p_cs, p);
             else
-                i_x_x = input(cg, { (long)hidden_dim[DECODER_LAYER] }, &zero);
+                i_x_x = input(cg, { hidden_dim[DECODER_LAYER] }, &zero);
             v_x_t.push_back(i_x_x);
         }
         i_x_t = concatenate_cols(v_x_t);

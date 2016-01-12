@@ -34,20 +34,20 @@ namespace cnn {
         string name) 
     {
         layers = ilayers;
-        long layer_input_dim = input_dim;
+        unsigned int layer_input_dim = input_dim;
         input_dims = vector<unsigned>(layers, layer_input_dim);
 
         for (unsigned i = 0; i < layers; ++i) {
             input_dims[i] = layer_input_dim;
 
-            unsigned odim = (i == layers - 1) ? output_dim : hidden_dim;
+            unsigned int odim = (i == layers - 1) ? output_dim : hidden_dim;
             string i_name = "";
             if (name.size() > 0)
                 i_name = name + "p_x2h" + boost::lexical_cast<string>(i);
-            Parameters* p_x2h = model->add_parameters({ long(odim), layer_input_dim }, iscale, i_name);
+            Parameters* p_x2h = model->add_parameters({ (odim), layer_input_dim }, iscale, i_name);
             if (name.size() > 0)
                 i_name = name + "p_x2hb" + boost::lexical_cast<string>(i);
-            Parameters* p_x2hb = model->add_parameters({ long(odim) }, iscale, i_name);
+            Parameters* p_x2hb = model->add_parameters({ (odim) }, iscale, i_name);
             vector<Parameters*> ps = { p_x2h, p_x2hb };
             params.push_back(ps);
             layer_input_dim = hidden_dim;

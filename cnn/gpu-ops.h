@@ -42,6 +42,8 @@ void vexp(int n, const float* x, float* y);
 void vlog(int n, const float* x, float* y);
 void vtanh(int n, const float* x, float* y);
 void vtanh_backward(int n, const float* fx, const float* dEdf, float* dEdx);
+void vlog(int n, const float* x, float* y);
+void vlog_backward(int n, const float* fx, const float* dEdf, float* dEdx);
 void vlogistic(int n, const float* x, float* y);
 void vlogistic_backward(int n, const float* fx, const float* dEdf, float* dEdx);
 void l2_norm_reducer(int n, const float* x0, float* y, bool square, bool accumulate);
