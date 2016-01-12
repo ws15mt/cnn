@@ -94,11 +94,6 @@ void vexp(int n, const float* x, float* y) {
     unaryExprKernel << <tb.first, tb.second >> >(n, x, y, FExp());
 }
 
-void vlog(int n, const float* x, float* y) {
-    auto tb = SizeToBlockThreadPair(n);
-    unaryExprKernel << <tb.first, tb.second >> >(n, x, y, FLog());
-}
-
 void vnegate(int n, const float* x, float* y) {
   auto tb = SizeToBlockThreadPair(n);
   unaryExprKernel<<<tb.first, tb.second>>>(n, x, y, FNegate());
