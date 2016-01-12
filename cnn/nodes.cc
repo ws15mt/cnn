@@ -901,6 +901,7 @@ void ConcatenateColumns::forward_impl(const vector<const Tensor*>& xs, Tensor& f
       throw("error : column size too large");
   }
 
+  unsigned* pp = static_cast<unsigned*>(aux_mem);
   for (unsigned i = 0; i < xs.size(); ++i) {
 #if HAVE_CUDA
     CUDA_CHECK(cudaMemcpy(pp+i, &c, sizeof(unsigned), cudaMemcpyHostToDevice));
@@ -925,6 +926,7 @@ void ConcatenateColumns::backward_impl(const vector<const Tensor*>& xs,
                                     const Tensor& dEdf,
                                     unsigned i,
                                     Tensor& dEdxi) const {
+  unsigned* pp = static_cast<unsigned*>(aux_mem);
 #if HAVE_CUDA
   const unsigned rows = dEdxi.d.rows();
   const unsigned cols = dEdxi.d.cols();
