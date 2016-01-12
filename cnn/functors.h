@@ -3,6 +3,9 @@
 
 #include <cstdint>
 #include <limits>
+#include "cnn/cnn.h"
+
+using namespace cnn;
 
 #if HAVE_CUDA
 #define CNN_DEVICE_FUNC __device__

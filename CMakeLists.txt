@@ -5,8 +5,8 @@ set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 # you may need t do some explicit settings for cygwin and win32
 if(WIN64 OR WIN32)
-set(BOOST_ROOT C:/local/boost_1_59_0)
-set(BOOST_LIBRARYDIR C:/local/boost_1_59_0/lib64-msvc-14.0)
+set(BOOST_ROOT C:/local/boost_1_58_0)
+set(BOOST_LIBRARYDIR C:/local/boost_1_58_0/lib64-msvc-12.0)
 else()
 set(BOOST_ROOT /cygdrive/d/tools/boost_1_59_0/boost_1_59_0)
 set(BOOST_LIBRARYDIR /usr/local/lib)
