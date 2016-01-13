@@ -840,7 +840,10 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             if (si == training.size()) {
                 si = 0;
                 if (first) { first = false; }
-                else { sgd.update_epoch(); }
+                else {
+                    sgd.update_epoch();
+                    lines -= training.size();
+                }
             }
 
             if (si % order.size() == 0) {
@@ -883,11 +886,13 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             }
         }
         sgd.status();
-        cerr << "\n***Train [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
+        iteration.WordsPerSecond(dchars_t + dchars_s);
+        cerr << "\n***Train " << (lines / (cnn::real)training.size()) * 100 << " %100 of epoch[" << sgd.epoch << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
 
         // show score on dev data?
         report++;
-        if (devel.size() > 0 && floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0 || fmod(lines, (cnn::real)training.size()) == 0.0) {
+
+        if (devel.size() > 0 && (floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0 || fmod(lines, (cnn::real)training.size()) == 0.0)) {
             cnn::real ddloss = 0;
             cnn::real ddchars_s = 0;
             cnn::real ddchars_t = 0;
@@ -936,6 +941,12 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
                 sgd.eta *= 0.5; /// reduce learning rate
             }
             cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (ddloss / ddchars_t) << " ppl=" << exp(ddloss / ddchars_t) << ' ';
+        }
+        else{
+            ofstream out(out_file, ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
         }
 
         prv_epoch = floor(sgd.epoch);
@@ -1546,7 +1557,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
         sd.Freeze();
     }
 
-    if (vm.count("train") > 0 && vm["epochsize"].as<int>() == -1)
+    if ((vm.count("train") > 0 && vm["epochsize"].as<int>() == -1) || vm.count("writedict") > 0)
     {
         cerr << "Reading training data from " << vm["train"].as<string>() << "...\n";
         training = read_corpus(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), vm.count("appendBOSEOS")> 0,
@@ -1772,9 +1783,15 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
         Corpus training = read_corpus(ifs, sd, kSRC_SOS, kSRC_EOS, epochsize);
         training_numturn2did = get_numturn2dialid(training);
 
-        if (training.size() == 0)
+        if (ifs.eof() || training.size() == 0)
         {
-            ifs.seekg(0, ifs.beg);
+            ifs.close();
+            ifs.open(train_filename); 
+            
+            if (training.size() == 0)
+            {
+                continue;
+            }
         }
 
         batch_train(model, am, training, devel, sgd, out_file, ne + 1, nparallel, largest_cost, segmental_training);
