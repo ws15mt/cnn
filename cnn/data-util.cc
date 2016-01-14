@@ -261,7 +261,7 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int
     return corpus;
 }
 
-Corpus read_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool appendBSandES, bool bcharacter)
+Corpus read_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool backofftounk, bool bcharacter)
 {
     ifstream in(filename);
     string line;
@@ -278,9 +278,9 @@ Corpus read_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS,
             break;
         ++lc;
         Sentence source, target;
-        string diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, appendBSandES, kSRC_SOS, kSRC_EOS, bcharacter);
+        string diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, backofftounk, kSRC_SOS, kSRC_EOS, bcharacter);
         if (diagid.size() == 0)
-            break;
+            continue;
 
         if (diagid != prv_diagid)
         {
@@ -422,7 +422,7 @@ SentenceTuple make_triplet_sentence(const Sentence& m1, const Sentence& m2, cons
     return make_triplet<Sentence>(m1, m2, m3);
 }
 
-string MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool appendSBandSE, int kSRC_SOS, int kSRC_EOS, bool bcharacter)
+string MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool backofftounk, int kSRC_SOS, int kSRC_EOS, bool bcharacter)
 {
     std::istringstream in(line);
     std::string word;
@@ -442,7 +442,7 @@ string MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, 
     {
         cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
         cerr << "expecting diagid" << endl;
-        abort();
+        return "";
     }
 
     in >> turnid;
@@ -451,39 +451,31 @@ string MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, 
     {
         cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
         cerr << "expecting turn id" << endl;
-        abort();
+        return "";
     }
 
-    if (appendSBandSE)
-        v->push_back(kSRC_SOS);
     while (in) {
         in >> word;
         trim(word);
         if (!in) break;
         if (word == sep) {
-            if (appendSBandSE)
-                v->push_back(kSRC_EOS);
             d = td; v = t;
-            if (appendSBandSE)
-                v->push_back(kSRC_SOS);
             continue;
         }
         /// if character need to add blank before and after string, also seperate chacter with blank
         if (bcharacter && word != "<s>" & word != "</s>")
         {
-            v->push_back(d->Convert(" "));
+            v->push_back(d->Convert(" ", backofftounk));
             for (size_t k = 0; k < word.size();k++)
-                v->push_back(d->Convert(boost::lexical_cast<string>(word[k])));
+                v->push_back(d->Convert(boost::lexical_cast<string>(word[k]), backofftounk));
         }
         else
         {
             if (word == "</s>" && bcharacter)
-                v->push_back(d->Convert(" "));
-            v->push_back(d->Convert(word));
+                v->push_back(d->Convert(" ", backofftounk));
+            v->push_back(d->Convert(word, backofftounk));
         }
     }
-    if (appendSBandSE)
-        v->push_back(kSRC_EOS);
 
     return diagid;
 }

@@ -859,35 +859,44 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
                 v_selected.assign(training.size(), false);  
             }
 
+            Dialogue prv_turn;
+            size_t turn_id = 0;
+            PDialogue v_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
+            vector<int> i_sel_idx = get_same_length_dialogues(training, nparallel, i_stt_diag_id, v_selected, v_dialogues, training_numturn2did);
+            size_t nutt = i_sel_idx.size();
+
+            if (verbose)
             {
-                Dialogue prv_turn;
-                size_t turn_id = 0;
-                PDialogue v_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
-                vector<int> i_sel_idx = get_same_length_dialogues(training, nparallel, i_stt_diag_id, v_selected, v_dialogues, training_numturn2did);
-                size_t nutt = i_sel_idx.size();
+                cerr << "selected " << nutt << " :  ";
+                for (auto p : i_sel_idx)
+                    cerr << p << " ";
+                cerr << endl;
+            }
 
-                if (verbose)
-                {
-                    cerr << "selected " << nutt << " :  ";
-                    for (auto p : i_sel_idx)
-                        cerr << p << " ";
-                    cerr << endl;
-                }
+            if (segmental_training)
+                segmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, false, 0, &sgd);
+            else
+                nosegmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, true, 0, &sgd);
 
-                if (segmental_training)
-                    segmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, false, 0, &sgd);
-                else
-                    nosegmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, true, 0, &sgd);
+            si+=nutt;
+            lines+=nutt;
+            iter += nutt;
 
-                si+=nutt;
-                lines+=nutt;
-                iter += nutt;
-
+            if (iter == report_every_i - 1)
+            {
+                vector<SentencePair> vs;
+                for (auto&p : v_dialogues)
+                    vs.push_back(p[0]);
+                vector<SentencePair> vres;
+                for (auto&p : vs)
+                    am.respond(vector<SentencePair>(1,p), vres, sd);
             }
         }
+
         sgd.status();
         iteration.WordsPerSecond(dchars_t + dchars_s);
         cerr << "\n***Train " << (lines / (cnn::real)training.size()) * 100 << " %100 of epoch[" << sgd.epoch << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
+
 
         // show score on dev data?
         report++;
@@ -1560,7 +1569,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     if ((vm.count("train") > 0 && vm["epochsize"].as<int>() == -1) || vm.count("writedict") > 0)
     {
         cerr << "Reading training data from " << vm["train"].as<string>() << "...\n";
-        training = read_corpus(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), vm.count("appendBOSEOS")> 0,
+        training = read_corpus(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), false,
             vm.count("charlevel") > 0);
         sd.Freeze(); // no new word types allowed
 
@@ -1606,13 +1615,13 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
 
     if (vm.count("devel")) {
         cerr << "Reading dev data from " << vm["devel"].as<string>() << "...\n";
-        devel = read_corpus(vm["devel"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), vm.count("appendBOSEOS")> 0, vm.count("charlevel") > 0);
+        devel = read_corpus(vm["devel"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), true, vm.count("charlevel") > 0);
         devel_numturn2did = get_numturn2dialid(devel);
     }
 
     if (vm.count("testcorpus")) {
         cerr << "Reading test corpus from " << vm["testcorpus"].as<string>() << "...\n";
-        testcorpus = read_corpus(vm["testcorpus"].as<string>(), sd, kSRC_SOS, kSRC_EOS);
+        testcorpus = read_corpus(vm["testcorpus"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), true);
         test_numturn2did = get_numturn2dialid(testcorpus);
     }
 

@@ -74,7 +74,7 @@ class stDict {
       assert(id < (int)words_.size());
       return words_[id];
   }
-  
+
   void SetUnk(const std::string& word) {
     if (!frozen)
       throw std::runtime_error("Please call SetUnk() only after dictionary is frozen");

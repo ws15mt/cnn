@@ -28,9 +28,8 @@ typedef vector<SentencePair> Dialogue;
 typedef vector<Dialogue> Corpus;
 
 /// for parallel processing of data
-typedef vector<SentencePair> PTurn;  /// a turn consits of sentences pairs from difference utterances
-typedef vector<PTurn> PDialogue;  /// a dialogue consists of many turns
-typedef vector<PDialogue> PCorpus; /// a parallel corpus consists of many parallel dialogues
+typedef vector<SentencePair> PTurn;  /// a turn consits of sentences pairs from difference utterances [#sentences]
+typedef vector<PTurn> PDialogue;  /// a parallel dialogue consists of turns from each parallel dialogue [#turns][#sentences]
 
 template<class T>
 struct triplet
@@ -147,3 +146,4 @@ FBCorpus read_facebook_qa_corpus(const string &filename, size_t & diag_id, Dict&
 return flavour of a builder in string
 */
 std::string builder_flavour(variables_map vm);
+
