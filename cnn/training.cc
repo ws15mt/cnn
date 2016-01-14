@@ -42,7 +42,7 @@ void SimpleSGDTrainer::update(const std::vector<LookupParameters*> &lookup_param
     gpu::sgd_update(p->values.d.size(), p->g.v, p->values.v, eta * scale * gscale * nutt_scale, lambda);
 #else
     auto reg = (*p->values) * lambda;
-    *p->values -= (nutt_scale * (eta * scale * gscale) * *p->g - reg);
+    *p->values -= nutt_scale * (eta * scale * gscale) * *p->g + reg;
 #endif
     p->clear();
   }
@@ -52,7 +52,7 @@ void SimpleSGDTrainer::update(const std::vector<LookupParameters*> &lookup_param
       gpu::sgd_update(p->values[i].d.size(), p->grads[i].v, p->values[i].v, eta * scale * gscale * nutt_scale, lambda);
 #else
       auto reg = (*p->values[i]) * lambda;
-      *p->values[i] -= (*p->grads[i] * (eta * scale * gscale * nutt_scale) - reg);
+      *p->values[i] -= *p->grads[i] * (eta * scale * gscale * nutt_scale) + reg;
 #endif
     }
     p->clear();
