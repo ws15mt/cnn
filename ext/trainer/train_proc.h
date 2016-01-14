@@ -1806,12 +1806,12 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
             {
                 continue;
             }
-            sgd.update_epoch();
-
-            ofstream out(out_file, ofstream::out);
+            ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
             boost::archive::text_oarchive oa(out);
             oa << model;
             out.close();
+
+            sgd.update_epoch();
         }
 
         batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false);
