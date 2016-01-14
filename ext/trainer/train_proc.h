@@ -94,7 +94,7 @@ public:
     void prt_model_info(size_t LAYERS, size_t VOCAB_SIZE_SRC, const vector<unsigned>& dims, size_t nreplicate, size_t decoder_additiona_input_to, size_t mem_slots, cnn::real scale);
 
     void batch_train(Model &model, Proc &am, Corpus &training, Corpus &devel,
-        Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real& largest_cost, bool do_segmental_training);
+        Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real& largest_cost, bool do_segmental_training, bool update_sgd);
     void supervised_pretrain(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, cnn::real target_ppl, int min_diag_id,
         bool bcharlevel = false, bool nosplitdialogue = false);
@@ -809,7 +809,8 @@ but I comment it out
 */
 template <class AM_t>
 void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
-    Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training)
+    Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
+    bool sgd_update_epochs)
 {
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
@@ -840,7 +841,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             if (si == training.size()) {
                 si = 0;
                 if (first) { first = false; }
-                else {
+                else if (sgd_update_epochs){
                     sgd.update_epoch();
                     lines -= training.size();
                 }
@@ -856,7 +857,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
                     /// shuffle dailogues with the same number of turns
                     random_shuffle(p.second.begin(), p.second.end());
                 }
-                v_selected.assign(training.size(), false);  
+                v_selected.assign(training.size(), false);
             }
 
             Dialogue prv_turn;
@@ -864,6 +865,8 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             PDialogue v_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
             vector<int> i_sel_idx = get_same_length_dialogues(training, nparallel, i_stt_diag_id, v_selected, v_dialogues, training_numturn2did);
             size_t nutt = i_sel_idx.size();
+            if (nutt == 0)
+                break;
 
             if (verbose)
             {
@@ -878,8 +881,8 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             else
                 nosegmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, true, 0, &sgd);
 
-            si+=nutt;
-            lines+=nutt;
+            si += nutt;
+            lines += nutt;
             iter += nutt;
 
             if (iter == report_every_i - 1)
@@ -889,7 +892,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
                     vs.push_back(p[0]);
                 vector<SentencePair> vres;
                 for (auto&p : vs)
-                    am.respond(vector<SentencePair>(1,p), vres, sd);
+                    am.respond(vector<SentencePair>(1, p), vres, sd);
             }
         }
 
@@ -940,7 +943,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             ddloss = smoothed_ppl(ddloss);
             if (ddloss < best) {
                 best = ddloss;
-                ofstream out(out_file , ofstream::out);
+                ofstream out(out_file, ofstream::out);
                 boost::archive::text_oarchive oa(out);
                 oa << model;
                 out.close();
@@ -951,14 +954,15 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             }
             cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (ddloss / ddchars_t) << " ppl=" << exp(ddloss / ddchars_t) << ' ';
         }
-        else{
-            ofstream out(out_file, ofstream::out);
-            boost::archive::text_oarchive oa(out);
-            oa << model;
-            out.close();
-        }
 
         prv_epoch = floor(sgd.epoch);
+
+        if (sgd_update_epochs == false)
+        {
+            /// because there is no update on sgd epoch, this loop can run forever. 
+            /// so just run one iteration and quit
+            break;
+        }
     }
 }
 
@@ -1752,7 +1756,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     }
     else if (vm.count("nparallel") && !vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
     {
-        ptrTrainer->batch_train(model, hred, training, devel, *sgd, fname, vm["epochs"].as<int>(), vm["nparallel"].as<int>(), largest_dev_cost, vm["segmental_training"].as<bool>());
+        ptrTrainer->batch_train(model, hred, training, devel, *sgd, fname, vm["epochs"].as<int>(), vm["nparallel"].as<int>(), largest_dev_cost, vm["segmental_training"].as<bool>(), true);
     }
     else if (!vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
     {
@@ -1786,7 +1790,8 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
     cnn::real largest_cost = 9e+99;
 
     ifstream ifs(train_filename);
-    for (size_t ne = 0; ne < max_epochs; ne++)
+
+    while(sgd.epoch < max_epochs)
     {
         cerr << "Reading training data from " << train_filename << "...\n";
         Corpus training = read_corpus(ifs, sd, kSRC_SOS, kSRC_EOS, epochsize);
@@ -1801,12 +1806,15 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
             {
                 continue;
             }
+            sgd.update_epoch();
+
+            ofstream out(out_file, ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
         }
 
-        batch_train(model, am, training, devel, sgd, out_file, ne + 1, nparallel, largest_cost, segmental_training);
-
-        if (sgd.epoch > max_epochs)
-            break;
+        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false);
     }
     ifs.close();
 }

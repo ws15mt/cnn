@@ -48,10 +48,22 @@ struct Trainer {
 };
 
 struct SimpleSGDTrainer : public Trainer {
-  explicit SimpleSGDTrainer(Model* m, real lam = 1e-6, real e0 = 0.1) : Trainer(m, lam, e0) {}
-  void update(real nutt, real scale) override;
-  void update(const std::vector<LookupParameters*> &lookup_params, const std::vector<Parameters*> &params, real nutt = 1.0, real scale = 1);
+    explicit SimpleSGDTrainer(Model* m, real lam = 1e-6, real e0 = 0.1) : Trainer(m, lam, e0) {}
+    void update(real nutt, real scale) override;
+    void update(const std::vector<LookupParameters*> &lookup_params, const std::vector<Parameters*> &params, real nutt = 1.0, real scale = 1);
 };
+
+/** normalized gradient descent trainer
+according to the paper 
+Beyond Convexity: Stochastic Quasi-Convex Optimization @ NIPS 2015
+Elad Hazan, Princeton University; Kfir Levy*, Technion; Shai Shalev-Shwartz, Hebrew University
+todo
+struct NGDTrainer : public Trainer {
+    explicit NGDTrainer(Model* m, real lam = 1e-6, real e0 = 0.1) : Trainer(m, lam, e0) {}
+    void update(real nutt, real scale) override;
+    void update(const std::vector<LookupParameters*> &lookup_params, const std::vector<Parameters*> &params, real nutt = 1.0, real scale = 1);
+};
+*/
 
 struct MomentumSGDTrainer : public Trainer {
   explicit MomentumSGDTrainer(Model* m, real lam = 1e-6, real e0 = 0.01, real mom = 0.9) :
