@@ -225,7 +225,7 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int
         Sentence source, target;
         int diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, appendBSandES, kSRC_SOS, kSRC_EOS);
         if (diagid == -1)
-            break;
+            continue;
         if (diagid < min_diag_id)
             min_diag_id = diagid;
         if (diagid != prv_diagid)
@@ -275,7 +275,7 @@ Corpus read_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS,
         trim_left(line);
         trim_right(line);
         if (line.length() == 0)
-            break;
+            continue;
         ++lc;
         Sentence source, target;
         string diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, backofftounk, kSRC_SOS, kSRC_EOS, bcharacter);
@@ -334,7 +334,7 @@ Corpus read_corpus(ifstream & in, Dict& sd, int kSRC_SOS, int kSRC_EOS, long par
         Sentence source, target;
         string diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, false, kSRC_SOS, kSRC_EOS, false);
         if (diagid.size() == 0)
-            break;
+            continue;
 
         if (diagid != prv_diagid)
         {
@@ -502,7 +502,7 @@ int MultiTurnsReadSentence(const std::string& line,
     {
         cerr << "format should be <diagid> ||| <turnid> ||| src || tgt ||| additional " << endl;
         cerr << "expecting diagid" << endl;
-        abort();
+        return -1;
     }
 
     in >> turnid;
@@ -511,7 +511,7 @@ int MultiTurnsReadSentence(const std::string& line,
     {
         cerr << "format should be <diagid> ||| <turnid> ||| src || tgt ||| additional " << endl;
         cerr << "expecting turn id" << endl;
-        abort();
+        return -1;
     }
 
     size_t kk = 0;
@@ -554,7 +554,7 @@ int MultiTurnsReadSentencePair(const std::wstring& line, std::vector<int>* s, WD
     {
         cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
         cerr << "expecting diagid" << endl;
-        abort();
+        return -1;
     }
 
     in >> turnid;
@@ -563,7 +563,7 @@ int MultiTurnsReadSentencePair(const std::wstring& line, std::vector<int>* s, WD
     {
         cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
         cerr << "expecting turn id" << endl;
-        abort();
+        return -1;
     }
 
     if (appendSBandSE)
