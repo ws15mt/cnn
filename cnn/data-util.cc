@@ -332,8 +332,10 @@ Corpus read_corpus(ifstream & in, Dict& sd, int kSRC_SOS, int kSRC_EOS, long par
             break;
         ++lc;
         Sentence source, target;
-        string diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, false, kSRC_SOS, kSRC_EOS, false);
-        if (diagid.size() == 0)
+        string diagid;
+
+        diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, false, kSRC_SOS, kSRC_EOS, false);
+        if (diagid == "")
             continue;
 
         if (diagid != prv_diagid)
@@ -825,6 +827,8 @@ vector<cnn::real> read_embedding(const string& line, Dict& sd, int & index)
     while (in) {
         in >> word;
         trim(word);
+        if (i==0)
+            std::transform(word.begin(), word.end(), word.begin(), ::tolower);
         if (!in) break;
 
         if (i == 0)
@@ -843,6 +847,43 @@ vector<cnn::real> read_embedding(const string& line, Dict& sd, int & index)
 
     index = id;
     return v_data;
+}
+
+void read_embedding(const string& embedding_fn, Dict& sd, map<int, vector<cnn::real>> & vWordEmbedding)
+{
+    ifstream in(embedding_fn);
+    string line;
+
+    while (getline(in, line)) {
+
+        int wrd_idx;
+
+        vector<cnn::real> iv = read_embedding(line, sd, wrd_idx);
+        if (wrd_idx >= 0)
+            vWordEmbedding[wrd_idx] = iv;
+    }
+
+    in.close();
+
+    // generate word embedding for unknown words by averaging 100 words
+    vector<cnn::real> iv = vWordEmbedding.begin()->second;
+    size_t tk = 1;
+    for (auto& p : vWordEmbedding)
+    {
+        std::transform(iv.begin(), iv.end(), p.second.begin(), iv.begin(), std::plus<cnn::real>());
+        tk++;
+        if (tk > 100)
+            break;
+    }
+    std::transform(iv.begin(), iv.end(), iv.begin(), std::bind1st(std::multiplies<cnn::real>(), 1.0/100.0));
+
+    // back off to a word embedding for unk for those words that don't have embedding
+    for (auto &p : sd.GetWordList())
+    {
+        if (vWordEmbedding.find(sd.Convert(p)) != vWordEmbedding.end())
+            continue;
+        vWordEmbedding[sd.Convert(p)] = iv;
+    }
 }
 
 string builder_flavour(variables_map vm)

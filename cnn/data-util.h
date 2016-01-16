@@ -90,6 +90,11 @@ vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, unsigned mbsiz
 /// the 0.418 0.24968 -0.41242 0.1217 0.34527 -0.044457 -0.49688 -0.17862 -0.00066023 -0.6566 0.27843 -0.14767 -0.55677 
 /// return an expression and also an index value of this word according to a dictionary sd
 vector<cnn::real> read_embedding(const string& line, Dict& sd, int & index);
+
+/// read word embedding from a file with format above
+/// for words that are not in the word embeddin file, use the first 100 word embeddings to construct a representation for those words
+void read_embedding(const string& embedding_fn, Dict& sd, map<int, vector<cnn::real>> & vWordEmbedding);
+
 Expression vec2exp(const vector<cnn::real>& v_data, ComputationGraph& cg);
 
 /// return the index of the selected dialogues
