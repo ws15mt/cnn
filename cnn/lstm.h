@@ -40,6 +40,7 @@ protected:
   void new_graph_impl(ComputationGraph& cg) override;
   void start_new_sequence_impl(const std::vector<Expression>& h0) override;
   Expression add_input_impl(int prev, const Expression& x) override;
+  Expression add_input_impl(int prev, const std::vector<Expression>& x) override;
   Expression add_input_impl(const std::vector<Expression>& prv_history, const Expression& x) override;
 
 public:

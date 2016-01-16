@@ -34,6 +34,7 @@ struct GRUBuilder : public RNNBuilder {
   void new_graph_impl(ComputationGraph& cg) override;
   void start_new_sequence_impl(const std::vector<Expression>& h0) override;
   Expression add_input_impl(int prev, const Expression& x) override;
+  Expression add_input_impl(int prev, const std::vector<Expression>& x) override;
   Expression add_input_impl(const std::vector<Expression>& prev, const Expression& x) override;
 
   // first index is time, second is layer

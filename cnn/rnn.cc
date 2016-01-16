@@ -131,6 +131,32 @@ Expression SimpleRNNBuilder::add_input_impl(int prev, const Expression &in) {
     return h[t].back();
 }
 
+Expression SimpleRNNBuilder::add_input_impl(int prev, const std::vector<Expression> &in) {
+    const unsigned t = h.size();
+    h.push_back(vector<Expression>(layers));
+
+    assert(in.size() == layers);
+    Expression x = in[0];
+
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        Expression x_additional;
+        Expression y = affine_transform({ biases[i][0], vars[0], x });
+
+        if (prev == -1 && h0.size() > 0)
+            y = y + vars[1] * h0[i];
+        else if (prev >= 0)
+            y = y + vars[1] * h[prev][i];
+        Expression z = tanh(y);
+        if (i > 0)
+        {
+            z = z + in[i];
+        }
+        x = h[t][i] = z;
+    }
+    return h[t].back();
+}
+
 Expression SimpleRNNBuilder::add_input_impl(const vector<Expression>& prev_history, const Expression &in) {
     const unsigned t = h.size();
     h.push_back(vector<Expression>(layers));

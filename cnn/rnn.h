@@ -66,6 +66,16 @@ struct RNNBuilder {
     return add_input_impl(rcp, x);
   }
 
+  // add another timestep by reading in the variable x
+  // return the hidden representation of the deepest layer
+  Expression add_input(const vector<Expression>& x) {
+      sm.transition(RNNOp::add_input);
+      head.push_back(cur);
+      int rcp = cur;
+      cur = head.size() - 1;
+      return add_input_impl(rcp, x);
+  }
+
   // add another timestep, but define recurrent connection to prev
   // rather than to head[cur]
   // this can be used to construct trees, implement beam search, etc.
@@ -111,6 +121,7 @@ protected:
   virtual void new_graph_impl(ComputationGraph& cg) = 0;
   virtual void start_new_sequence_impl(const std::vector<Expression>& h_0) = 0;
   virtual Expression add_input_impl(int prev, const Expression& x) = 0;
+  virtual Expression add_input_impl(int prev, const std::vector<Expression>& x) = 0;  /// each layer has its own input
   virtual Expression add_input_impl(const std::vector<Expression>& prev_history, const Expression& x) = 0;
 public:
   /// for parameters
@@ -149,6 +160,7 @@ struct SimpleRNNBuilder : public RNNBuilder {
   void new_graph_impl(ComputationGraph& cg) override;
   void start_new_sequence_impl(const std::vector<Expression>& h_0) override;
   Expression add_input_impl(int prev, const Expression& x) override;
+  Expression add_input_impl(int prev, const std::vector<Expression>& x) override;
   Expression add_input_impl(const std::vector<Expression>& prev_history, const Expression& x) override;
 
  public:
