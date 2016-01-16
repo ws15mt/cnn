@@ -89,7 +89,9 @@ class stDict {
     map_unk = true;
   }
 
-  void clear() { words_.clear(); d_.clear();  }
+  void Clear() { words_.clear(); d_.clear();  }
+
+  std::vector<T> GetWordList() { return words_; };
 
  private:
   bool frozen;

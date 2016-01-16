@@ -153,10 +153,20 @@ void LookupParameters::squared_l2norm(cnn::real* sqnorm) const {
 }
 
 void LookupParameters::copy(const LookupParameters & param) {
-  assert(dim == param.dim);
-  for(size_t i = 0; i < param.values.size(); ++i)
-    TensorTools::CopyElements(values[i], param.values[i]);
-  this->name = param.name;
+    assert(dim == param.dim);
+    for (size_t i = 0; i < param.values.size(); ++i)
+        TensorTools::CopyElements(values[i], param.values[i]);
+    this->name = param.name;
+}
+
+void LookupParameters::copy(const std::map<int, std::vector<cnn::real>> & param) {
+    for (size_t i = 0; i < values.size(); ++i)
+    {
+        if (param.find(i) != param.end())
+            TensorTools::SetElements(values[i], param.find(i)->second);
+        else
+            break;
+    }
 }
 
 void LookupParameters::accumulate_grad(unsigned index, const Tensor& d) {

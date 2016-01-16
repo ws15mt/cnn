@@ -68,6 +68,7 @@ struct LookupParameters : public ParametersBase {
   void Initialize(unsigned index, const std::vector<cnn::real>& val);
 
   void copy(const LookupParameters & val);
+  void copy(const std::map<int, std::vector<cnn::real>> & vWordEmbedding);
   void accumulate_grad(unsigned index, const Tensor& g);
   void clear();
 
