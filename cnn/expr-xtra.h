@@ -51,6 +51,9 @@ Expression time_embedding_weight(size_t t, unsigned feat_dim, unsigned slen, Com
 /// representation of a sentence using a single vector
 vector<Expression> time_embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, size_t feat_dim, map<size_t, map<size_t, tExpression >> &m_time_embedding_weight);
 
+/// simple average of word embeddings
+vector<Expression> average_embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs);
+
 vector<unsigned> each_sentence_length(const vector<vector<int>>& source);
 
 bool similar_length(const vector<vector<int>>& source);

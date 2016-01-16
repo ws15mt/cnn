@@ -146,6 +146,36 @@ vector<Expression> time_embedding(unsigned & slen, const vector<vector<int>>& so
     return source_embeddings;
 }
 
+/// simple average of word embeddings
+vector<Expression> average_embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs)
+{
+    size_t nutt = source.size();
+    /// get the maximum length of utternace from all speakers
+    slen = 0;
+    for (auto p : source)
+        slen = (slen < p.size()) ? p.size() : slen;
+
+    std::vector<Expression> source_embeddings;
+
+    Expression i_x_t;
+
+    for (size_t k = 0; k < nutt; k++)
+    {
+        vector<Expression> vm;
+        int t = 0;
+        while (t < source[k].size())
+        {
+            Expression xij = lookup(cg, p_cs, source[k][t]);
+            vm.push_back(xij);
+
+            t++;
+        }
+        i_x_t = average(vm);
+        source_embeddings.push_back(i_x_t);
+    }
+    return source_embeddings;
+}
+
 vector<unsigned> each_sentence_length(const vector<vector<int>>& source)
 {
     /// get each sentence length
