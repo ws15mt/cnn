@@ -891,8 +891,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
                 for (auto&p : v_dialogues)
                     vs.push_back(p[0]);
                 vector<SentencePair> vres;
-                for (auto&p : vs)
-                    am.respond(vector<SentencePair>(1, p), vres, sd);
+                am.respond(vs, vres, sd);
             }
         }
 
@@ -1673,6 +1672,15 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
         layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();
     rnn_t hred(model, layers, VOCAB_SIZE_SRC, VOCAB_SIZE_TGT, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
     prt_model_info<rnn_t, TrainProc>(LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
+
+    /// read embedding if specified
+    if (vm["embeddingfn"].as<string>().size() > 0)
+    {
+        map<int, vector<cnn::real>> vWordEmbedding;
+        string emb_filename = vm["embeddingfn"].as<string>();
+        read_embedding(emb_filename, sd, vWordEmbedding);
+        hred.init_word_embedding(vWordEmbedding);
+    }
 
     if (vm.count("initialise"))
     {
