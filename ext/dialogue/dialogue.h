@@ -153,6 +153,11 @@ public:
         tgt_words = 0;
     }
 
+    void init_word_embedding(const map<int, vector<cnn::real>> & vWordEmbedding)
+    {
+        p_cs->copy(vWordEmbedding);
+    }
+
     void serialise_context(ComputationGraph& cg,
         vector<vector<cnn::real>>& v_last_cxt_s,
         vector<vector<cnn::real>>& v_last_decoder_s)
@@ -575,12 +580,23 @@ public:
              v_decoder.back()->start_new_sequence(i_h0);
      };
 
+     void start_new_instance(const std::vector<std::vector<int>> &source,
+         const std::vector<std::vector<int>> &prv_response,
+         ComputationGraph &cg)
+     {}
+
      void start_new_single_instance(const std::vector<int> &src, ComputationGraph &cg)
      {
          std::vector<std::vector<int>> source(1, src);
          start_new_instance(source, cg);
      }
 
+     vector<Expression> build_graph(const std::vector<std::vector<int>> &prv_response,
+         const std::vector<std::vector<int>> &current_user_input,
+         const std::vector<std::vector<int>>& target_response,
+         ComputationGraph &cg)
+     {}
+     
      vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
          unsigned int nutt = source.size();
          start_new_instance(source, cg);
