@@ -8,7 +8,5 @@ rnnlm2.dglstm.bat experiments for DGLSTM
 ## create class information
 python create_lm_class.py c:/data/ptbdata/ptb.trn 100 c:/data/ptbdata/wrd2cls.txt c:/data/ptbdata/cls2wrd.txt
 
-
 ## train model
-
-
+rnnlm2_cls.bat

@@ -41,21 +41,26 @@ struct RNNLanguageModel {
   vector<Parameters*> p_R;
   vector<Parameters*> p_bias;
   Parameters* p_cls, *p_cls_bias;
-  size_t ncls;
+  unsigned int ncls;
   Builder builder;
   vector<int> clssize;
-  vector<int> word2cls;
+  vector<long> word2cls;
+  vector<long> acc_cls2size;
+  vector<long> dict_wrd_id2within_class_id;
   explicit RNNLanguageModel(const vector<int>& cls2nbrwords, /// #words for each class, class starts from 0
-      const vector<int>& word2cls, Model& model) : builder(LAYERS, INPUT_DIM, HIDDEN_DIM, &model),
-      cls2words(cls2words), word2cls(word2cls)
+      const vector<long> & acc_cls2size, /// the accumulated class size
+      const vector<long>& word2cls, 
+      const vector<long>& dict_wrd_id2within_class_id,
+      Model& model) : builder(LAYERS, INPUT_DIM, HIDDEN_DIM, &model),
+      clssize(cls2nbrwords), word2cls(word2cls), acc_cls2size(acc_cls2size), dict_wrd_id2within_class_id(dict_wrd_id2within_class_id)
   {
-      n_cls = cls2words.size();
+      unsigned int n_cls = clssize.size();
       p_c = model.add_lookup_parameters(VOCAB_SIZE, {INPUT_DIM}); 
       p_cls = model.add_parameters({ n_cls, HIDDEN_DIM });
       p_cls_bias = model.add_parameters({ n_cls});
       for (size_t id = 0; id < n_cls; id++)
       {
-          size_t clssize = cls2nbrwords[id];
+          unsigned int  clssize = cls2nbrwords[id];
           p_R.push_back(model.add_parameters({ clssize, HIDDEN_DIM }));
           p_bias.push_back(model.add_parameters({ clssize }));
       }
@@ -67,7 +72,7 @@ struct RNNLanguageModel {
     builder.new_graph(cg);  // reset RNN builder for new graph
     builder.start_new_sequence();
     
-    vector<Expression> i_cls, i_cls_bias;
+    Expression i_cls, i_cls_bias;
     i_cls = parameter(cg, p_cls); 
     i_cls_bias = parameter(cg, p_cls_bias);
 
@@ -83,7 +88,6 @@ struct RNNLanguageModel {
       // y_t = RNN(x_t)
       Expression i_y_t = builder.add_input(i_x_t);
       int cls_id = word2cls[sent[t + 1]];
-      int wrd_beg = cls2word[cls_id].first;
       Expression i_r_t =  i_bias[cls_id] + i_R[cls_id] * i_y_t;
       Expression i_c_t = i_cls_bias + i_cls * i_y_t;
       if (verbose)
@@ -99,7 +103,7 @@ struct RNNLanguageModel {
 #endif
 #else
       Expression i_err_cls = pickneglogsoftmax(i_c_t, cls_id);
-      Expression i_err_prb = pickneglogsoftmax(i_r_t, sent[t+1] - wrd_beg);
+      Expression i_err_prb = pickneglogsoftmax(i_r_t, dict_wrd_id2within_class_id[sent[t + 1]]);
       errs.push_back(i_err_cls + i_err_prb);
 #endif
     }
@@ -111,42 +115,6 @@ struct RNNLanguageModel {
 #endif
   }
 
-  // return Expression for total loss
-  void RandomSample(int max_len = 150) {
-    cerr << endl;
-    ComputationGraph cg;
-    builder.new_graph(cg);  // reset RNN builder for new graph
-    builder.start_new_sequence();
-    
-    Expression i_R = parameter(cg, p_R);
-    Expression i_bias = parameter(cg, p_bias);
-    vector<Expression> errs;
-    int len = 0;
-    int cur = kSOS;
-    while(len < max_len && cur != kEOS) {
-      ++len;
-      Expression i_x_t = lookup(cg, p_c, cur);
-      // y_t = RNN(x_t)
-      Expression i_y_t = builder.add_input(i_x_t);
-      Expression i_r_t = i_bias + i_R * i_y_t;
-      
-      Expression ydist = softmax(i_r_t);
-      
-      unsigned w = 0;
-      while (w == 0 || (int)w == kSOS) {
-        auto dist = as_vector(cg.incremental_forward());
-        cnn::real p = rand01();
-        for (; w < dist.size(); ++w) {
-          p -= dist[w];
-          if (p < 0.0) { break; }
-        }
-        if (w == dist.size()) w = kEOS;
-      }
-      cerr << (len == 1 ? "" : " ") << d.Convert(w);
-      cur = w;
-    }
-    cerr << endl;
-  }
 };
 
 template <class LM_t>
@@ -199,9 +167,6 @@ void train(Model &model, LM_t &lm,
         }
         sgd->status();
         cerr << " report = " << report << " E = " << (loss / chars) << " ppl=" << exp(loss / chars) << ' ';
-
-        if (randomSample)
-            lm.RandomSample();
 
         // show score on dev data?
         report++;
@@ -256,35 +221,49 @@ void initialise(Model &model, const string &filename)
     ia >> model;
 }
 
-void load_word2cls_fn(string word2clsfn, Dict& sd, std::vector<int>& wrd2cls)
+/**
+dict_wrd_id2within_class_id : the dictionary word id to the id inside a class
+*/
+void load_word2cls_fn(string word2clsfn, Dict& sd, std::vector<long>& wrd2cls, std::vector<long>& dict_wrd_id2within_class_id)
 {
     ifstream in(word2clsfn);
     string line;
 
     wrd2cls.resize(sd.size());
+    dict_wrd_id2within_class_id.resize(sd.size());
+    map<int, int> cls2acccnt; /// the count for each class so far
     while (getline(in, line)) {
 
         std::istringstream in(line);
         std::string word;
         string cls;
 
-        while (in) {
-            in >> word;
-            in >> cls;
+        in >> word;
+        in >> cls;
 
-            int wridx = sd.Convert(word);
-            wrd2cls[wridx] = boost::lexical_cast<int>(cls);
-        }
+        int icls = boost::lexical_cast<int>(cls);
+        int wridx = sd.Convert(word);
+
+        wrd2cls[wridx] = icls;
+        if (cls2acccnt.find(icls) == cls2acccnt.end())
+            cls2acccnt[icls] = 1;
+        else
+            cls2acccnt[icls] += 1;
+        dict_wrd_id2within_class_id[wridx] = cls2acccnt[icls] - 1;
     }
     in.close();
 }
 
-void load_clssize_fn(string clsszefn, std::vector<int> & cls2size)
+/**
+acc_cls2size : the accumulated class size
+*/
+void load_clssize_fn(string clsszefn, std::vector<int> & cls2size, std::vector<long>& acc_cls2size)
 {
     ifstream in(clsszefn);
     string line;
 
     cls2size.clear(); 
+    acc_cls2size.clear();
     int idx = 1;
 
     while (getline(in, line)) {
@@ -293,16 +272,20 @@ void load_clssize_fn(string clsszefn, std::vector<int> & cls2size)
         std::string cls;
         string sze;
 
-        while (in) {
-            in >> cls;
-            in >> sze;
+        in >> cls;
+        in >> sze;
 
-            int icls = boost::lexical_cast<int>(cls);
-            if (icls != idx)
-                throw("class id should start from 1 and then consecuitively increasing with step 1");
+        int icls = boost::lexical_cast<int>(cls);
+        if (icls != idx)
+            throw("class id should start from 1 and then consecuitively increasing with step 1");
 
-            cls2size.push_back(boost::lexical_cast<int>(sze));
-        }
+        cls2size.push_back(boost::lexical_cast<int>(sze));
+        if (acc_cls2size.size() == 0)
+            acc_cls2size.push_back(cls2size.back());
+        else
+            acc_cls2size.push_back(acc_cls2size.back() + cls2size.back());
+
+        idx++;
     }
     in.close();
 }
@@ -321,7 +304,7 @@ int main(int argc, char** argv) {
       ("devel,d", value<string>(), "file containing development sentences.")
       ("test,T", value<string>(), "file containing testing source sentences")
       ("word2cls", value<string>(), "word2class info file")
-      ("clssizefn", value<string>(), "class size information file")
+      ("cls2size", value<string>(), "class size information file")
       ("initialise,i", value<string>(), "load initial parameters from file")
       ("parameters,p", value<string>(), "save best parameters to this file")
       ("layers,l", value<int>()->default_value(LAYERS), "use <num> layers for RNN components")
@@ -425,20 +408,29 @@ int main(int argc, char** argv) {
   else
     sgd = new SimpleSGDTrainer(&model);
 
+  std::vector<long> wrd2cls;
+  std::vector<int> cls2size;
+  std::vector<long> acc_cls2size;
+  std::vector<long> dict_wrd_id2within_class_id;
   if (vm["word2cls"].as<string>() != "")
   {
-      load_wo, value<string>(), "word2class info file")
-      ("clssizefn", value<string>(), "class size information file")
+      load_word2cls_fn(vm["word2cls"].as<string>(), d, wrd2cls, dict_wrd_id2within_class_id);
+      load_clssize_fn(vm["cls2size"].as<string>(), cls2size, acc_cls2size);
+  }
+  else{
+      throw std::invalid_argument("need to specify word2cls and cls2size files for word clustering information.");
+  }
+
   if (vm.count("test") == 0)
   {
       if (vm.count("lstm")) {
           cerr << "%% Using LSTM recurrent units" << endl;
-          RNNLanguageModel<LSTMBuilder> lm(model);
+          RNNLanguageModel<LSTMBuilder> lm(cls2size, acc_cls2size, wrd2cls, dict_wrd_id2within_class_id, model);
           train(model, lm, training, dev, sgd, fname, generateSample);
       }
       else if (vm.count("dglstm")) {
           cerr << "%% Using DGLSTM recurrent units" << endl;
-          RNNLanguageModel<DGLSTMBuilder> lm(model);
+          RNNLanguageModel<DGLSTMBuilder> lm(cls2size, acc_cls2size, wrd2cls, dict_wrd_id2within_class_id, model);
           train(model, lm, training, dev, sgd, fname, generateSample);
       }
   }
@@ -466,14 +458,14 @@ int main(int argc, char** argv) {
       {
           if (vm.count("lstm")){
               cerr << "%% using LSTM recurrent units" << endl;
-              RNNLanguageModel<LSTMBuilder> lm(model);
+              RNNLanguageModel<LSTMBuilder> lm(cls2size, acc_cls2size, wrd2cls, dict_wrd_id2within_class_id, model);
               if (vm.count("initialise"))
                   initialise(model, vm["initialise"].as<string>());
               testcorpus(model, lm, test);
           }
           if (vm.count("dglstm")){
               cerr << "%% using DGLSTM recurrent units" << endl;
-              RNNLanguageModel<DGLSTMBuilder> lm(model);
+              RNNLanguageModel<DGLSTMBuilder> lm(cls2size, acc_cls2size, wrd2cls, dict_wrd_id2within_class_id, model);
               if (vm.count("initialise"))
                   initialise(model, vm["initialise"].as<string>());
               testcorpus(model, lm, test);
