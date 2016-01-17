@@ -241,7 +241,7 @@ void load_word2cls_fn(string word2clsfn, Dict& sd, std::vector<long>& wrd2cls, s
         in >> word;
         in >> cls;
 
-        int icls = boost::lexical_cast<int>(cls);
+        int icls = boost::lexical_cast<int>(cls) - 1;
         int wridx = sd.Convert(word);
 
         wrd2cls[wridx] = icls;
@@ -275,8 +275,8 @@ void load_clssize_fn(string clsszefn, std::vector<int> & cls2size, std::vector<l
         in >> cls;
         in >> sze;
 
-        int icls = boost::lexical_cast<int>(cls);
-        if (icls != idx)
+        int icls = boost::lexical_cast<int>(cls) - 1;
+        if (icls != idx - 1)
             throw("class id should start from 1 and then consecuitively increasing with step 1");
 
         cls2size.push_back(boost::lexical_cast<int>(sze));
