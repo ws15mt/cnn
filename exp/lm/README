@@ -1,3 +1,14 @@
-rnnlm2.bat experiments for LSTM
+#rnnlm2.bat experiments for LSTM
+## softmax on all words
+
 rnnlm2.dglstm.bat experiments for DGLSTM
+
+
+---- for class-based LM ----
+## create class information
+python create_lm_class.py c:/data/ptbdata/ptb.trn 100 c:/data/ptbdata/wrd2cls.txt c:/data/ptbdata/cls2wrd.txt
+
+
+## train model
+
 

@@ -43,11 +43,10 @@ struct RNNLanguageModel {
   Parameters* p_cls, *p_cls_bias;
   size_t ncls;
   Builder builder;
-  vector<pair<int, int>> cls2words;
+  vector<int> clssize;
   vector<int> word2cls;
-  explicit RNNLanguageModel(Model& model) : builder(LAYERS, INPUT_DIM, HIDDEN_DIM, 
-      const vector<pair<int,int>>& cls2words, /// [cls][pair[word_id_begin, word_id_end+1)] the ending index is not inclusive
-      const vector<int>& word2cls, &model) :
+  explicit RNNLanguageModel(const vector<int>& cls2nbrwords, /// #words for each class, class starts from 0
+      const vector<int>& word2cls, Model& model) : builder(LAYERS, INPUT_DIM, HIDDEN_DIM, &model),
       cls2words(cls2words), word2cls(word2cls)
   {
       n_cls = cls2words.size();
@@ -56,7 +55,7 @@ struct RNNLanguageModel {
       p_cls_bias = model.add_parameters({ n_cls});
       for (size_t id = 0; id < n_cls; id++)
       {
-          size_t clssize = cls2words[id].second - cls2words[id].first;
+          size_t clssize = cls2nbrwords[id];
           p_R.push_back(model.add_parameters({ clssize, HIDDEN_DIM }));
           p_bias.push_back(model.add_parameters({ clssize }));
       }
@@ -257,6 +256,57 @@ void initialise(Model &model, const string &filename)
     ia >> model;
 }
 
+void load_word2cls_fn(string word2clsfn, Dict& sd, std::vector<int>& wrd2cls)
+{
+    ifstream in(word2clsfn);
+    string line;
+
+    wrd2cls.resize(sd.size());
+    while (getline(in, line)) {
+
+        std::istringstream in(line);
+        std::string word;
+        string cls;
+
+        while (in) {
+            in >> word;
+            in >> cls;
+
+            int wridx = sd.Convert(word);
+            wrd2cls[wridx] = boost::lexical_cast<int>(cls);
+        }
+    }
+    in.close();
+}
+
+void load_clssize_fn(string clsszefn, std::vector<int> & cls2size)
+{
+    ifstream in(clsszefn);
+    string line;
+
+    cls2size.clear(); 
+    int idx = 1;
+
+    while (getline(in, line)) {
+
+        std::istringstream in(line);
+        std::string cls;
+        string sze;
+
+        while (in) {
+            in >> cls;
+            in >> sze;
+
+            int icls = boost::lexical_cast<int>(cls);
+            if (icls != idx)
+                throw("class id should start from 1 and then consecuitively increasing with step 1");
+
+            cls2size.push_back(boost::lexical_cast<int>(sze));
+        }
+    }
+    in.close();
+}
+
 int main(int argc, char** argv) {
   cnn::Initialize(argc, argv);
 
@@ -270,6 +320,8 @@ int main(int argc, char** argv) {
       ("train,t", value<string>(), "file containing training sentences")
       ("devel,d", value<string>(), "file containing development sentences.")
       ("test,T", value<string>(), "file containing testing source sentences")
+      ("word2cls", value<string>(), "word2class info file")
+      ("clssizefn", value<string>(), "class size information file")
       ("initialise,i", value<string>(), "load initial parameters from file")
       ("parameters,p", value<string>(), "save best parameters to this file")
       ("layers,l", value<int>()->default_value(LAYERS), "use <num> layers for RNN components")
@@ -373,6 +425,10 @@ int main(int argc, char** argv) {
   else
     sgd = new SimpleSGDTrainer(&model);
 
+  if (vm["word2cls"].as<string>() != "")
+  {
+      load_wo, value<string>(), "word2class info file")
+      ("clssizefn", value<string>(), "class size information file")
   if (vm.count("test") == 0)
   {
       if (vm.count("lstm")) {
