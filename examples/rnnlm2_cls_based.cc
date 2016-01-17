@@ -167,7 +167,7 @@ void train(Model &model, LM_t &lm,
         }
         sgd->status();
         cerr << " report = " << report << " E = " << (loss / chars) << " ppl=" << exp(loss / chars) << ' ';
-
+        iteration.WordsPerSecond(chars);
         // show score on dev data?
         report++;
         if (report % dev_every_i_reports == 0) {
