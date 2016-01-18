@@ -1673,6 +1673,12 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
     rnn_t hred(model, layers, VOCAB_SIZE_SRC, VOCAB_SIZE_TGT, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
     prt_model_info<rnn_t, TrainProc>(LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
 
+    /// read word class information
+    if (vm["word2clsfn"].as<string>().size() > 0 && vm["clssizefn"].as<string>().size() > 0)
+    {
+        hred.load_cls_info_from_file(vm["word2clsfn"].as<string>(), vm["clssizefn"].as<string>(), sd, model);
+    }
+
     /// read embedding if specified
     if (vm["embeddingfn"].as<string>().size() > 0)
     {
