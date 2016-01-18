@@ -1,6 +1,7 @@
 # ########## cnn library ##########
 # Sources:
 set(cnn_library_SRCS
+    approximator.cc
     dnn.cc
     cnn.cc
     conv.cc
@@ -34,6 +35,7 @@ set(cnn_library_SRCS
 
 # Headers:
 set(cnn_library_HDRS
+    approximator.h
     dnn.h
     aligned-mem-pool.h
     c2w.h
