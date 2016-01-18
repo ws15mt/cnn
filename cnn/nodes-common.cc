@@ -514,6 +514,7 @@ Dim SoftSign::dim_forward(const vector<Dim>& xs) const {
   return xs[0];
 }
 
+/*
 string PickNegLogSoftmax::as_string(const vector<string>& arg_names) const {
   ostringstream s;
   if(pval) {
@@ -535,6 +536,7 @@ Dim PickNegLogSoftmax::dim_forward(const vector<Dim>& xs) const {
   }
   return Dim({1}, xs[0].bd);
 }
+*/
 
 string LogSoftmax::as_string(const vector<string>& arg_names) const {
   ostringstream s;
