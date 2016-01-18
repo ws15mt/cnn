@@ -776,6 +776,12 @@ protected:
         vector<int> input(1, trg_tok);
         return decoder_step(input, cg);
     }
+
+public:
+    bool load_cls_info_from_file(string word2clsfn, string clsszefn, Dict& sd, Model& model){
+        return false;
+    }
+
 };
 
 } // namespace cnn

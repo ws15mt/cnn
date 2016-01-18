@@ -164,6 +164,11 @@ namespace cnn {
             s2tmodel.init_word_embedding(vWordEmbedding);
         }
 
+        void load_cls_info_from_file(string word2clsfn, string clsszefn, Dict& sd, Model& model)
+        {
+            s2tmodel.load_cls_info_from_file(word2clsfn, clsszefn, sd, model);
+        }
+
         void collect_candidates(const std::vector<int>& response)
         {
             
