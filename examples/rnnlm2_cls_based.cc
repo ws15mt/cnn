@@ -93,22 +93,24 @@ struct RNNLanguageModel {
       if (verbose)
 		  display_value(i_r_t, cg, "response at " + t);
     
-#if 0
-      Expression i_ydist = logsoftmax(i_r_t);
-      errs.push_back(pick(i_ydist, sent[t+1]));
+#if 1
+      Expression i_err_cls = pick(log_softmax(i_c_t), cls_id);
+      Expression i_err_prb = pick(log_softmax(i_r_t), dict_wrd_id2within_class_id[sent[t + 1]]);
+      errs.push_back(i_err_cls + i_err_prb);
 #if 0
       Expression i_ydist = softmax(i_r_t);
       i_ydist = log(i_ydist)
       errs.push_back(pick(i_ydist, sent[t+1]));
 #endif
 #else
+      ppl turns to be 0 at epoch 4, so there is a bug
       Expression i_err_cls = pickneglogsoftmax(i_c_t, cls_id);
       Expression i_err_prb = pickneglogsoftmax(i_r_t, dict_wrd_id2within_class_id[sent[t + 1]]);
       errs.push_back(i_err_cls + i_err_prb);
 #endif
     }
     Expression i_nerr = sum(errs);
-#if 0
+#if 1
     return -i_nerr;
 #else
     return i_nerr;
@@ -290,6 +292,23 @@ void load_clssize_fn(string clsszefn, std::vector<int> & cls2size, std::vector<l
     in.close();
 }
 
+bool check_info_correct(Dict& sd, const std::vector<long>& wrd2cls, const std::vector<long>& dict_wrd_id2within_class_id, const std::vector<int> & cls2size, const std::vector<long>& acc_cls2size)
+{
+    for (auto&p : sd.GetWordList())
+    {
+        long wd = sd.Convert(p);
+        int  cls = wrd2cls[wd];
+        int clssize = cls2size[cls];
+        int pos = dict_wrd_id2within_class_id[wd];
+        if (pos < 0 || pos >= clssize)
+        {
+            cerr << "word " << p << " id " << wd << " cls " << cls << " clssize " << clssize << " pos in cls " << pos << " wrong" << endl;
+            return false;
+        }
+    }
+    return true;
+}
+
 int main(int argc, char** argv) {
   cnn::Initialize(argc, argv);
 
@@ -416,6 +435,7 @@ int main(int argc, char** argv) {
   {
       load_word2cls_fn(vm["word2cls"].as<string>(), d, wrd2cls, dict_wrd_id2within_class_id);
       load_clssize_fn(vm["cls2size"].as<string>(), cls2size, acc_cls2size);
+      check_info_correct(d, wrd2cls, dict_wrd_id2within_class_id, cls2size, acc_cls2size);
   }
   else{
       throw std::invalid_argument("need to specify word2cls and cls2size files for word clustering information.");

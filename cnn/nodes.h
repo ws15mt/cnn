@@ -717,8 +717,15 @@ struct LogSoftmax : public Node {
                     Tensor& dEdxi) const override;
 };
 
+/**
+there is probably a bug in using batch implementation
+when runing on rnnlm2_cls, using pickenglogsoftmax actually get 0 PPL at epoch 4 and then crash, and that is impossible.
+when switching back to logsoftmax and do pick operation later, the results look reasonable with training PPL decreased to 40~50 at epoch 9.
+*/
+/** comment the following out
 // z = \sum_j \exp (x_i)_j
 // y = (x_1)_element - \log z
+/*
 struct PickNegLogSoftmax : public Node {
   explicit PickNegLogSoftmax(const std::initializer_list<VariableIndex>& a, unsigned v) : Node(a), val(v), pval(&val), vals(), pvals() {}
   // use this constructor if you want to change the value after the graph is constructed
@@ -741,6 +748,7 @@ struct PickNegLogSoftmax : public Node {
   std::vector<unsigned> vals;
   const std::vector<unsigned>* pvals;
 };
+*/
 
 // z = \sum_{j \in denom} \exp (x_i)_j
 // y_i = (x_1)_i - \log z

@@ -1138,6 +1138,12 @@ void PickNegLogSoftmax::forward_impl(const vector<const Tensor*>& xs, Tensor& fx
   }
 }
 
+/**
+there is probably a bug in using batch implementation
+when runing on rnnlm2_cls, using pickenglogsoftmax actually get 0 PPL at epoch 4 and then crash, and that is impossible. 
+when switching back to logsoftmax and do pick operation later, the results look reasonable with training PPL decreased to 40~50 at epoch 9. 
+*/
+/** comment the following out
 void PickNegLogSoftmax::backward_impl(const vector<const Tensor*>& xs,
                             const Tensor& fx,
                             const Tensor& dEdf,
@@ -1199,6 +1205,7 @@ void LogSoftmax::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const
     throw std::runtime_error("LogSoftmax::forward not yet implemented for multiple columns");
   }
 }
+*/
 
 void LogSoftmax::backward_impl(const vector<const Tensor*>& xs,
                           const Tensor& fx,
