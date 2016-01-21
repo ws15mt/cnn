@@ -1114,12 +1114,14 @@ public:
         if (to_cxt.size() > 0)
         {
             /// encoder starts with the last decoder's state
-            for (size_t k = 0; k < i_tgt2enc_b.size(); k++)
+            v_tgt2enc.resize(i_tgt2enc_b.size());
+#pragma omp parallel for
+            for (int k = 0; k < i_tgt2enc_b.size(); k++)
             {
                 if (nutt > 1)
-                    v_tgt2enc.push_back(concatenate_cols(std::vector<Expression>(nutt, i_tgt2enc_b[k])) + i_tgt2enc_w[k] * to_cxt[k]);
+                    v_tgt2enc[k] = concatenate_cols(std::vector<Expression>(nutt, i_tgt2enc_b[k])) + i_tgt2enc_w[k] * to_cxt[k];
                 else
-                    v_tgt2enc.push_back(i_tgt2enc_b[k] + i_tgt2enc_w[k] * to_cxt[k]);
+                    v_tgt2enc[k] = i_tgt2enc_b[k] + i_tgt2enc_w[k] * to_cxt[k];
             }
             encoder_bwd.start_new_sequence(v_tgt2enc);
         }
@@ -3725,10 +3727,11 @@ public:
 
         if (i_h0.size() == 0)
         {
-            i_h0.clear();
-            for (auto p : p_h0)
+            i_h0.resize(p_h0.size());
+#pragma omp parallel for
+            for (int k = 0; k < p_h0.size(); k++)
             {
-                i_h0.push_back(concatenate_cols(vector<Expression>(nutt, parameter(cg, p))));
+                i_h0[k] = concatenate_cols(vector<Expression>(nutt, parameter(cg, p_h0[k])));
             }
 
             combiner.new_graph(cg);

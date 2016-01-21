@@ -4,6 +4,7 @@
 #include <vector>
 #include <unordered_set>
 #include <string>
+#include <map>
 
 #include <boost/serialization/split_member.hpp>
 #include <boost/serialization/vector.hpp>

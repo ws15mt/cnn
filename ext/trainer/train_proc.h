@@ -1804,7 +1804,7 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
     cnn::real largest_cost = 9e+99;
 
     ifstream ifs(train_filename);
-
+    int trial = 0;
     while(sgd.epoch < max_epochs)
     {
         cerr << "Reading training data from " << train_filename << "...\n";
@@ -1829,6 +1829,15 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
         }
 
         batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false);
+
+        if (fmod(trial , 50) == 0)
+        {
+            ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
+        }
+        trial++;
     }
     ifs.close();
 }

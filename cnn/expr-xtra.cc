@@ -155,11 +155,12 @@ vector<Expression> average_embedding(unsigned & slen, const vector<vector<int>>&
     for (auto p : source)
         slen = (slen < p.size()) ? p.size() : slen;
 
-    std::vector<Expression> source_embeddings;
+    std::vector<Expression> source_embeddings(nutt);
 
     Expression i_x_t;
 
-    for (size_t k = 0; k < nutt; k++)
+#pragma omp parallel for
+    for (int k = 0; k < nutt; k++)
     {
         vector<Expression> vm;
         int t = 0;
@@ -171,7 +172,7 @@ vector<Expression> average_embedding(unsigned & slen, const vector<vector<int>>&
             t++;
         }
         i_x_t = average(vm);
-        source_embeddings.push_back(i_x_t);
+        source_embeddings[k] = i_x_t;
     }
     return source_embeddings;
 }
