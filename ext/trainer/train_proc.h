@@ -13,6 +13,7 @@
 #include "cnn/expr.h"
 #include "cnn/cnn-helper.h"
 #include "ext/dialogue/attention_with_intention.h"
+#include "ext/lda/lda.h"
 #include "cnn/data-util.h"
 #include "cnn/grad-check.h"
 
@@ -123,6 +124,10 @@ public:
     void reset_smoothed_ppl(){
         ppl_hist.clear();
     }
+
+public:
+    /// for LDA
+    void lda_train(variables_map vm, const Corpus &training, const Corpus &test, Dict& sd);
 
 private:
     vector<cnn::real> ppl_hist;
@@ -836,6 +841,8 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
         cnn::real dchars_t = 0;
         cnn::real dchars_tt = 0;
 
+        PDialogue v_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
+
         for (unsigned iter = 0; iter < report_every_i;) {
 
             if (si == training.size()) {
@@ -862,7 +869,6 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
 
             Dialogue prv_turn;
             size_t turn_id = 0;
-            PDialogue v_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
             vector<int> i_sel_idx = get_same_length_dialogues(training, nparallel, i_stt_diag_id, v_selected, v_dialogues, training_numturn2did);
             size_t nutt = i_sel_idx.size();
             if (nutt == 0)
@@ -884,15 +890,6 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             si += nutt;
             lines += nutt;
             iter += nutt;
-
-            if (iter == report_every_i - 1)
-            {
-                vector<SentencePair> vs;
-                for (auto&p : v_dialogues)
-                    vs.push_back(p[0]);
-                vector<SentencePair> vres;
-                am.respond(vs, vres, sd);
-            }
         }
 
         sgd.status();
@@ -900,6 +897,12 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
         cerr << "\n***Train " << (lines / (cnn::real)training.size()) * 100 << " %100 of epoch[" << sgd.epoch << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
 
 
+        vector<SentencePair> vs;
+        for (auto&p : v_dialogues)
+            vs.push_back(p[0]);
+        vector<SentencePair> vres;
+        am.respond(vs, vres, sd);
+        
         // show score on dev data?
         report++;
 
@@ -1569,7 +1572,7 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
         sd.Freeze();
     }
 
-    if ((vm.count("train") > 0 && vm["epochsize"].as<int>() == -1) || vm.count("writedict") > 0)
+    if ((vm.count("train") > 0 && vm["epochsize"].as<int>() == -1) || vm.count("writedict") > 0 || vm.count("train-lda") > 0)
     {
         cerr << "Reading training data from " << vm["train"].as<string>() << "...\n";
         training = read_corpus(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), false,
@@ -1626,6 +1629,11 @@ int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_i
         cerr << "Reading test corpus from " << vm["testcorpus"].as<string>() << "...\n";
         testcorpus = read_corpus(vm["testcorpus"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), true);
         test_numturn2did = get_numturn2dialid(testcorpus);
+    }
+
+    if (vm.count("train-lda") > 0)
+    {
+        ptrTrainer->lda_train(vm, training, devel, sd);
     }
 
     string fname;
@@ -1840,6 +1848,25 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
         trial++;
     }
     ifs.close();
+}
+
+/**
+@bcharlevel : true if character output; default false.
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::lda_train(variables_map vm, const Corpus &training, const Corpus& test, Dict& sd)
+{
+    ldaModel * pLda = new ldaModel(training, test);
+
+    pLda->init(vm);
+
+    pLda->read_data(training, sd, test);
+
+    pLda->train();
+    pLda->save_ldaModel_topWords(vm["lda-model"].as<string>() + ".topic.words", sd);
+
+    pLda->load_ldaModel(-1);
+    pLda->test(sd);
 }
 
 /**
