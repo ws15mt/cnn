@@ -201,6 +201,30 @@ std::string wstring_to_utf8(const std::wstring& str)
     return utf_to_utf<char>(str.c_str(), str.c_str() + str.size());
 }
 
+/** flatten corous to the following
+ vector<SentencePair> -> merge(perv_response, current_user) to a sentence
+*/
+void flatten_corpus(const Corpus& corpus, vector<Sentence>& sentences)
+{
+    for (auto& p : corpus)
+    {
+        int iturn = 0;
+        Sentence prv_response; 
+        for (auto& d : p)
+        {
+            if (iturn == 0)
+                sentences.push_back(d.first);
+            else{
+                Sentence this_doc = prv_response;
+                this_doc.insert(this_doc.end(), d.first.begin(), d.first.end());
+                sentences.push_back(this_doc);
+            }
+
+            prv_response = d.second;
+        }
+    }
+}
+
 Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool appendBSandES)
 {
     wifstream in(filename);

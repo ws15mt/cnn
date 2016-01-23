@@ -159,7 +159,6 @@ vector<Expression> average_embedding(unsigned & slen, const vector<vector<int>>&
 
     Expression i_x_t;
 
-#pragma omp parallel for
     for (int k = 0; k < nutt; k++)
     {
         vector<Expression> vm;
