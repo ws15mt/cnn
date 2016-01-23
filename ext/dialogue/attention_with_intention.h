@@ -1115,7 +1115,7 @@ public:
         {
             /// encoder starts with the last decoder's state
             v_tgt2enc.resize(i_tgt2enc_b.size());
-#pragma omp parallel for
+
             for (int k = 0; k < i_tgt2enc_b.size(); k++)
             {
                 if (nutt > 1)
@@ -3728,7 +3728,7 @@ public:
         if (i_h0.size() == 0)
         {
             i_h0.resize(p_h0.size());
-#pragma omp parallel for
+
             for (int k = 0; k < p_h0.size(); k++)
             {
                 i_h0[k] = concatenate_cols(vector<Expression>(nutt, parameter(cg, p_h0[k])));
@@ -3919,7 +3919,8 @@ public:
             Expression i_r_t = i_R * i_y_t;
 
             Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
-            for (size_t i = 0; i < nutt; i++)
+
+            for (int i = 0; i < nutt; i++)
             {
                 if (t < target_response[i].size() - 1)
                 {
@@ -4433,7 +4434,6 @@ public:
     }
 
 };
-
 
 
 }; // namespace cnn
