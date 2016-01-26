@@ -127,7 +127,7 @@ int MultiTurnsReadSentence(const std::string& line,
 NumTurn2DialogId get_numturn2dialid(Corpus corp);
 NumTurn2DialogId get_numturn2dialid(TupleCorpus corp);
 
-void flatten_corpus(const Corpus& corpus, vector<Sentence>& sentences);
+void flatten_corpus(const Corpus& corpus, vector<Sentence>& sentences, vector<Sentence>& responses);
 
 /// shuffle the data from 
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]

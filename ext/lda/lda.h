@@ -35,11 +35,12 @@ public:
 
     int save_ldaModel_topWords(std::string filename, Dict& sd) const;// ldaModel_name.twords: Top words in each top
     int load_ldaModel(int iter);
+    int load_ldaModel(const string & filename);
 
     int topic_of(int m);
 
     friend class boost::serialization::access;
-    template<class Archive> void serialize(Archive& ar, const unsigned int version) {
+    template<class Archive> void save(Archive& ar, const unsigned int version) const {
         ar & alpha;
         ar & beta;
         ar & K; 
@@ -51,6 +52,20 @@ public:
             ar & n_wk[v];
         ar & n_k;
     }
+    template<class Archive> void load(Archive& ar, const unsigned int version) {
+        ar & alpha;
+        ar & beta;
+        ar & K;
+        ar & M;
+        ar & V;
+        ar & n_iters;
+
+        n_wk.resize(V);
+        for (int v = 0; v < V; v++)
+            ar & n_wk[v];
+        ar & n_k;
+    }
+    BOOST_SERIALIZATION_SPLIT_MEMBER()
 
 protected:
 	/****** Enums for testing type ldaModel status  ******/
@@ -64,10 +79,9 @@ protected:
 	/****** DATA ******/
 	Sentences trngdata;				// training dataset
 	Sentences testdata;				// test dataset
+    Sentences trngresponses;         // responses
+    Sentences testresponses;         // responses
 
-	std::map<int, std::string> id2word;			// word map [int => string]
-	std::map<std::string, int> word2id;			// word map [string => int]
-    
     /****** ldaModel Parameters ******/
 	int M;							// Number of documents
 	int V; 							// Number of words in dictionary
@@ -358,7 +372,7 @@ int ldaModel::test(Dict& sd)
                 vanilla_sampling(m);
         }
         likelihood.push_back(newllhw());
-        std::cout << "Likelihood on held out documents: " << likelihood.back() << " at time " << time_ellapsed.back() << std::endl;
+        std::cout << "Likelihood on held out documents: " << likelihood.back() << std::endl;
 
         /// compute the topic of each test sentence
         for (int m = 0; m < test_M; m++)
@@ -371,7 +385,17 @@ int ldaModel::test(Dict& sd)
                 string wrd = sd.Convert(w);
                 ostr = ostr + wrd + " ";
             }
-            cout << ostr << " : topic " << this_topic << endl;
+            cout << ostr << " ||| topic " << this_topic;
+            if (testresponses.size() > 0)
+            {
+                string ostr = "";
+                for (auto & w : testresponses[m])
+                {
+                    string wrd = sd.Convert(w);
+                    ostr = ostr + wrd + " ";
+                }
+                cout << " ||| " << ostr << endl;
+            }
         }
     }
     return 0;
@@ -379,11 +403,11 @@ int ldaModel::test(Dict& sd)
 
 int ldaModel::read_data(const Corpus & training, const Dict& sd, const Corpus& testing)
 {
-    flatten_corpus(training, trngdata);
+    flatten_corpus(training, trngdata, trngresponses);
     V = sd.size();
     M = trngdata.size();
     
-    flatten_corpus(testing, testdata);
+    flatten_corpus(testing, testdata, testresponses);
     test_M = testdata.size();
 
     return training.size();
@@ -450,6 +474,7 @@ int ldaModel::init_train()
 int ldaModel::init_test()
 {
     // initialise variables for testing
+    Vbeta = V * beta;
     test_n_wk = new int*[V];
     for (int w = 0; w < V; w++)
     {
@@ -496,6 +521,19 @@ int ldaModel::init_test()
             // total number of words assigned to topic j
             test_n_k[topic] += 1;
         }
+    }
+
+    // allocate heap memory for temporary variables
+    if (p == nullptr)
+        p = new double[K];
+    if (nd_m == nullptr)
+        nd_m = new int[K];
+    if (rev_mapper == nullptr)
+        rev_mapper = new int[K];
+    for (int k = 0; k < K; ++k)
+    {
+        nd_m[k] = 0;
+        rev_mapper[k] = -1;
     }
 
     return 0;
@@ -701,7 +739,7 @@ int ldaModel::save_ldaModel(int iter) const
     return 0;
 }
 
-int ldaModel::load_ldaModel(int iter) 
+int ldaModel::load_ldaModel(int iter)
 {
     std::string ldaModel_name = mdir + "-";
     if (iter >= 0)
@@ -717,6 +755,21 @@ int ldaModel::load_ldaModel(int iter)
 
     string fname = ldaModel_name + ".mdl";
     ifstream in(fname);
+    boost::archive::text_iarchive ia(in);
+    ia >> *this;
+
+    return 0;
+}
+
+int ldaModel::load_ldaModel(const string & filename)
+{
+    string fname = filename;
+    ifstream in(fname);
+    if (!in.is_open())
+    {
+        cerr << "cannot open " << fname << endl;
+        throw("cannot open " + fname);
+    }
     boost::archive::text_iarchive ia(in);
     ia >> *this;
 
