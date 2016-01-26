@@ -304,3 +304,319 @@ int main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_
     return EXIT_SUCCESS;
 }
 
+template <class TrainProc>
+int clustering_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_input_to = 0, size_t mem_slots = MEM_SIZE)
+{
+#ifdef INPUT_UTF8
+    kSRC_SOS = sd.Convert(L"<s>");
+    kSRC_EOS = sd.Convert(L"</s>");
+#else
+    kSRC_SOS = sd.Convert("<s>");
+    kSRC_EOS = sd.Convert("</s>");
+#endif
+    verbose = vm.count("verbose");
+    g_train_on_turns = vm["turns"].as<int>();
+
+    typedef vector<int> Sentence;
+    typedef pair<Sentence, Sentence> SentencePair;
+    Corpus training, devel, testcorpus;
+    string line;
+    cnn::real largest_dev_cost = 9e+99;
+    TrainProc  * ptrTrainer = nullptr;
+
+    if (vm.count("readdict"))
+    {
+        string fname = vm["readdict"].as<string>();
+#ifdef INPUT_UTF8
+        wifstream in(fname, wifstream::in);
+        boost::archive::text_wiarchive ia(in);
+#else
+        ifstream in(fname, ifstream::in);
+        boost::archive::text_iarchive ia(in);
+#endif
+        if (!in.is_open())
+            throw("cannot open " + fname);
+        ia >> sd;
+        sd.Freeze();
+    }
+
+    if ((vm.count("train") > 0 && vm["epochsize"].as<int>() == -1) || vm.count("writedict") > 0 || vm.count("train-lda") > 0)
+    {
+        cerr << "Reading training data from " << vm["train"].as<string>() << "...\n";
+        training = read_corpus(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), false,
+            vm.count("charlevel") > 0);
+        sd.Freeze(); // no new word types allowed
+
+        training_numturn2did = get_numturn2dialid(training);
+
+        if (vm.count("writedict"))
+        {
+            string fname = vm["writedict"].as<string>();
+#ifdef INPUT_UTF8
+            wstring wfname;
+            wfname.assign(fname.begin(), fname.end());
+            wofstream ofs(wfname);
+            boost::archive::text_woarchive oa(ofs);
+#else
+            ofstream on(fname);
+            boost::archive::text_oarchive oa(on);
+#endif
+            oa << sd;
+        }
+    }
+    else
+    {
+        if (vm.count("readdict") == 0)
+        {
+            throw std::invalid_argument("must have either training corpus or dictionary");
+        }
+    }
+
+    LAYERS = vm["layers"].as<int>();
+    HIDDEN_DIM = vm["hidden"].as<int>();
+    ALIGN_DIM = vm["align"].as<int>();
+
+    string flavour = builder_flavour(vm);
+    VOCAB_SIZE_SRC = sd.size();
+    VOCAB_SIZE_TGT = sd.size(); /// use the same dictionary
+    nparallel = vm["nparallel"].as<int>();
+    mbsize = vm["mbsize"].as < int >();
+
+    if (vm.count("beamsearchdecode"))
+    {
+        beam_search_decode = vm["beamsearchdecode"].as<int>();
+    }
+
+    if (vm.count("devel")) {
+        cerr << "Reading dev data from " << vm["devel"].as<string>() << "...\n";
+        devel = read_corpus(vm["devel"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), true, vm.count("charlevel") > 0);
+        devel_numturn2did = get_numturn2dialid(devel);
+    }
+
+    if (vm.count("testcorpus")) {
+        cerr << "Reading test corpus from " << vm["testcorpus"].as<string>() << "...\n";
+        testcorpus = read_corpus(vm["testcorpus"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), true);
+        test_numturn2did = get_numturn2dialid(testcorpus);
+    }
+
+    if (vm.count("train-lda") > 0)
+    {
+        ptrTrainer->lda_train(vm, training, devel, sd);
+    }
+
+    if (vm.count("test-lda") > 0)
+    {
+        ptrTrainer->lda_test(vm, devel, sd);
+    }
+
+    delete ptrTrainer;
+
+    return EXIT_SUCCESS;
+}
+
+/**
+training on triplet dataset
+decoder_t : the type for decoder network, can be RNN or DNN
+*/
+template <class rnn_t, class TrainProc>
+int tuple_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_input_to = 0, size_t mem_slots = MEM_SIZE)
+{
+#ifdef INPUT_UTF8
+    kSRC_SOS = sd.Convert(L"<s>");
+    kSRC_EOS = sd.Convert(L"</s>");
+#else
+    kSRC_SOS = sd.Convert("<s>");
+    kSRC_EOS = sd.Convert("</s>");
+#endif
+    verbose = vm.count("verbose");
+    g_train_on_turns = vm["turns"].as<int>();
+
+    typedef vector<int> Sentence;
+    typedef pair<Sentence, Sentence> SentencePair;
+    TupleCorpus training, devel, testcorpus;
+    string line;
+
+    TrainProc  * ptrTrainer = nullptr;
+
+    if (vm.count("readdict"))
+    {
+        string fname = vm["readdict"].as<string>();
+#ifdef INPUT_UTF8
+        wifstream in(fname, wifstream::in);
+        boost::archive::text_wiarchive ia(in);
+#else
+        ifstream in(fname, ifstream::in);
+        boost::archive::text_iarchive ia(in);
+#endif
+        ia >> sd;
+        sd.Freeze();
+    }
+
+    if (vm.count("train") > 0)
+    {
+        cerr << "Reading training data from " << vm["train"].as<string>() << "...\n";
+        training = read_tuple_corpus(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS, td, kTGT_SOS, kTGT_EOS, vm["mbsize"].as<int>());
+        sd.Freeze(); // no new word types allowed
+        td.Freeze();
+
+        training_numturn2did = get_numturn2dialid(training);
+
+        if (vm.count("writesrcdict"))
+        {
+            string fname = vm["writesrcdict"].as<string>();
+            ofstream on(fname);
+            boost::archive::text_oarchive oa(on);
+            oa << sd;
+        }
+        if (vm.count("writetgtdict"))
+        {
+            string fname = vm["writetgtdict"].as<string>();
+            ofstream on(fname);
+            boost::archive::text_oarchive oa(on);
+            oa << td;
+        }
+    }
+    else
+    {
+        if (vm.count("readtgtdict") == 0 || vm.count("readsrcdict") == 0)
+        {
+            cerr << "must have either training corpus or dictionary" << endl;
+            abort();
+        }
+        if (vm.count("readsrcdict"))
+        {
+            string fname = vm["readsrcdict"].as<string>();
+            ifstream in(fname);
+            boost::archive::text_iarchive ia(in);
+            ia >> sd;
+        }
+        if (vm.count("readtgtdict"))
+        {
+            string fname = vm["readtgtdict"].as<string>();
+            ifstream in(fname);
+            boost::archive::text_iarchive ia(in);
+            ia >> td;
+        }
+    }
+
+    LAYERS = vm["layers"].as<int>();
+    HIDDEN_DIM = vm["hidden"].as<int>();
+    ALIGN_DIM = vm["align"].as<int>();
+
+    string flavour = builder_flavour(vm);
+    VOCAB_SIZE_SRC = sd.size();
+    VOCAB_SIZE_TGT = td.size();
+    nparallel = vm["nparallel"].as<int>();
+    mbsize = vm["mbsize"].as < int >();
+
+    if (vm.count("beamsearchdecode"))
+    {
+        beam_search_decode = vm["beamsearchdecode"].as<int>();
+    }
+
+    if (vm.count("devel")) {
+        cerr << "Reading dev data from " << vm["devel"].as<string>() << "...\n";
+        unsigned min_dev_id = 0;
+        devel = read_tuple_corpus(vm["devel"].as<string>(), sd, kSRC_SOS, kSRC_EOS, td, kTGT_SOS, kTGT_EOS, vm["mbsize"].as<int>());
+        devel_numturn2did = get_numturn2dialid(devel);
+    }
+
+    if (vm.count("testcorpus")) {
+        cerr << "Reading test corpus from " << vm["testcorpus"].as<string>() << "...\n";
+        unsigned min_dev_id = 0;
+        testcorpus = read_tuple_corpus(vm["testcorpus"].as<string>(), sd, kSRC_SOS, kSRC_EOS, td, kTGT_SOS, kTGT_EOS, vm["mbsize"].as<int>());
+        test_numturn2did = get_numturn2dialid(testcorpus);
+    }
+
+    string fname;
+    if (vm.count("parameters")) {
+        fname = vm["parameters"].as<string>();
+    }
+    else {
+        ostringstream os;
+        os << "attentionwithintention"
+            << '_' << LAYERS
+            << '_' << HIDDEN_DIM
+            << '_' << flavour
+            << "-pid" << getpid() << ".params";
+        fname = os.str();
+    }
+    cerr << "Parameters will be written to: " << fname << endl;
+
+    Model model;
+    Trainer* sgd = select_trainer<rnn_t, TrainProc>(vm, &model);
+
+    cerr << "%% Using " << flavour << " recurrent units" << endl;
+
+    std::vector<unsigned> dims;
+    dims.resize(4);
+    if (!vm.count("hidden"))
+        dims[ENCODER_LAYER] = HIDDEN_DIM;
+    else
+        dims[ENCODER_LAYER] = (unsigned)vm["hidden"].as<int>();
+    dims[DECODER_LAYER] = dims[ENCODER_LAYER]; /// if not specified, encoder and decoder have the same dimension
+
+    if (!vm.count("align"))
+        dims[ALIGN_LAYER] = ALIGN_DIM;
+    else
+        dims[ALIGN_LAYER] = (unsigned)vm["align"].as<int>();
+    if (!vm.count("intentiondim"))
+        dims[INTENTION_LAYER] = HIDDEN_DIM;
+    else
+        dims[INTENTION_LAYER] = (unsigned)vm["intentiondim"].as<int>();
+
+
+    std::vector<unsigned int> layers;
+    layers.resize(4, LAYERS);
+    if (!vm.count("intentionlayers"))
+        layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();
+    rnn_t hred(model, layers, VOCAB_SIZE_SRC, VOCAB_SIZE_TGT, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
+    prt_model_info<rnn_t, TrainProc>(LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
+
+    if (vm.count("initialise"))
+    {
+        string fname = vm["initialise"].as<string>();
+        ifstream in(fname, ifstream::in);
+        if (in.is_open())
+        {
+            boost::archive::text_iarchive ia(in);
+            ia >> model;
+        }
+    }
+
+    ptrTrainer = new TrainProc();
+
+    /*
+    if (vm.count("dialogue"))
+    {
+    if (vm.count("outputfile") == 0)
+    {
+    cerr << "missing recognition output file" << endl;
+    abort();
+    }
+    ptrTrainer->dialogue(model, hred, vm["outputfile"].as<string>(), sd);
+    }
+    if (vm.count("nparallel") && !vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
+    {
+    ptrTrainer->batch_train(model, hred, training, devel, *sgd, fname, vm["epochs"].as<int>(), vm["nparallel"].as<int>());
+    }
+    */
+    if (!vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
+    {
+        ptrTrainer->train(model, hred, training, *sgd, fname, vm["epochs"].as<int>());
+    }
+    else if (vm.count("testcorpus"))
+    {
+        if (vm.count("outputfile") == 0)
+        {
+            cerr << "missing recognition output file" << endl;
+            abort();
+        }
+        ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, td);
+    }
+
+    delete sgd;
+    delete ptrTrainer;
+
+    return EXIT_SUCCESS;
+}

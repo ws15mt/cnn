@@ -4,6 +4,7 @@
 # Headers:
 set(trainer_library_HDRS
     train_proc.h
+    train_proc_wrapper.h
     eval_proc.h
 )
 
