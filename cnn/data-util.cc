@@ -204,7 +204,7 @@ std::string wstring_to_utf8(const std::wstring& str)
 /** flatten corous to the following
  vector<SentencePair> -> merge(perv_response, current_user) to a sentence
 */
-void flatten_corpus(const Corpus& corpus, vector<Sentence>& sentences)
+void flatten_corpus(const Corpus& corpus, vector<Sentence>& sentences, vector<Sentence>& response)
 {
     for (auto& p : corpus)
     {
@@ -213,14 +213,18 @@ void flatten_corpus(const Corpus& corpus, vector<Sentence>& sentences)
         for (auto& d : p)
         {
             if (iturn == 0)
+            {
                 sentences.push_back(d.first);
+            }
             else{
                 Sentence this_doc = prv_response;
                 this_doc.insert(this_doc.end(), d.first.begin(), d.first.end());
                 sentences.push_back(this_doc);
             }
 
+            response.push_back(d.second);
             prv_response = d.second;
+            iturn++;
         }
     }
 }
