@@ -29,6 +29,7 @@ public:
 	ldaModel* init(variables_map vm);// initialize the ldaModel randomly
 	int train();					// train LDA using prescribed algorithm on training data
 	int test(Dict& sd);						// test LDA according to specified method
+    int test(Dict& sd, const SentencePair& obs);
 
     /****** Initialisation aux ******/
     int read_data(const Corpus & training, const Dict& sd, const Corpus& test);				// Read training (and testing) data
@@ -119,7 +120,8 @@ protected:
 	int * test_n_k;
 	int init_test();				// init for testing
 	int vanilla_sampling(int m);	// vanila sampling doc m for testing
-    
+    int vanilla_sampling(const Sentence& obs);
+
 	/****** Functions to update sufficient statistics ******/
 	inline int add_to_topic(int w, int m, int topic, int old_topic)
 	{
@@ -251,6 +253,7 @@ ldaModel::~ldaModel()
             }
         }
         delete[] test_z;
+        test_z = nullptr;
     }
 
     if (test_n_wk)
@@ -263,6 +266,7 @@ ldaModel::~ldaModel()
             }
         }
         delete[] test_n_wk;
+        test_n_wk = nullptr;
     }
 
     if (test_n_mk)
@@ -275,6 +279,7 @@ ldaModel::~ldaModel()
             }
         }
         delete[] test_n_mk;
+        test_n_mk = nullptr;
     }
 
     if (test_n_k)	delete[] test_n_k;
@@ -401,6 +406,63 @@ int ldaModel::test(Dict& sd)
     return 0;
 }
 
+int ldaModel::test(Dict& sd, const SentencePair& obs)
+{
+    init_test();
+
+    memset(test_n_wk, 0, sizeof(int)* V * K);
+    memset(test_n_mk, 0, sizeof(int)* K);
+    memset(test_n_k, 0, sizeof(int)* K);
+    for (int n = 0; n < obs.first.size(); n++)
+    {
+        int w = obs.first[n];
+        test_z[0][n] = rand0n_uniform(K - 1);
+
+        int topic = test_z[0][n];
+
+        // number of instances of word i assigned to topic j
+        test_n_wk[w][topic] += 1;
+        // number of words in document i assigned to topic j
+        test_n_mk[0][topic] += 1;
+        // total number of words assigned to topic j
+        test_n_k[topic] += 1;
+    }
+
+    for (int iter = 1; iter <= test_n_iters; ++iter)
+    {
+        // for each doc
+        for (int m = 0; m < test_M; m++)
+            vanilla_sampling(obs.first);
+    }
+    likelihood.push_back(newllhw());
+    std::cout << "Likelihood on held out documents: " << likelihood.back() << std::endl;
+
+    /// compute the topic of each test sentence
+    for (int m = 0; m < test_M; m++)
+    {
+        int this_topic = topic_of(m);
+        string ostr = "";
+        for (int n = 0; n < testdata[m].size(); n++)
+        {
+            int w = testdata[m][n];
+            string wrd = sd.Convert(w);
+            ostr = ostr + wrd + " ";
+        }
+        cout << ostr << " ||| topic " << this_topic;
+        if (testresponses.size() > 0)
+        {
+            string ostr = "";
+            for (auto & w : testresponses[m])
+            {
+                string wrd = sd.Convert(w);
+                ostr = ostr + wrd + " ";
+            }
+            cout << " ||| " << ostr << endl;
+        }
+    }
+    return 0;
+}
+
 int ldaModel::read_data(const Corpus & training, const Dict& sd, const Corpus& testing)
 {
     flatten_corpus(training, trngdata, trngresponses);
@@ -475,51 +537,63 @@ int ldaModel::init_test()
 {
     // initialise variables for testing
     Vbeta = V * beta;
-    test_n_wk = new int*[V];
-    for (int w = 0; w < V; w++)
+    if (test_n_wk == nullptr)
     {
-        test_n_wk[w] = new int[K];
-        for (int k = 0; k < K; k++)
+        test_n_wk = new int*[V];
+        for (int w = 0; w < V; w++)
         {
-            test_n_wk[w][k] = 0;
+            test_n_wk[w] = new int[K];
+            for (int k = 0; k < K; k++)
+            {
+                test_n_wk[w][k] = 0;
+            }
         }
     }
 
-    test_n_mk = new int*[test_M];
-    for (int m = 0; m < test_M; m++)
+    if (test_n_mk == nullptr)
     {
-        test_n_mk[m] = new int[K];
-        for (int k = 0; k < K; k++)
+        test_n_mk = new int*[test_M];
+        for (int m = 0; m < test_M; m++)
         {
-            test_n_mk[m][k] = 0;
+            test_n_mk[m] = new int[K];
+            for (int k = 0; k < K; k++)
+            {
+                test_n_mk[m][k] = 0;
+            }
         }
     }
 
-    test_n_k = new int[K];
-    for (int k = 0; k < K; k++)
+    if (test_n_k == nullptr)
     {
-        test_n_k[k] = 0;
+        test_n_k = new int[K];
+        for (int k = 0; k < K; k++)
+        {
+            test_n_k[k] = 0;
+        }
     }
 
-    test_z = new int*[test_M];
-    for (int m = 0; m < testdata.size(); m++)
+    if (test_z == nullptr)
     {
-        int N = testdata[m].size();
-        test_z[m] = new int[N];
-
-        // assign values for n_wk, n_mk, n_k
-        for (int n = 0; n < N; n++)
+        test_z = new int*[test_M];
+        for (int m = 0; m < testdata.size(); m++)
         {
-            int w = testdata[m][n];
-            int topic = rand0n_uniform(K - 1); 
-            test_z[m][n] = topic;
+            int N = testdata[m].size();
+            test_z[m] = new int[N];
 
-            // number of instances of word i assigned to topic j
-            test_n_wk[w][topic] += 1;
-            // number of words in document i assigned to topic j
-            test_n_mk[m][topic] += 1;
-            // total number of words assigned to topic j
-            test_n_k[topic] += 1;
+            // assign values for n_wk, n_mk, n_k
+            for (int n = 0; n < N; n++)
+            {
+                int w = testdata[m][n];
+                int topic = rand0n_uniform(K - 1);
+                test_z[m][n] = topic;
+
+                // number of instances of word i assigned to topic j
+                test_n_wk[w][topic] += 1;
+                // number of words in document i assigned to topic j
+                test_n_mk[m][topic] += 1;
+                // total number of words assigned to topic j
+                test_n_k[topic] += 1;
+            }
         }
     }
 
@@ -611,6 +685,41 @@ int ldaModel::vanilla_sampling(int m)
         test_n_mk[m][topic] += 1;
         test_n_k[topic] += 1;
         test_z[m][n] = topic;
+    }
+
+    return 0;
+}
+
+int ldaModel::vanilla_sampling(const Sentence& obs)
+{
+    int n = 0;
+    for (auto & w : obs)
+    {
+        // remove z_i from the count variables
+        int topic = test_z[0][n];
+        test_n_wk[w][topic] -= 1;
+        test_n_mk[0][topic] -= 1;
+        test_n_k[topic] -= 1;
+
+        double psum = 0;
+        // do multinomial sampling via cumulative method
+        for (int k = 0; k < K; k++)
+        {
+            psum += (test_n_mk[0][k] + alpha) * (n_wk[w][k] + test_n_wk[w][k] + beta) / (n_k[k] + test_n_k[k] + Vbeta);
+            p[k] = psum;
+        }
+
+        // scaled sample because of unnormalized p[]
+        double u = rand01() * psum;
+        topic = std::lower_bound(p, p + K, u) - p;
+
+        // add newly estimated z_i to count variables
+        test_n_wk[w][topic] += 1;
+        test_n_mk[0][topic] += 1;
+        test_n_k[topic] += 1;
+        test_z[0][n] = topic;
+
+        n++;
     }
 
     return 0;
