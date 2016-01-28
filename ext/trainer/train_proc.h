@@ -1566,6 +1566,8 @@ void TrainProcess<AM_t>::lda_train(variables_map vm, const Corpus &training, con
 
     pLda->load_ldaModel(-1);
     pLda->test(sd);
+
+    delete[] pLda;
 }
 
 /**
@@ -1583,6 +1585,8 @@ void TrainProcess<AM_t>::lda_test(variables_map vm, const Corpus& test, Dict& sd
     pLda->read_data(empty, sd, test);
 
     pLda->test(sd);
+
+    delete[] pLda;
 }
 
 
