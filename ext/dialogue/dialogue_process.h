@@ -14,7 +14,7 @@
 #include "cnn/expr-xtra.h"
 #include "cnn/data-util.h"
 #include "ext/dialogue/dialogue.h"
-//#include "cxtencdec.h"
+#include "ext/ir/ir.h"
 #include "cnn/math-util.h"
 #include "ext/dialogue/attention_with_intention.h"
 #include <algorithm>
@@ -162,6 +162,22 @@ namespace cnn {
         void init_word_embedding(const map<int, vector<cnn::real>> &vWordEmbedding)
         {
             s2tmodel.init_word_embedding(vWordEmbedding);
+        }
+
+        vector<cnn::real> sentence_embedding(const Sentence& sentence)
+        {
+            ComputationGraph cg;
+            Expression emb = s2tmodel.sentence_embedding(sentence, cg); 
+            return get_value(emb, cg);
+        }
+
+        cnn::real sentence_distance(const Sentence& sentencea, const Sentence& sentenceb)
+        {
+            ComputationGraph cg;
+            Expression emba = s2tmodel.sentence_embedding(sentencea, cg);
+            Expression embb = s2tmodel.sentence_embedding(sentenceb, cg);
+            Expression dist = squared_distance(emba, embb);
+            return get_value(dist, cg)[0];
         }
 
         void load_cls_info_from_file(string word2clsfn, string clsszefn, Dict& sd, Model& model)
