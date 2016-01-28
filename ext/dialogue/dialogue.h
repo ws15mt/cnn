@@ -158,6 +158,20 @@ public:
         p_cs->copy(vWordEmbedding);
     }
 
+    Expression sentence_embedding(const Sentence& sent, ComputationGraph& cg)
+    {
+        vector<Expression> vm;
+        int t = 0;
+        while (t < sent.size())
+        {
+            Expression xij = lookup(cg, p_cs, sent[t]);
+            vm.push_back(xij);
+            t++;
+        }
+        Expression i_x_t = average(vm);
+        return i_x_t;
+    }
+
     void serialise_context(ComputationGraph& cg,
         vector<vector<cnn::real>>& v_last_cxt_s,
         vector<vector<cnn::real>>& v_last_decoder_s)
