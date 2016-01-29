@@ -14,6 +14,7 @@
 #include "cnn/cnn-helper.h"
 #include "ext/dialogue/attention_with_intention.h"
 #include "ext/lda/lda.h"
+#include "ext/ngram/ngram.h"
 #include "cnn/data-util.h"
 #include "cnn/grad-check.h"
 
@@ -129,6 +130,11 @@ public:
     /// for LDA
     void lda_train(variables_map vm, const Corpus &training, const Corpus &test, Dict& sd);
     void lda_test(variables_map vm, const Corpus& test, Dict& sd);
+
+public:
+    /// for ngram
+    void ngram_train(variables_map vm, const Corpus& test, Dict& sd);
+    void ngram_clustering(variables_map vm, const Corpus& test, Dict& sd);
 
 private:
     vector<cnn::real> ppl_hist;
@@ -1587,6 +1593,174 @@ void TrainProcess<AM_t>::lda_test(variables_map vm, const Corpus& test, Dict& sd
     pLda->test(sd);
 
     delete[] pLda;
+}
+
+/**
+train n-gram model
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::ngram_train(variables_map vm, const Corpus& test, Dict& sd)
+{
+    Corpus empty;
+    nGram pnGram= nGram();
+    pnGram.Initialize(vm);
+
+    for (auto & t : test)
+    {
+        for (auto & s : t)
+        {
+            pnGram.UpdateNgramCounts(s.second, 0, sd);
+            pnGram.UpdateNgramCounts(s.second, 1, sd);
+        }
+    }
+
+    pnGram.ComputeNgramModel();
+
+    pnGram.SaveModel(); 
+
+}
+
+/**
+cluster using n-gram model
+random shuffle training data and use the first half to train ngram model
+after several iterations, which have their log-likelihood reported, the ngram model assign a class id for each sentence
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, Dict& sd)
+{
+    Corpus empty;
+    int ncls = vm["ngram-num-clusters"].as<int>();
+    vector<nGram> pnGram(ncls); 
+    for (auto& p: pnGram)
+        p.Initialize(vm);
+
+    /// flatten corpus
+    Sentences user, response;
+    flatten_corpus(test, user, response);
+
+    for (int iter = 0; iter < 10; iter++)
+    {
+        shuffle(response.begin(), response.end(), std::default_random_engine(iter));
+        if (iter == 0)
+        {
+            for (int i = 0; i < ncls; i++)
+            {
+                pnGram[i].LoadModel(".m" + boost::lexical_cast<string>(i));
+            }
+
+            for (int i = 0; i < response.size(); i++)
+            {
+                int cls = rand0n_uniform(ncls - 1);
+                pnGram[cls].UpdateNgramCounts(response[i], 0, sd);
+            }
+#pragma omp parallel for
+            for (int i = 0; i < ncls; i++)
+            {
+                pnGram[i].ComputeNgramModel();
+                pnGram[i].SaveModel(".m" + boost::lexical_cast<string>(i));
+            }
+        }
+        else
+        {
+            /// use half the data to update centroids
+
+            /// reassign data to closest cluster
+            vector<Sentences> current_assignment(ncls);
+            double totallk = 0;
+            for (int i = 0; i < response.size() / 2; i++)
+            {
+                vector<cnn::real> llk(ncls);
+                for (int i = 0; i < ncls; i++)
+                    llk[i] = pnGram[i].GetSentenceLL(response[i]);
+
+                cnn::real largest = llk[0];
+                int iarg = 0;
+                for (int i = 1; i < ncls; i++)
+                {
+                    if (llk[i] > largest)
+                    {
+                        largest = llk[i];
+                        iarg = i;
+                    }
+                }
+                current_assignment[iarg].push_back(response[i]);
+                totallk += largest / response[i].size();
+            }
+            totallk /= response.size();
+
+            cout << "loglikelihood at iteration " << iter << " is " << totallk << endl;
+
+            ///update cluster
+#pragma omp parallel for
+            for (int i = 0; i < ncls; i++)
+                pnGram[i].Clear();
+
+            for (int i = 0; i < current_assignment.size(); i++)
+            {
+                for (auto & p : current_assignment[i])
+                {
+                    pnGram[i].UpdateNgramCounts(p, 0, sd);
+                    pnGram[i].UpdateNgramCounts(p, 1, sd);
+                }
+            }
+
+#pragma omp parallel for
+            for (int i = 0; i < ncls; i++)
+            {
+                pnGram[i].ComputeNgramModel();
+                pnGram[i].SaveModel(".m" + boost::lexical_cast<string>(i));
+            }
+        }
+    }
+
+    /// do classification now
+    ofstream ofs;
+    if (vm.count("outputfile") > 0)
+        ofs.open(vm["outputfile"].as<string>());
+    long did = 0;
+    for (auto& t : test)
+    {
+        int tid = 0;
+        for (auto& s : t)
+        {
+            vector<cnn::real> llk(ncls);
+            for (int i = 0; i < ncls; i++)
+                llk[i] = pnGram[i].GetSentenceLL(s.second);
+
+            cnn::real largest = llk[0];
+            int iarg = 0;
+            for (int i = 1; i < ncls; i++)
+            {
+                if (llk[i] > largest)
+                {
+                    largest = llk[i];
+                    iarg = i;
+                }
+            }
+
+            string userstr;
+            for (auto& p : s.first)
+                userstr = userstr + " " + sd.Convert(p);
+            string responsestr;
+            for (auto& p : s.second)
+                responsestr = responsestr + " " + sd.Convert(p);
+
+            string ostr = boost::lexical_cast<string>(did)+ " ||| " + boost::lexical_cast<string>(tid)+ " ||| " + userstr + " ||| " + responsestr;
+            ostr = ostr + " ||| " + boost::lexical_cast<string>(iarg);
+            if (ofs.is_open())
+            {
+                ofs << ostr << endl;
+            }
+            else
+                cout << ostr << endl;
+
+            tid++;
+        }
+        did++;
+    }
+
+    if (ofs.is_open())
+        ofs.close();
 }
 
 

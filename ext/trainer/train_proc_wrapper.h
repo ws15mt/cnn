@@ -305,7 +305,7 @@ int main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_
 }
 
 template <class TrainProc>
-int clustering_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_input_to = 0, size_t mem_slots = MEM_SIZE)
+int clustering_main_body(variables_map vm)
 {
 #ifdef INPUT_UTF8
     kSRC_SOS = sd.Convert(L"<s>");
@@ -315,7 +315,6 @@ int clustering_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder
     kSRC_EOS = sd.Convert("</s>");
 #endif
     verbose = vm.count("verbose");
-    g_train_on_turns = vm["turns"].as<int>();
 
     typedef vector<int> Sentence;
     typedef pair<Sentence, Sentence> SentencePair;
@@ -372,21 +371,6 @@ int clustering_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder
         }
     }
 
-    LAYERS = vm["layers"].as<int>();
-    HIDDEN_DIM = vm["hidden"].as<int>();
-    ALIGN_DIM = vm["align"].as<int>();
-
-    string flavour = builder_flavour(vm);
-    VOCAB_SIZE_SRC = sd.size();
-    VOCAB_SIZE_TGT = sd.size(); /// use the same dictionary
-    nparallel = vm["nparallel"].as<int>();
-    mbsize = vm["mbsize"].as < int >();
-
-    if (vm.count("beamsearchdecode"))
-    {
-        beam_search_decode = vm["beamsearchdecode"].as<int>();
-    }
-
     if (vm.count("devel")) {
         cerr << "Reading dev data from " << vm["devel"].as<string>() << "...\n";
         devel = read_corpus(vm["devel"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), true, vm.count("charlevel") > 0);
@@ -407,6 +391,16 @@ int clustering_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder
     if (vm.count("test-lda") > 0)
     {
         ptrTrainer->lda_test(vm, devel, sd);
+    }
+
+    if (vm.count("ngram-training") > 0)
+    {
+        ptrTrainer->ngram_train(vm, training, sd);
+    }
+
+    if (vm.count("ngram-clustering") > 0)
+    {
+        ptrTrainer->ngram_clustering(vm, training, sd);
     }
 
     delete ptrTrainer;
