@@ -73,8 +73,8 @@ struct RNNLanguageModel {
 
       // LogSoftmax followed by PickElement can be written in one step
       // using PickNegLogSoftmax
-#if 0
-      Expression i_ydist = logsoftmax(i_r_t);
+#if 1
+      Expression i_ydist = log_softmax(i_r_t);
       errs.push_back(pick(i_ydist, sent[t+1]));
 #if 0
       Expression i_ydist = softmax(i_r_t);
@@ -87,7 +87,7 @@ struct RNNLanguageModel {
 #endif
     }
     Expression i_nerr = sum(errs);
-#if 0
+#if 1
     return -i_nerr;
 #else
     return i_nerr;
