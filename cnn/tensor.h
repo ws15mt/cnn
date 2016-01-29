@@ -196,6 +196,8 @@ int rand0n(int n);
 real rand_normal();
 int rand0n_uniform(int n);
 
+#define LZERO -57.00
+
 } // namespace cnn
 
 #endif
