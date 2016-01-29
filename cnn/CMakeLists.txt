@@ -86,6 +86,14 @@ set(trainer_library_HDRS
     ../ext/trainer/eval_proc.h
 )
 
+# Ext Headers:
+set(ext_HDRS
+    ../ext/lda/lda.h
+    ../ext/ngram/ngram.h
+    ../ext/encdec/encdec.h
+)
+
+
 if(WITH_CUDA_BACKEND)
   list(APPEND cnn_library_SRCS
        cuda.cc)
@@ -114,8 +122,8 @@ file(GLOB TEST_SRCS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} tests/*.cc)
 #endforeach(test_src)
 
 # actual target:
-add_library(cnn STATIC ${cnn_library_SRCS} ${cnn_library_HDRS} ${dialogue_library_HDRS} ${trainer_library_HDRS} ${LIBS})
-add_library(cnn_shared SHARED ${cnn_library_SRCS} ${cnn_library_HDRS} ${dialogue_library_HDRS} ${trainer_library_HDRS} ${LIBS})
+add_library(cnn STATIC ${cnn_library_SRCS} ${cnn_library_HDRS} ${dialogue_library_HDRS} ${trainer_library_HDRS} ${ext_HDRS} ${LIBS})
+add_library(cnn_shared SHARED ${cnn_library_SRCS} ${cnn_library_HDRS} ${dialogue_library_HDRS} ${trainer_library_HDRS} ${ext_HDRS} ${LIBS})
 
 if(WITH_CUDA_BACKEND)
   set(CUDA_SEPARABLE_COMPILATION ON)
