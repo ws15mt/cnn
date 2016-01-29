@@ -1669,18 +1669,21 @@ void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, 
             double totallk = 0;
             for (int i = 0; i < response.size() / 2; i++)
             {
+                if (response[i].size() == 0)
+                    continue;
+
                 vector<cnn::real> llk(ncls);
-                for (int i = 0; i < ncls; i++)
-                    llk[i] = pnGram[i].GetSentenceLL(response[i]);
+                for (int c = 0; c < ncls; c++)
+                    llk[c] = pnGram[c].GetSentenceLL(response[i]);
 
                 cnn::real largest = llk[0];
                 int iarg = 0;
-                for (int i = 1; i < ncls; i++)
+                for (int c = 1; c < ncls; c++)
                 {
-                    if (llk[i] > largest)
+                    if (llk[c] > largest)
                     {
-                        largest = llk[i];
-                        iarg = i;
+                        largest = llk[c];
+                        iarg = c;
                     }
                 }
                 current_assignment[iarg].push_back(response[i]);

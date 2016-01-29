@@ -109,7 +109,10 @@ public:
             else
                 prob += log(exp(lgBiLM[bins]) * (1.0 - interpolation_wgt) + interpolation_wgt * exp(lgUniLM[wrd]));
         }
-        prob /= refTokens.size();
+        if (refTokens.size() > 0)
+            prob /= refTokens.size();
+        else
+            prob = LZERO;
         return prob;
     }
 
