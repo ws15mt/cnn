@@ -26,6 +26,7 @@
 #include <boost/program_options/variables_map.hpp>
 #include <boost/regex.hpp>
 #include <boost/lexical_cast.hpp>
+#include <tuple>
 
 using namespace cnn;
 using namespace std;
@@ -229,6 +230,23 @@ void flatten_corpus(const Corpus& corpus, vector<Sentence>& sentences, vector<Se
     }
 }
 
+/** flatten corous to the following
+vector<SentencePair> -> merge(perv_response, current_user) to a sentence
+*/
+void flatten_corpus(const CorpusWithClassId& corpus, vector<Sentence>& sentences, vector<SentenceWithId>& response)
+{
+    for (auto& p : corpus)
+    {
+        int iturn = 0;
+        for (auto& d : p)
+        {
+            sentences.push_back(d.first);
+            response.push_back(d.second);
+            iturn++;
+        }
+    }
+}
+
 Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool appendBSandES)
 {
     wifstream in(filename);
@@ -280,6 +298,50 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int
         if ((source.front() != kSRC_SOS && source.back() != kSRC_EOS)) {
             cerr << "Sentence in " << filename << ":" << lc << " didn't start or end with <s>, </s>\n";
             abort();
+        }
+    }
+
+    if (diag.size() > 0)
+        corpus.push_back(diag);
+    cerr << lc << " lines, " << stoks << " & " << ttoks << " tokens (s & t), " << sd.size() << " & " << sd.size() << " types\n";
+    return corpus;
+}
+
+CorpusWithClassId read_corpus_with_classid(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS)
+{
+    ifstream in(filename);
+    string line;
+
+    CorpusWithClassId corpus;
+    DialogueWithClassId diag;
+    string prv_diagid = "-1";
+    int lc = 0, stoks = 0, ttoks = 0;
+
+    while (getline(in, line)) {
+        trim_left(line);
+        trim_right(line);
+        if (line.length() == 0)
+            continue;
+        ++lc;
+        Sentence source, target, clsid;
+        string diagid = MultiTurnsReadSentencePairWithClassId(line, &source, &sd, &target, &sd, &clsid, kSRC_SOS, kSRC_EOS);
+        if (diagid.size() == 0)
+            continue;
+
+        if (diagid != prv_diagid)
+        {
+            if (diag.size() > 0)
+                corpus.push_back(diag);
+            diag.clear();
+            prv_diagid = diagid;
+        }
+
+        diag.push_back(SentencePairAndClassId(make_pair(source, make_pair(target, clsid[0]))));
+        stoks += source.size();
+        ttoks += target.size();
+
+        if ((source.front() != kSRC_SOS && source.back() != kSRC_EOS)) {
+            throw("Sentence in didn't start or end with <s>, </s>");
         }
     }
 
@@ -505,6 +567,61 @@ string MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, 
                 v->push_back(d->Convert(" ", backofftounk));
             v->push_back(d->Convert(word, backofftounk));
         }
+    }
+
+    return diagid;
+}
+
+string MultiTurnsReadSentencePairWithClassId(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, std::vector<int>* cls , int kSRC_SOS, int kSRC_EOS)
+{
+    std::istringstream in(line);
+    std::string word;
+    std::string sep = "|||";
+    Dict* d = sd;
+    std::string diagid, turnid;
+
+    std::vector<int>* v = s;
+
+    if (line.length() == 0)
+        return "";
+
+    in >> diagid;
+    trim(diagid);
+    in >> word;
+    if (word != sep)
+    {
+        cerr << "format should be <diagid> ||| <turnid> ||| <src> || <tgt> ||| <classid>" << endl;
+        cerr << "expecting diagid" << endl;
+        return "";
+    }
+
+    in >> turnid;
+    in >> word;
+    if (word != sep)
+    {
+        cerr << "format should be <diagid> ||| <turnid> ||| <src> || <tgt> ||| <classid>" << endl;
+        cerr << "expecting turn id" << endl;
+        return "";
+    }
+
+    int septimes = 0;
+    while (in) {
+        in >> word;
+        trim(word);
+        if (!in) break;
+        if (word == sep) {
+            if (septimes == 0)
+            {
+                d = td; v = t;
+            }
+            septimes++;
+            continue;
+        }
+
+        if (septimes <= 1)
+            v->push_back(d->Convert(word, true));
+        else
+            cls->push_back(boost::lexical_cast<int>(word));
     }
 
     return diagid;
@@ -903,7 +1020,7 @@ void read_embedding(const string& embedding_fn, Dict& sd, map<int, vector<cnn::r
         if (tk > 100)
             break;
     }
-    std::transform(iv.begin(), iv.end(), iv.begin(), std::bind1st(std::multiplies<cnn::real>(), 1.0/100.0));
+    std::transform(iv.begin(), iv.end(), iv.begin(), std::bind1st(std::multiplies<cnn::real>(), 1.0/tk));
 
     // back off to a word embedding for unk for those words that don't have embedding
     for (auto &p : sd.GetWordList())
