@@ -28,6 +28,11 @@ typedef pair<Sentence, Sentence> SentencePair;
 typedef vector<SentencePair> Dialogue;
 typedef vector<Dialogue> Corpus;
 
+typedef pair<Sentence, int> SentenceWithId;
+typedef pair<Sentence, SentenceWithId> SentencePairAndClassId;
+typedef vector<SentencePairAndClassId> DialogueWithClassId;
+typedef vector<DialogueWithClassId> CorpusWithClassId;
+
 /// for parallel processing of data
 typedef vector<SentencePair> PTurn;  /// a turn consits of sentences pairs from difference utterances [#sentences]
 typedef vector<PTurn> PDialogue;  /// a parallel dialogue consists of turns from each parallel dialogue [#turns][#sentences]
@@ -109,11 +114,18 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int
 int MultiTurnsReadSentencePair(const std::wstring& line, std::vector<int>* s, WDict* sd, std::vector<int>* t, WDict* td, bool appendSBandSE = false, int kSRC_SOS = -1, int kSRC_EOS = -1);
 Corpus read_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength = 10000, bool appendBSandES = false, bool bcharacter = false);
 Corpus read_corpus(ifstream&, Dict& sd, int kSRC_SOS, int kSRC_EOS, long part_size);
+CorpusWithClassId read_corpus_with_classid(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS);
+
 /**
 read sentence pair in one line, with seperaotr |||
 @bcharacter : read data in character level, default is false, which is word-level
 */
 string MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool appendSBandSE = false, int kSRC_SOS = -1, int kSRC_EOS = -1, bool bcharacter = false);
+
+/**
+read sentences pair with class id at the end
+*/
+string MultiTurnsReadSentencePairWithClassId(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, std::vector<int>* cls, int kSRC_SOS, int kSRC_EOS);
 
 /**
 read corpus with triplet
@@ -128,6 +140,7 @@ NumTurn2DialogId get_numturn2dialid(Corpus corp);
 NumTurn2DialogId get_numturn2dialid(TupleCorpus corp);
 
 void flatten_corpus(const Corpus& corpus, vector<Sentence>& sentences, vector<Sentence>& responses);
+void flatten_corpus(const CorpusWithClassId& corpus, vector<Sentence>& sentences, vector<SentenceWithId>& response);
 
 /// shuffle the data from 
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]

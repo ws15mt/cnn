@@ -408,6 +408,54 @@ int clustering_main_body(variables_map vm)
     return EXIT_SUCCESS;
 }
 
+template <class TrainProc>
+int hirearchical_clustering_main_body(variables_map vm)
+{
+#ifdef INPUT_UTF8
+    kSRC_SOS = sd.Convert(L"<s>");
+    kSRC_EOS = sd.Convert(L"</s>");
+#else
+    kSRC_SOS = sd.Convert("<s>");
+    kSRC_EOS = sd.Convert("</s>");
+#endif
+    verbose = vm.count("verbose");
+
+    CorpusWithClassId training;
+    string line;
+    cnn::real largest_dev_cost = 9e+99;
+    TrainProc  * ptrTrainer = nullptr;
+
+    if (vm.count("readdict") > 0)
+    {
+        string fname = vm["readdict"].as<string>();
+#ifdef INPUT_UTF8
+        wifstream in(fname, wifstream::in);
+        boost::archive::text_wiarchive ia(in);
+#else
+        ifstream in(fname, ifstream::in);
+        boost::archive::text_iarchive ia(in);
+#endif
+        if (!in.is_open())
+            throw("cannot open " + fname);
+        ia >> sd;
+        sd.Freeze();
+    }
+    else{
+        throw std::invalid_argument("must have either training corpus or dictionary");
+    }
+
+    if (vm.count("representative_presentation") > 0)
+    {
+        CorpusWithClassId training = read_corpus_with_classid(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS);
+
+        ptrTrainer->representative_presentation(vm, training, sd);
+    }
+
+    delete ptrTrainer;
+
+    return EXIT_SUCCESS;
+}
+
 /**
 training on triplet dataset
 decoder_t : the type for decoder network, can be RNN or DNN

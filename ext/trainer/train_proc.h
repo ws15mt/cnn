@@ -135,6 +135,7 @@ public:
     /// for ngram
     void ngram_train(variables_map vm, const Corpus& test, Dict& sd);
     void ngram_clustering(variables_map vm, const Corpus& test, Dict& sd);
+    void representative_presentation(variables_map vm, const CorpusWithClassId& test, Dict& sd);
 
 private:
     vector<cnn::real> ppl_hist;
@@ -972,6 +973,12 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             /// so just run one iteration and quit
             break;
         }
+        else{
+            ofstream out(out_file + "e" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
+        }
     }
 }
 
@@ -1638,7 +1645,7 @@ void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, 
     Sentences user, response;
     flatten_corpus(test, user, response);
 
-    for (int iter = 0; iter < 10; iter++)
+    for (int iter = 0; iter < vm["epochs"].as<int>(); iter++)
     {
         shuffle(response.begin(), response.end(), std::default_random_engine(iter));
         if (iter == 0)
@@ -1758,6 +1765,188 @@ void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, 
                 cout << ostr << endl;
 
             tid++;
+        }
+        did++;
+    }
+
+    if (ofs.is_open())
+        ofs.close();
+}
+
+/**
+Find the top representative in each class and assign a representative, together with its index, to the original input
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::representative_presentation(variables_map vm, const CorpusWithClassId& test, Dict& sd)
+{
+    Corpus empty;
+    int ncls = vm["ngram-num-clusters"].as<int>();
+    int nclsInEachCluster = vm["ncls-in-each-cluster"].as<int>();
+    vector<nGram> pnGram(ncls*nclsInEachCluster);
+    for (auto& p : pnGram)
+        p.Initialize(vm);
+
+    /// flatten corpus
+    Sentences user_inputs;
+    vector<SentenceWithId> response, not_randomly_shuffled_response;
+    flatten_corpus(test, user_inputs, response);
+    not_randomly_shuffled_response = response; /// backup of response that is not randomly shuffled
+    user_inputs.clear();
+
+    for (int iter = 0; iter < vm["epochs"].as<int>(); iter++)
+    {
+        shuffle(response.begin(), response.end(), std::default_random_engine(iter));
+        if (iter == 0)
+        {
+            for (int i = 0; i < response.size(); i++)
+            {
+                int this_cls = response[i].second;
+                int cls = rand0n_uniform(nclsInEachCluster - 1);
+                cls += nclsInEachCluster * this_cls;
+                pnGram[cls].UpdateNgramCounts(response[i].first, 0, sd);
+            }
+#pragma omp parallel for
+            for (int i = 0; i < ncls * nclsInEachCluster; i++)
+            {
+                pnGram[i].ComputeNgramModel();
+//                pnGram[i].SaveModel(".m" + boost::lexical_cast<string>(i));
+            }
+        }
+        else
+        {
+            /// use half the data to update centroids
+
+            /// reassign data to closest cluster
+            vector<Sentences> current_assignment(ncls * nclsInEachCluster);
+            double totallk = 0;
+
+            for (int i = 0; i < response.size() / 2; i++)
+            {
+                if (response[i].first.size() == 0)
+                    continue;
+
+                int this_cls = response[i].second;
+                vector<cnn::real> llk(nclsInEachCluster);
+                for (int c = 0; c < nclsInEachCluster; c++)
+                    llk[c] = pnGram[c + this_cls * nclsInEachCluster].GetSentenceLL(response[i].first);
+
+                cnn::real largest = llk[0];
+                int iarg = 0;
+                for (int c = 1; c < nclsInEachCluster; c++)
+                {
+                    if (llk[c] > largest)
+                    {
+                        largest = llk[c];
+                        iarg = c;
+                    }
+                }
+                iarg += nclsInEachCluster * this_cls;
+                current_assignment[iarg].push_back(response[i].first);
+                totallk += largest / response[i].first.size();
+            }
+            totallk /= response.size();
+
+            cout << "loglikelihood at iteration " << iter << " is " << totallk << endl;
+
+            ///update cluster
+#pragma omp parallel for
+            for (int i = 0; i < ncls * nclsInEachCluster; i++)
+                pnGram[i].Clear();
+
+            for (int i = 0; i < current_assignment.size(); i++)
+            {
+                for (auto & p : current_assignment[i])
+                {
+                    pnGram[i].UpdateNgramCounts(p, 0, sd);
+                    pnGram[i].UpdateNgramCounts(p, 1, sd);
+                }
+            }
+
+#pragma omp parallel for
+            for (int i = 0; i < ncls * nclsInEachCluster; i++)
+            {
+                pnGram[i].ComputeNgramModel();
+                pnGram[i].SaveModel(".m" + boost::lexical_cast<string>(i));
+            }
+        }
+    }
+
+    /// do classification now
+    ofstream ofs;
+    if (vm.count("outputfile") > 0)
+        ofs.open(vm["outputfile"].as<string>());
+    long did = 0;
+    vector<cnn::real> i_so_far_largest_score(ncls * nclsInEachCluster, -10000.0);/// the vector saving the largest score of a cluster from any observations so far
+    vector<int> i_the_closet_input(ncls * nclsInEachCluster, -1); /// the index to the input that has the closest distance to centroid of each class
+    vector<int> i_data_to_cls; 
+    for (auto& t : test)
+    {
+        for (auto& s : t)
+        {
+            int this_cls = s.second.second;
+            int cls_offset = this_cls * nclsInEachCluster;
+            vector<cnn::real> llk(nclsInEachCluster);
+            for (int i = 0; i < nclsInEachCluster; i++)
+                llk[i] = pnGram[i + cls_offset].GetSentenceLL(s.second.first);
+
+            cnn::real largest = llk[0];
+            int iarg = 0;
+            for (int i = 1; i < nclsInEachCluster; i++)
+            {
+                if (llk[i] > largest)
+                {
+                    largest = llk[i];
+                    iarg = i;
+                }
+            }
+            iarg += cls_offset;
+            i_data_to_cls.push_back(iarg);
+
+            /// update representation of this class
+            if (i_so_far_largest_score[iarg] < largest)
+            {
+                i_so_far_largest_score[iarg] = largest;
+                i_the_closet_input[iarg] = i_data_to_cls.size() - 1;
+            }
+        }
+    }
+
+    /// represent the cluster with closest observation
+    vector<string> i_representative(ncls * nclsInEachCluster);
+    for (int i = 0; i < ncls *nclsInEachCluster; i++)
+    {
+        i_representative[i] = "";
+        if (i_the_closet_input[i] >= 0)
+            for (auto& p : not_randomly_shuffled_response[i_the_closet_input[i]].first)
+                i_representative[i] = i_representative[i] + " " + sd.Convert(p);
+    }
+
+    long idx = 0;
+    for (auto& t : test)
+    {
+        int tid = 0;
+        for (auto& s : t)
+        {
+            int iarg = i_data_to_cls[idx];
+
+            string userstr;
+            for (auto& p : s.first)
+                userstr = userstr + " " + sd.Convert(p);
+            string responsestr;
+            for (auto& p : s.second.first)
+                responsestr = responsestr + " " + sd.Convert(p);
+
+            string ostr = boost::lexical_cast<string>(did)+" ||| " + boost::lexical_cast<string>(tid)+" ||| " + userstr + " ||| " + responsestr;
+            ostr = ostr + " ||| " + boost::lexical_cast<string>(iarg)+" ||| " + i_representative[iarg];
+            if (ofs.is_open())
+            {
+                ofs << ostr << endl;
+            }
+            else
+                cout << ostr << endl;
+
+            tid++;
+            idx++;
         }
         did++;
     }
