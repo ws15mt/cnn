@@ -15,24 +15,25 @@ namespace gpu {
 // this wraps kernel dispatches for various operations (preventing us from
 // having to compile a version of nodes.cc with NVCC)
 
-    void saxpy_fast(float A, thrust::device_vector<float>& X, thrust::device_vector<float>& Y)
-    {
-        // Y <- A * X + Y
-        thrust::transform(X.begin(), X.end(), Y.begin(), Y.begin(), saxpy_functor(A));
-    }
+void saxpy_fast(float A, thrust::device_vector<float>& X, thrust::device_vector<float>& Y)
+{
+    // Y <- A * X + Y
+    thrust::transform(X.begin(), X.end(), Y.begin(), Y.begin(), saxpy_functor(A));
+}
 
-    void add_to(int n, const float* x, float *y)
-    {
-        thrust::device_ptr<float> src_ptr = thrust::device_pointer_cast((float*)x);
-        thrust::device_ptr<float> tgt_ptr = thrust::device_pointer_cast(y);
-        // Y <- A * X + Y
-        thrust::transform(src_ptr, src_ptr + n, tgt_ptr, tgt_ptr, thrust::plus<float>()); 
-    }
+void add_to(int n, const float* x, float *y)
+{
+    thrust::device_ptr<float> src_ptr = thrust::device_pointer_cast((float*)x);
+    thrust::device_ptr<float> tgt_ptr = thrust::device_pointer_cast(y);
+    // Y <- A * X + Y
+    thrust::transform(src_ptr, src_ptr + n, tgt_ptr, tgt_ptr, thrust::plus<float>()); 
+}
 
-    void set_to_value_of(int n, float* x0, float val) {
-        thrust::device_ptr<float> dev_ptr = thrust::device_pointer_cast(x0);
-        thrust::fill(thrust::device, dev_ptr, dev_ptr + n, val);
-    }
+void set_to_value_of(int n, float* x0, float val) 
+{
+    thrust::device_ptr<float> dev_ptr = thrust::device_pointer_cast(x0);
+    thrust::fill(thrust::device, dev_ptr, dev_ptr + n, val);
+}
 
 void set_to_value_of(int n, float* x0, float *val) {
     thrust::device_ptr<float> dev_ptr = thrust::device_pointer_cast(x0);
