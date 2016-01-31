@@ -66,7 +66,7 @@ class AlignedMemoryPool {
     auto rounded_n = round_up_align(n);
     if (rounded_n + used > capacity)
       return nullptr;
-    void* res = static_cast<char*>(mem) + used;
+    void * res = static_cast<char*>(mem)+used;
     used += rounded_n;
     return res;
   }
@@ -98,7 +98,6 @@ class AlignedMemoryPool {
     used = 0;
   }
   void zero_all() {
-    //std::cerr << "zeroing " << (used ? used : capacity) << " bytes\n";
 #if HAVE_CUDA
     CUDA_CHECK(cudaMemsetAsync(mem, 0, capacity));
 #else

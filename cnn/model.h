@@ -49,6 +49,10 @@ struct Parameters : public ParametersBase {
   std::string name;
 private:
   Parameters() {}
+  ~Parameters() {
+      cnn_mm_free(values.v);
+      cnn_mm_free(g.v); 
+  }
   explicit Parameters(const Dim& d, cnn::real minmax, std::string nodename = ""); // initialize with ~U(-minmax,+minmax)
                                  // or Glorot initialization if minmax = 0
   friend class boost::serialization::access;
@@ -81,6 +85,7 @@ struct LookupParameters : public ParametersBase {
   std::string name;
 private:
   LookupParameters() {}
+  ~LookupParameters();
   LookupParameters(unsigned n, const Dim& d, cnn::real scale, std::string nodename = "");
 
   friend class boost::serialization::access;

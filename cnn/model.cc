@@ -25,13 +25,13 @@ ParametersBase::~ParametersBase() {}
 
 Parameters::Parameters(const Dim& d, cnn::real scale , std::string nodename) : dim(d), name(nodename) {
   values.d = g.d = d;
-  values.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
+  values.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
   if (scale == 1.0)
 	  /// fix scale to sqrt(6) / sqrt(d.d.sum_dims())
 	  TensorTools::Randomize(values);
   else 
 	  TensorTools::Randomize(values, scale);
-  g.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
+  g.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
 
   TensorTools::Zero(g);
 }
@@ -85,11 +85,21 @@ void Parameters::clear() {
   TensorTools::Zero(g);
 }
 
+LookupParameters::~LookupParameters()
+{
+    for (unsigned i = 0; i < values.size(); ++i) {
+        auto& v = values[i];
+        cnn_mm_free(v.v);
+        auto& g = grads[i];
+        cnn_mm_free(g.v);
+    }
+}
+
 LookupParameters::LookupParameters(unsigned n, const Dim& d, cnn::real scale, std::string nodename) : dim(d), values(n), grads(n), name(nodename) {
   for (unsigned i = 0; i < n; ++i) {
     auto& v = values[i];
     v.d = d;
-    v.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
+    v.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
 	if (scale == 1.0)
 		/// fix scale to sqrt(6) / sqrt(d.d.sum_dims())
 		TensorTools::Randomize(v);
@@ -98,7 +108,7 @@ LookupParameters::LookupParameters(unsigned n, const Dim& d, cnn::real scale, st
 
     auto& g = grads[i];
     g.d = d;
-    g.v = static_cast<cnn::real*>(ps->allocate(d.size() * sizeof(cnn::real)));
+    g.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
     TensorTools::Zero(g);
   }
 }

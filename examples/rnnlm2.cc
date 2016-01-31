@@ -42,6 +42,8 @@ struct RNNLanguageModel {
   Parameters* p_bias;
   Builder builder;
   explicit RNNLanguageModel(Model& model) : builder(LAYERS, INPUT_DIM, HIDDEN_DIM, &model) {
+      if (verbose)
+          cout << "building RNNLanguageModel" << endl;
     p_c = model.add_lookup_parameters(VOCAB_SIZE, {INPUT_DIM}); 
 	p_R = model.add_parameters({ VOCAB_SIZE, HIDDEN_DIM });
 	p_bias = model.add_parameters({ VOCAB_SIZE });
@@ -50,7 +52,11 @@ struct RNNLanguageModel {
   // return Expression of total loss
   Expression BuildLMGraph(const vector<int>& sent, ComputationGraph& cg) {
     const unsigned slen = sent.size() - 1;
+    if (verbose)
+        cout << "start building builder graph" << endl;
     builder.new_graph(cg);  // reset RNN builder for new graph
+    if (verbose)
+        cout << "start new_seuence for the builder graph" << endl;
     builder.start_new_sequence();
     Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
     Expression i_bias = parameter(cg, p_bias);  // word bias
@@ -74,6 +80,7 @@ struct RNNLanguageModel {
       // LogSoftmax followed by PickElement can be written in one step
       // using PickNegLogSoftmax
 #if 1
+      cout << "log_softmax" << endl;
       Expression i_ydist = log_softmax(i_r_t);
       errs.push_back(pick(i_ydist, sent[t+1]));
 #if 0
@@ -150,6 +157,8 @@ void train(Model &model, LM_t &lm,
     unsigned lines = 0;
     unsigned total_epoch = 40;
 
+    if (verbose)
+        cout << "saving model at " << fname << endl;
     ofstream out(fname, ofstream::out);
     boost::archive::text_oarchive oa(out);
     oa << model;
@@ -272,6 +281,11 @@ int main(int argc, char** argv) {
   else if (vm.count("nmn")) flavour = "nmn";
   else			flavour = "rnn";
 
+  if (vm.count("verbose") > 0)
+  {
+      verbose = 1;
+      cout << "extrememly chatty" << endl;
+  }
 
   LAYERS = vm["layers"].as<int>();
   HIDDEN_DIM = vm["hidden"].as<int>();

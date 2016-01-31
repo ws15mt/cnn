@@ -18,7 +18,6 @@ namespace cnn {
     #define ALIGN 6
     AlignedMemoryPool<ALIGN>* fxs = nullptr;
     AlignedMemoryPool<ALIGN>* dEdfs = nullptr;
-	AlignedMemoryPool<ALIGN>* ps = nullptr;
     mt19937* rndeng = nullptr;
 
     char* getCmdOption(char ** begin, char ** end, const std::string & option)
@@ -77,11 +76,10 @@ namespace cnn {
         {
             fxs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
             dEdfs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
-	  	    ps = new AlignedMemoryPool<ALIGN>(num_mb << 20); // parameters
         }
         else
         {
-#ifdef CUDA
+#ifdef HAVE_CUDA
             fxs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
             dEdfs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
 #else
@@ -90,7 +88,6 @@ namespace cnn {
 //            dEdfs = new AlignedMemoryPool<ALIGN>(8191UL * (1UL << 21));
             fxs = new AlignedMemoryPool<ALIGN>(num_mb << 20);
             dEdfs = new AlignedMemoryPool<ALIGN>(num_mb << 20);
-	  	    ps = new AlignedMemoryPool<ALIGN>(num_mb << 20); // parameters
 #endif
         }
         cerr << "Done.\n";
@@ -106,7 +103,6 @@ namespace cnn {
         delete (rndeng); 
         delete (fxs);
         delete (dEdfs);
-        delete (ps);
         cerr << "Done.\n";
   }
 
