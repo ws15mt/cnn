@@ -2,8 +2,6 @@
 #define CNN_GPU_FUNCTORS_H
 
 #include <cstdint>
-#include <limits>
-#include <cnn/cnn.h>
 
 #if HAVE_CUDA
 #define CNN_DEVICE_FUNC __device__
@@ -11,7 +9,7 @@
 #else
 #include <boost/math/special_functions/digamma.hpp>
 #define CNN_DEVICE_FUNC
-#define CNN_DEVICE_MIN std::numeric_limits<cnn::real>::min()
+#define CNN_DEVICE_MIN std::numeric_limits<float>::min()
 #endif
 
 // these functions are used both in CPU and in GPU computation
@@ -27,23 +25,23 @@
 
 // THIS CODE IS BROKEN- sometimes it returns NaN
 // it is commented out for this reason
-static inline cnn::real fastpow2 (cnn::real p) {
-  cnn::real offset = (p < 0) ? 1.0f : 0.0f;
-  cnn::real clipp = (p < -126) ? -126.0f : p;
+static inline float fastpow2 (float p) {
+  float offset = (p < 0) ? 1.0f : 0.0f;
+  float clipp = (p < -126) ? -126.0f : p;
   int w = clipp;
-  cnn::real z = clipp - w + offset;
-  union { uint32_t i; cnn::real f; } v = { cast_uint32_t ( (1 << 23) * (clipp + 121.2740575f + 27.7280233f / (4.84252568f - z) - 1.49012907f * z) ) };
+  float z = clipp - w + offset;
+  union { uint32_t i; float f; } v = { cast_uint32_t ( (1 << 23) * (clipp + 121.2740575f + 27.7280233f / (4.84252568f - z) - 1.49012907f * z) ) };
 
   return v.f;
 }
 
 #if 1
 #if 0
-static inline cnn::real fastexp (cnn::real p) {
+static inline float fastexp (float p) {
   return fastpow2 (1.442695040f * p);
 }
 #else
-static inline cnn::real fastexp (cnn::real p) {
+static inline float fastexp (float p) {
   return exp(p);
 }
 #endif
@@ -51,8 +49,8 @@ static inline cnn::real fastexp (cnn::real p) {
 // Schraudolph version, but it's a bit crappy in terms of
 // performance and not that much faster
 #define EXPAF (8388608 / 0.6931471806f)
-static inline cnn::real fastexp (cnn::real p) {
-  union { cnn::real f; int32_t i; } eco;
+static inline float fastexp (float p) {
+  union { float f; int32_t i; } eco;
   eco.i = (int32_t)(EXPAF * (p)) + 1065353216;
   return eco.f;
 }
@@ -73,12 +71,12 @@ static inline cnn::real fastexp (cnn::real p) {
 namespace cnn {
 
 struct FHuberForward {
-  FHuberForward(cnn::real c) : c(c) {}
-  CNN_DEVICE_FUNC inline cnn::real operator()(cnn::real x) const {
-    const cnn::real a = fabs(x);
+  FHuberForward(float c) : c(c) {}
+  CNN_DEVICE_FUNC inline float operator()(float x) const {
+    const float a = fabs(x);
     return (a < c) ? x*x : c*(2*a - c);
   }
-  const cnn::real c;
+  const float c;
 };
 
 template <typename T> int sgn(T val) {
@@ -86,77 +84,77 @@ template <typename T> int sgn(T val) {
 }
 
 struct FL1Backward {
-  FL1Backward(cnn::real d) : d(d) {}
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real & x) const {
+  FL1Backward(float d) : d(d) {}
+  CNN_DEVICE_FUNC inline float operator()(const float & x) const {
     return sgn(x) * d;
   }
-  const cnn::real d;
+  const float d;
 };
 
 struct FHuberBackward {
-  FHuberBackward(cnn::real c, cnn::real dEdf) : c(c), d(dEdf) {}
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real & x) const {
-    const cnn::real a = fabs(x);
+  FHuberBackward(float c, float dEdf) : c(c), d(dEdf) {}
+  CNN_DEVICE_FUNC inline float operator()(const float & x) const {
+    const float a = fabs(x);
     return (2 * d) * ((a < c) ? x : c * sgn(x));
   }
-  const cnn::real c;
-  const cnn::real d;
+  const float c;
+  const float d;
 };
 
 struct FProduct {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &a, const cnn::real &b) const {
+  CNN_DEVICE_FUNC inline float operator()(const float &a, const float &b) const {
     return a * b;
   }
 };
 
 struct FQuotient {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &a, const cnn::real &b) const {
+  CNN_DEVICE_FUNC inline float operator()(const float &a, const float &b) const {
     return a / b;
   }
 };
 
 struct FConstantMultiply{
-    FConstantMultiply(cnn::real c) : c(c) {}
-    CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+    FConstantMultiply(float c) : c(c) {}
+    CNN_DEVICE_FUNC inline float operator()(const float &x) const {
         return c * x;
     }
-    cnn::real c;
+    float c;
 };
 
 struct FConstantPlus {
-  FConstantPlus(cnn::real c) : c(c) {}
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+  FConstantPlus(float c) : c(c) {}
+  CNN_DEVICE_FUNC inline float operator()(const float &x) const {
     return c + x;
   }
-  cnn::real c;
+  float c;
 };
 
 struct FConstantMinus {
-  FConstantMinus(cnn::real c) : c(c) {}
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+  FConstantMinus(float c) : c(c) {}
+  CNN_DEVICE_FUNC inline float operator()(const float &x) const {
     return c - x;
   }
-  cnn::real c;
+  float c;
 };
 
 struct FNegate {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+  CNN_DEVICE_FUNC inline float operator()(const float &x) const {
     return -x;
   }
 };
 
 struct FErf {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+  CNN_DEVICE_FUNC inline float operator()(const float &x) const {
     return erff(x);
   }
 };
 
 struct FTanh {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+  CNN_DEVICE_FUNC inline float operator()(const float &x) const {
 #ifdef FAST_TANH
-    cnn::real x2 = x * x;
-    cnn::real a = x * (135135.0f + x2 * (17325.0f + x2 * (378.0f + x2)));
-    cnn::real b = 135135.0f + x2 * (62370.0f + x2 * (3150.0f + x2 * 28.0f));
+    float x2 = x * x;
+    float a = x * (135135.0f + x2 * (17325.0f + x2 * (378.0f + x2)));
+    float b = 135135.0f + x2 * (62370.0f + x2 * (3150.0f + x2 * 28.0f));
     return a / b;
 #else
     return tanhf(x);
@@ -165,73 +163,73 @@ struct FTanh {
 };
 
 struct FMaxBackwardInv {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &u, const cnn::real &d) const {
+  CNN_DEVICE_FUNC inline float operator()(const float &u, const float &d) const {
     return (1.f - u) * d;
   }
 };
 
 struct FSqrtBackward {
-  CNN_DEVICE_FUNC inline cnn::real operator()(cnn::real t, cnn::real d) const {
+  CNN_DEVICE_FUNC inline float operator()(float t, float d) const {
     return d / (2.f * t);
   }
 };
 
 struct FErfBackward {
-  CNN_DEVICE_FUNC inline cnn::real operator()(cnn::real x, cnn::real d) const {
+  CNN_DEVICE_FUNC inline float operator()(float x, float d) const {
     return 1.1283791670955125738961589f * expf(-x * x) * d;
   }
 };
 
 struct FTanhBackward {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &t, const cnn::real &d) const {
+  CNN_DEVICE_FUNC inline float operator()(const float &t, const float &d) const {
     return (1.f - t * t) * d;
   }
 };
 
 struct FLogBackward {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real & t, const cnn::real& d) const {
+  CNN_DEVICE_FUNC inline float operator()(const float & t, const float& d) const {
     return (1.f / t) * d;
   }
 };
 
 struct FPairwiseRankLoss {
-  FPairwiseRankLoss(cnn::real m) : margin(m) {}
-  CNN_DEVICE_FUNC cnn::real operator()(const cnn::real &a, const cnn::real &b) const {
-    cnn::real d = margin - a + b;
+  FPairwiseRankLoss(float m) : margin(m) {}
+  CNN_DEVICE_FUNC float operator()(const float &a, const float &b) const {
+    float d = margin - a + b;
     return d > 0.f ? d : 0.f;
   }
-  cnn::real margin;
+  float margin;
 };
 
 struct FRectifyBackward {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &t, const cnn::real &d) const {
+  CNN_DEVICE_FUNC inline float operator()(const float &t, const float &d) const {
     return (t) ? d : 0.f;
   }
 };
 
 struct FRectifyNegateBackward {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &t, const cnn::real &d) const {
+  CNN_DEVICE_FUNC inline float operator()(const float &t, const float &d) const {
     return (t) ? -d : 0.f;
   }
 };
 
 struct FSoftmaxNormalize {
-  explicit FSoftmaxNormalize(cnn::real logz) : logz(logz) {}
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+  explicit FSoftmaxNormalize(float logz) : logz(logz) {}
+  CNN_DEVICE_FUNC inline float operator()(const float &x) const {
     return CNN_EXPF(x - logz);
   }
-  cnn::real logz;
+  float logz;
 };
 
 struct FSoftmaxBackward {
-  explicit FSoftmaxBackward(cnn::real off_diag_sum) : off_diag_sum(off_diag_sum) {}
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &t, const cnn::real &d) const {
+  explicit FSoftmaxBackward(float off_diag_sum) : off_diag_sum(off_diag_sum) {}
+  CNN_DEVICE_FUNC inline float operator()(const float &t, const float &d) const {
     return (off_diag_sum + d) * t;
   }
-  cnn::real off_diag_sum;
+  float off_diag_sum;
 };
 struct FLogGammaBackward {
-  CNN_DEVICE_FUNC inline cnn::real operator()(cnn::real x, cnn::real d) const {
+  CNN_DEVICE_FUNC inline float operator()(float x, float d) const {
 #ifndef HAVE_CUDA
     return boost::math::digamma(x) * d;
 #else
@@ -242,118 +240,118 @@ struct FLogGammaBackward {
 };
 
 struct FNegLogSoftmaxBackward {
-  FNegLogSoftmaxBackward(cnn::real lz, cnn::real err) : logz(lz), d(err) {}
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &t) const {
+  FNegLogSoftmaxBackward(float lz, float err) : logz(lz), d(err) {}
+  CNN_DEVICE_FUNC inline float operator()(const float &t) const {
     return CNN_EXPF(t - logz) * d;
   }
-  cnn::real logz;
-  cnn::real d;
+  float logz;
+  float d;
 };
 
 struct FPtrNegLogSoftmaxBackward {
-  FPtrNegLogSoftmaxBackward(const cnn::real* lz, const cnn::real* err) : logz(lz), d(err) {}
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &t) const {
+  FPtrNegLogSoftmaxBackward(const float* lz, const float* err) : logz(lz), d(err) {}
+  CNN_DEVICE_FUNC inline float operator()(const float &t) const {
     return CNN_EXPF(t - *logz) * *d;
   }
-  const cnn::real* logz;
-  const cnn::real* d;
+  const float* logz;
+  const float* d;
 };
 
 struct FLogSoftmaxNormalize {
-  explicit FLogSoftmaxNormalize(cnn::real logz) : logz(logz) {}
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+  explicit FLogSoftmaxNormalize(float logz) : logz(logz) {}
+  CNN_DEVICE_FUNC inline float operator()(const float &x) const {
     return x - logz;
   }
-  cnn::real logz;
+  float logz;
 };
 
 struct FWeightedError {
-  CNN_DEVICE_FUNC cnn::real operator()(const cnn::real & t, const cnn::real &d) const {
+  CNN_DEVICE_FUNC float operator()(const float & t, const float &d) const {
     return CNN_EXPF(t) * d / CNN_EXPF(t);
   }
 };
 
 struct FLogSoftmaxBackward {
-  explicit FLogSoftmaxBackward(cnn::real off_diag_sum) : off_diag_sum(off_diag_sum) {}
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &t, const cnn::real &d) const {
+  explicit FLogSoftmaxBackward(float off_diag_sum) : off_diag_sum(off_diag_sum) {}
+  CNN_DEVICE_FUNC inline float operator()(const float &t, const float &d) const {
       //return off_diag_sum * CNN_EXPF(t) + d;
       return off_diag_sum * exp(t) + d;
       //return (off_diag_sum + d) * t;
   }
-  cnn::real off_diag_sum;
+  float off_diag_sum;
 };
 
 struct FRectify {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+  CNN_DEVICE_FUNC inline float operator()(const float &x) const {
     return (x > 0.f) ? x : 0.f;
   }
 };
 
 struct FSoftSign {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+  CNN_DEVICE_FUNC inline float operator()(const float &x) const {
     return x / (1.f + (x < 0.f ? -x : x));
   }
 };
 
 struct FSoftSignBackward {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &t, const cnn::real &d) const {
-    cnn::real a = 1.f - (t < 0.f ? -t : t);
+  CNN_DEVICE_FUNC inline float operator()(const float &t, const float &d) const {
+    float a = 1.f - (t < 0.f ? -t : t);
     return a * a * d;
   }
 };
 
 struct FLogisticSigmoid {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+  CNN_DEVICE_FUNC inline float operator()(const float &x) const {
     return 1.f / (1.f + CNN_EXPF(-x));
   }
 };
 
 struct FLogisticSigmoidBackward {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &t, const cnn::real &d) const {
+  CNN_DEVICE_FUNC inline float operator()(const float &t, const float &d) const {
     return (1.f - t) * t * d;
   }
 };
 
 struct FSqDist {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &a, const cnn::real &b) const {
-    cnn::real d = a - b;
+  CNN_DEVICE_FUNC inline float operator()(const float &a, const float &b) const {
+    float d = a - b;
     return d * d;
   }
 };
 
 struct FExp {
-    CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+    CNN_DEVICE_FUNC inline float operator()(const float &x) const {
         return exp(x);
     }
 };
 
 struct FLog {
-    CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+    CNN_DEVICE_FUNC inline float operator()(const float &x) const {
         return log(x);
     }
 };
 
 struct FEuclideanBackward {
-  FEuclideanBackward(int i, const cnn::real* s) : i(i), scalar(s) {}
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &a, const cnn::real &b) const {
+  FEuclideanBackward(int i, const float* s) : i(i), scalar(s) {}
+  CNN_DEVICE_FUNC inline float operator()(const float &a, const float &b) const {
     return (i == 0 ? 2.f : -2.f) * (*scalar) * (a - b);
   }
   int i;
-  const cnn::real* scalar;
+  const float* scalar;
 };
 
 struct FL2SGDUpdate {
-  FL2SGDUpdate(cnn::real l, cnn::real s) : lambda(l), scale(-s) {}
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x, const cnn::real &g) const {
+  FL2SGDUpdate(float l, float s) : lambda(l), scale(-s) {}
+  CNN_DEVICE_FUNC inline float operator()(const float &x, const float &g) const {
     return scale * g - x * lambda;
   }
-  cnn::real lambda;
-  cnn::real scale;
+  float lambda;
+  float scale;
 };
 
 struct FBinaryLogLoss {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x, const cnn::real &x_true) const {
-    cnn::real x_tmp = x;
+  CNN_DEVICE_FUNC inline float operator()(const float &x, const float &x_true) const {
+    float x_tmp = x;
     if (x_true == 1.f) {
       if (x == 0.f) x_tmp = CNN_DEVICE_MIN;
       return -1.f * x_true * log(x_tmp);
@@ -371,9 +369,9 @@ struct FBinaryLogLoss {
 };
 
 struct FBinaryLogLossBackward {
-  explicit FBinaryLogLossBackward(cnn::real d) : d(d) {}
-  CNN_DEVICE_FUNC inline cnn::real operator()(cnn::real x, cnn::real x_true) const {
-    cnn::real x_tmp = x;
+  explicit FBinaryLogLossBackward(float d) : d(d) {}
+  CNN_DEVICE_FUNC inline float operator()(float x, float x_true) const {
+    float x_tmp = x;
     if (x == x_true) return 0;
     if (x == 0.f) x_tmp = CNN_DEVICE_MIN;
     if (x == 1.f) x_tmp = 0.9999999f;
@@ -384,16 +382,16 @@ struct FBinaryLogLossBackward {
 	}
     return d * ((1.f - x_true) / (1.f - x_tmp) + (-x_true / x_tmp));
   }
-  cnn::real d;
+  float d;
 };
 
 struct scale_functor
 {
-    const cnn::real a;
+    const float a;
 
-    scale_functor(cnn::real _a) : a(_a) {}
+    scale_functor(float _a) : a(_a) {}
 
-    CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real& x) const
+    CNN_DEVICE_FUNC inline float operator()(const float& x) const
     {
         return a * x;
     }
@@ -401,11 +399,11 @@ struct scale_functor
 
 struct saxpy_functor
 {
-    const cnn::real a;
+    const float a;
 
-    saxpy_functor(cnn::real _a) : a(_a) {}
+    saxpy_functor(float _a) : a(_a) {}
 
-    CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real& x, const cnn::real& y) const
+    CNN_DEVICE_FUNC inline float operator()(const float& x, const float& y) const
     {
         return a * x + y;
     }

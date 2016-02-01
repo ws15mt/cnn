@@ -38,58 +38,75 @@ int kEOS;
 template <class Builder>
 struct RNNLanguageModel {
   LookupParameters* p_c;
-  Parameters* p_R;
-  Parameters* p_bias;
+  vector<Parameters*> p_R;
+  vector<Parameters*> p_bias;
+  Parameters* p_cls, *p_cls_bias;
+  unsigned int ncls;
   Builder builder;
-  explicit RNNLanguageModel(Model& model) : builder(LAYERS, INPUT_DIM, HIDDEN_DIM, &model) {
-      if (verbose)
-          cout << "building RNNLanguageModel" << endl;
-    p_c = model.add_lookup_parameters(VOCAB_SIZE, {INPUT_DIM}); 
-	p_R = model.add_parameters({ VOCAB_SIZE, HIDDEN_DIM });
-	p_bias = model.add_parameters({ VOCAB_SIZE });
+  vector<int> clssize;
+  vector<long> word2cls;
+  vector<long> acc_cls2size;
+  vector<long> dict_wrd_id2within_class_id;
+  explicit RNNLanguageModel(const vector<int>& cls2nbrwords, /// #words for each class, class starts from 0
+      const vector<long> & acc_cls2size, /// the accumulated class size
+      const vector<long>& word2cls, 
+      const vector<long>& dict_wrd_id2within_class_id,
+      Model& model) : builder(LAYERS, INPUT_DIM, HIDDEN_DIM, &model),
+      clssize(cls2nbrwords), word2cls(word2cls), acc_cls2size(acc_cls2size), dict_wrd_id2within_class_id(dict_wrd_id2within_class_id)
+  {
+      unsigned int n_cls = clssize.size();
+      p_c = model.add_lookup_parameters(VOCAB_SIZE, {INPUT_DIM}); 
+      p_cls = model.add_parameters({ n_cls, HIDDEN_DIM });
+      p_cls_bias = model.add_parameters({ n_cls});
+      for (size_t id = 0; id < n_cls; id++)
+      {
+          unsigned int  clssize = cls2nbrwords[id];
+          p_R.push_back(model.add_parameters({ clssize, HIDDEN_DIM }));
+          p_bias.push_back(model.add_parameters({ clssize }));
+      }
   }
 
   // return Expression of total loss
   Expression BuildLMGraph(const vector<int>& sent, ComputationGraph& cg) {
     const unsigned slen = sent.size() - 1;
-    if (verbose)
-        cout << "start building builder graph" << endl;
     builder.new_graph(cg);  // reset RNN builder for new graph
-    if (verbose)
-        cout << "start new_seuence for the builder graph" << endl;
     builder.start_new_sequence();
-    Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
-    Expression i_bias = parameter(cg, p_bias);  // word bias
-	if (verbose)
-		display_value(i_R, cg, "IR at ");
-	if (verbose)
-		display_value(i_bias, cg, "ibias at ");
-	vector<Expression> errs;
+    
+    Expression i_cls, i_cls_bias;
+    i_cls = parameter(cg, p_cls); 
+    i_cls_bias = parameter(cg, p_cls_bias);
+
+    vector<Expression> i_R, i_bias;
+    for (auto& p : p_R)
+        i_R.push_back(parameter(cg, p)); // hidden -> word rep parameter
+    for (auto& p: p_bias)
+        i_bias.push_back(parameter(cg, p));  // word bias
+
+    vector<Expression> errs;
     for (unsigned t = 0; t < slen; ++t) {
       Expression i_x_t = lookup(cg, p_c, sent[t]);
       // y_t = RNN(x_t)
       Expression i_y_t = builder.add_input(i_x_t);
-      Expression i_r_t =  i_bias + i_R * i_y_t;
-	  if (verbose)
+      int cls_id = word2cls[sent[t + 1]];
+      Expression i_r_t =  i_bias[cls_id] + i_R[cls_id] * i_y_t;
+      Expression i_c_t = i_cls_bias + i_cls * i_y_t;
+      if (verbose)
 		  display_value(i_r_t, cg, "response at " + t);
-      // we can easily look at intermidiate values
-//      std::vector<cnn::real> r_t = as_vector(i_r_t.value());
-  //    for (cnn::real f : r_t) cout << f << " "; cout << endl;
-    //  cout << "[" << as_scalar(pick(i_r_t, sent[t+1]).value()) << "]" << endl;
-
-      // LogSoftmax followed by PickElement can be written in one step
-      // using PickNegLogSoftmax
+    
 #if 1
-      Expression i_ydist = log_softmax(i_r_t);
-      errs.push_back(pick(i_ydist, sent[t+1]));
+      Expression i_err_cls = pick(log_softmax(i_c_t), cls_id);
+      Expression i_err_prb = pick(log_softmax(i_r_t), dict_wrd_id2within_class_id[sent[t + 1]]);
+      errs.push_back(i_err_cls + i_err_prb);
 #if 0
       Expression i_ydist = softmax(i_r_t);
       i_ydist = log(i_ydist)
       errs.push_back(pick(i_ydist, sent[t+1]));
 #endif
 #else
-      Expression i_err = pickneglogsoftmax(i_r_t, sent[t+1]);
-      errs.push_back(i_err);
+      ppl turns to be 0 at epoch 4, so there is a bug
+      Expression i_err_cls = pickneglogsoftmax(i_c_t, cls_id);
+      Expression i_err_prb = pickneglogsoftmax(i_r_t, dict_wrd_id2within_class_id[sent[t + 1]]);
+      errs.push_back(i_err_cls + i_err_prb);
 #endif
     }
     Expression i_nerr = sum(errs);
@@ -100,42 +117,6 @@ struct RNNLanguageModel {
 #endif
   }
 
-  // return Expression for total loss
-  void RandomSample(int max_len = 150) {
-    cerr << endl;
-    ComputationGraph cg;
-    builder.new_graph(cg);  // reset RNN builder for new graph
-    builder.start_new_sequence();
-    
-    Expression i_R = parameter(cg, p_R);
-    Expression i_bias = parameter(cg, p_bias);
-    vector<Expression> errs;
-    int len = 0;
-    int cur = kSOS;
-    while(len < max_len && cur != kEOS) {
-      ++len;
-      Expression i_x_t = lookup(cg, p_c, cur);
-      // y_t = RNN(x_t)
-      Expression i_y_t = builder.add_input(i_x_t);
-      Expression i_r_t = i_bias + i_R * i_y_t;
-      
-      Expression ydist = softmax(i_r_t);
-      
-      unsigned w = 0;
-      while (w == 0 || (int)w == kSOS) {
-        auto dist = as_vector(cg.incremental_forward());
-        cnn::real p = rand01();
-        for (; w < dist.size(); ++w) {
-          p -= dist[w];
-          if (p < 0.0) { break; }
-        }
-        if (w == dist.size()) w = kEOS;
-      }
-      cerr << (len == 1 ? "" : " ") << d.Convert(w);
-      cur = w;
-    }
-    cerr << endl;
-  }
 };
 
 template <class LM_t>
@@ -156,8 +137,6 @@ void train(Model &model, LM_t &lm,
     unsigned lines = 0;
     unsigned total_epoch = 40;
 
-    if (verbose)
-        cout << "saving model at " << fname << endl;
     ofstream out(fname, ofstream::out);
     boost::archive::text_oarchive oa(out);
     oa << model;
@@ -190,10 +169,7 @@ void train(Model &model, LM_t &lm,
         }
         sgd->status();
         cerr << " report = " << report << " E = " << (loss / chars) << " ppl=" << exp(loss / chars) << ' ';
-
-        if (randomSample)
-            lm.RandomSample();
-
+        iteration.WordsPerSecond(chars);
         // show score on dev data?
         report++;
         if (report % dev_every_i_reports == 0) {
@@ -247,6 +223,92 @@ void initialise(Model &model, const string &filename)
     ia >> model;
 }
 
+/**
+dict_wrd_id2within_class_id : the dictionary word id to the id inside a class
+*/
+void load_word2cls_fn(string word2clsfn, Dict& sd, std::vector<long>& wrd2cls, std::vector<long>& dict_wrd_id2within_class_id)
+{
+    ifstream in(word2clsfn);
+    string line;
+
+    wrd2cls.resize(sd.size());
+    dict_wrd_id2within_class_id.resize(sd.size());
+    map<int, int> cls2acccnt; /// the count for each class so far
+    while (getline(in, line)) {
+
+        std::istringstream in(line);
+        std::string word;
+        string cls;
+
+        in >> word;
+        in >> cls;
+
+        int icls = boost::lexical_cast<int>(cls) - 1;
+        int wridx = sd.Convert(word);
+
+        wrd2cls[wridx] = icls;
+        if (cls2acccnt.find(icls) == cls2acccnt.end())
+            cls2acccnt[icls] = 1;
+        else
+            cls2acccnt[icls] += 1;
+        dict_wrd_id2within_class_id[wridx] = cls2acccnt[icls] - 1;
+    }
+    in.close();
+}
+
+/**
+acc_cls2size : the accumulated class size
+*/
+void load_clssize_fn(string clsszefn, std::vector<int> & cls2size, std::vector<long>& acc_cls2size)
+{
+    ifstream in(clsszefn);
+    string line;
+
+    cls2size.clear(); 
+    acc_cls2size.clear();
+    int idx = 1;
+
+    while (getline(in, line)) {
+
+        std::istringstream in(line);
+        std::string cls;
+        string sze;
+
+        in >> cls;
+        in >> sze;
+
+        int icls = boost::lexical_cast<int>(cls) - 1;
+        if (icls != idx - 1)
+            throw("class id should start from 1 and then consecuitively increasing with step 1");
+
+        cls2size.push_back(boost::lexical_cast<int>(sze));
+        if (acc_cls2size.size() == 0)
+            acc_cls2size.push_back(cls2size.back());
+        else
+            acc_cls2size.push_back(acc_cls2size.back() + cls2size.back());
+
+        idx++;
+    }
+    in.close();
+}
+
+bool check_info_correct(Dict& sd, const std::vector<long>& wrd2cls, const std::vector<long>& dict_wrd_id2within_class_id, const std::vector<int> & cls2size, const std::vector<long>& acc_cls2size)
+{
+    for (auto&p : sd.GetWordList())
+    {
+        long wd = sd.Convert(p);
+        int  cls = wrd2cls[wd];
+        int clssize = cls2size[cls];
+        int pos = dict_wrd_id2within_class_id[wd];
+        if (pos < 0 || pos >= clssize)
+        {
+            cerr << "word " << p << " id " << wd << " cls " << cls << " clssize " << clssize << " pos in cls " << pos << " wrong" << endl;
+            return false;
+        }
+    }
+    return true;
+}
+
 int main(int argc, char** argv) {
   cnn::Initialize(argc, argv);
 
@@ -260,6 +322,8 @@ int main(int argc, char** argv) {
       ("train,t", value<string>(), "file containing training sentences")
       ("devel,d", value<string>(), "file containing development sentences.")
       ("test,T", value<string>(), "file containing testing source sentences")
+      ("word2cls", value<string>(), "word2class info file")
+      ("cls2size", value<string>(), "class size information file")
       ("initialise,i", value<string>(), "load initial parameters from file")
       ("parameters,p", value<string>(), "save best parameters to this file")
       ("layers,l", value<int>()->default_value(LAYERS), "use <num> layers for RNN components")
@@ -280,11 +344,6 @@ int main(int argc, char** argv) {
   else if (vm.count("nmn")) flavour = "nmn";
   else			flavour = "rnn";
 
-  if (vm.count("verbose") > 0)
-  {
-      verbose = 1;
-      cout << "extrememly chatty" << endl;
-  }
 
   LAYERS = vm["layers"].as<int>();
   HIDDEN_DIM = vm["hidden"].as<int>();
@@ -368,16 +427,30 @@ int main(int argc, char** argv) {
   else
     sgd = new SimpleSGDTrainer(&model);
 
+  std::vector<long> wrd2cls;
+  std::vector<int> cls2size;
+  std::vector<long> acc_cls2size;
+  std::vector<long> dict_wrd_id2within_class_id;
+  if (vm["word2cls"].as<string>() != "")
+  {
+      load_word2cls_fn(vm["word2cls"].as<string>(), d, wrd2cls, dict_wrd_id2within_class_id);
+      load_clssize_fn(vm["cls2size"].as<string>(), cls2size, acc_cls2size);
+      check_info_correct(d, wrd2cls, dict_wrd_id2within_class_id, cls2size, acc_cls2size);
+  }
+  else{
+      throw std::invalid_argument("need to specify word2cls and cls2size files for word clustering information.");
+  }
+
   if (vm.count("test") == 0)
   {
       if (vm.count("lstm")) {
           cerr << "%% Using LSTM recurrent units" << endl;
-          RNNLanguageModel<LSTMBuilder> lm(model);
+          RNNLanguageModel<LSTMBuilder> lm(cls2size, acc_cls2size, wrd2cls, dict_wrd_id2within_class_id, model);
           train(model, lm, training, dev, sgd, fname, generateSample);
       }
       else if (vm.count("dglstm")) {
           cerr << "%% Using DGLSTM recurrent units" << endl;
-          RNNLanguageModel<DGLSTMBuilder> lm(model);
+          RNNLanguageModel<DGLSTMBuilder> lm(cls2size, acc_cls2size, wrd2cls, dict_wrd_id2within_class_id, model);
           train(model, lm, training, dev, sgd, fname, generateSample);
       }
   }
@@ -405,14 +478,14 @@ int main(int argc, char** argv) {
       {
           if (vm.count("lstm")){
               cerr << "%% using LSTM recurrent units" << endl;
-              RNNLanguageModel<LSTMBuilder> lm(model);
+              RNNLanguageModel<LSTMBuilder> lm(cls2size, acc_cls2size, wrd2cls, dict_wrd_id2within_class_id, model);
               if (vm.count("initialise"))
                   initialise(model, vm["initialise"].as<string>());
               testcorpus(model, lm, test);
           }
           if (vm.count("dglstm")){
               cerr << "%% using DGLSTM recurrent units" << endl;
-              RNNLanguageModel<DGLSTMBuilder> lm(model);
+              RNNLanguageModel<DGLSTMBuilder> lm(cls2size, acc_cls2size, wrd2cls, dict_wrd_id2within_class_id, model);
               if (vm.count("initialise"))
                   initialise(model, vm["initialise"].as<string>());
               testcorpus(model, lm, test);

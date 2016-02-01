@@ -274,6 +274,83 @@ Expression LSTMBuilder::add_input_impl(int prev, const Expression& x)
   return ht.back();
 }
 
+Expression LSTMBuilder::add_input_impl(int prev, const vector<Expression>& x)
+{
+    h.push_back(vector<Expression>(layers));
+    c.push_back(vector<Expression>(layers));
+    vector<Expression>& ht = h.back();
+    vector<Expression>& ct = c.back();
+
+    assert(x.size() == layers);
+    Expression in = x[0];
+
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        Expression i_h_tm1, i_c_tm1;
+        bool has_prev_state = (prev >= 0 || has_initial_state);
+        if (prev < 0) {
+            if (has_initial_state) {
+                // intial value for h and c at timestep 0 in layer i
+                // defaults to zero matrix input if not set in add_parameter_edges
+                i_h_tm1 = h0[i];
+                i_c_tm1 = c0[i];
+            }
+        }
+        else {  // t > 0
+            i_h_tm1 = h[prev][i];
+            i_c_tm1 = c[prev][i];
+        }
+
+        // input
+        Expression i_ait;
+        Expression bimb = biases[i][0];
+        if (has_prev_state)
+            //      i_ait = vars[BI] + vars[X2I] * in + vars[H2I]*i_h_tm1 + vars[C2I] * i_c_tm1;
+            i_ait = affine_transform({ bimb, vars[X2I], in, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
+        else
+            //      i_ait = vars[BI] + vars[X2I] * in;
+            i_ait = affine_transform({ bimb, vars[X2I], in });
+        Expression i_it = logistic(i_ait);
+        // forget
+        Expression i_ft = 1.f - i_it;
+
+        // write memory cell
+        Expression i_awt;
+        Expression bcmb = biases[i][1];
+        if (has_prev_state)
+            //      i_awt = vars[BC] + vars[X2C] * in + vars[H2C]*i_h_tm1;
+            i_awt = affine_transform({ bcmb, vars[X2C], in, vars[H2C], i_h_tm1 });
+        else
+            //      i_awt = vars[BC] + vars[X2C] * in;
+            i_awt = affine_transform({ bcmb, vars[X2C], in });
+        Expression i_wt = tanh(i_awt);
+        // output
+        if (has_prev_state) {
+            Expression i_nwt = cwise_multiply(i_it, i_wt);
+            Expression i_crt = cwise_multiply(i_ft, i_c_tm1);
+            ct[i] = i_crt + i_nwt;
+        }
+        else {
+            ct[i] = cwise_multiply(i_it, i_wt);
+        }
+
+        Expression i_aot;
+        Expression bomb = biases[i][2];
+        if (has_prev_state)
+            //      i_aot = vars[BO] + vars[X2O] * in + vars[H2O] * i_h_tm1 + vars[C2O] * ct[i];
+            i_aot = affine_transform({ bomb, vars[X2O], in, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
+        else
+            i_aot = affine_transform({ bomb, vars[X2O], in });
+        Expression i_ot = logistic(i_aot);
+        Expression ph_t = tanh(ct[i]);
+
+        Expression z = cwise_multiply(i_ot, ph_t);
+        if (i > 0)
+            z = z + x[i];
+        in = ht[i] = z;
+    }
+    return ht.back();
+}
 void LSTMBuilder::copy(const RNNBuilder & rnn) {
   const LSTMBuilder & rnn_lstm = (const LSTMBuilder&)rnn;
   assert(params.size() == rnn_lstm.params.size());

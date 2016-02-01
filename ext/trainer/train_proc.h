@@ -13,6 +13,8 @@
 #include "cnn/expr.h"
 #include "cnn/cnn-helper.h"
 #include "ext/dialogue/attention_with_intention.h"
+#include "ext/lda/lda.h"
+#include "ext/ngram/ngram.h"
 #include "cnn/data-util.h"
 #include "cnn/grad-check.h"
 
@@ -94,7 +96,7 @@ public:
     void prt_model_info(size_t LAYERS, size_t VOCAB_SIZE_SRC, const vector<unsigned>& dims, size_t nreplicate, size_t decoder_additiona_input_to, size_t mem_slots, cnn::real scale);
 
     void batch_train(Model &model, Proc &am, Corpus &training, Corpus &devel,
-        Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real& largest_cost, bool do_segmental_training);
+        Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real& largest_cost, bool do_segmental_training, bool update_sgd);
     void supervised_pretrain(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, cnn::real target_ppl, int min_diag_id,
         bool bcharlevel = false, bool nosplitdialogue = false);
@@ -123,6 +125,17 @@ public:
     void reset_smoothed_ppl(){
         ppl_hist.clear();
     }
+
+public:
+    /// for LDA
+    void lda_train(variables_map vm, const Corpus &training, const Corpus &test, Dict& sd);
+    void lda_test(variables_map vm, const Corpus& test, Dict& sd);
+
+public:
+    /// for ngram
+    void ngram_train(variables_map vm, const Corpus& test, Dict& sd);
+    void ngram_clustering(variables_map vm, const Corpus& test, Dict& sd);
+    void representative_presentation(variables_map vm, const CorpusWithClassId& test, Dict& sd);
 
 private:
     vector<cnn::real> ppl_hist;
@@ -809,7 +822,8 @@ but I comment it out
 */
 template <class AM_t>
 void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
-    Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training)
+    Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
+    bool sgd_update_epochs)
 {
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
@@ -835,12 +849,17 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
         cnn::real dchars_t = 0;
         cnn::real dchars_tt = 0;
 
+        PDialogue v_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
+
         for (unsigned iter = 0; iter < report_every_i;) {
 
             if (si == training.size()) {
                 si = 0;
                 if (first) { first = false; }
-                else { sgd.update_epoch(); }
+                else if (sgd_update_epochs){
+                    sgd.update_epoch();
+                    lines -= training.size();
+                }
             }
 
             if (si % order.size() == 0) {
@@ -853,41 +872,49 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
                     /// shuffle dailogues with the same number of turns
                     random_shuffle(p.second.begin(), p.second.end());
                 }
-                v_selected.assign(training.size(), false);  
+                v_selected.assign(training.size(), false);
             }
 
+            Dialogue prv_turn;
+            size_t turn_id = 0;
+            vector<int> i_sel_idx = get_same_length_dialogues(training, nparallel, i_stt_diag_id, v_selected, v_dialogues, training_numturn2did);
+            size_t nutt = i_sel_idx.size();
+            if (nutt == 0)
+                break;
+
+            if (verbose)
             {
-                Dialogue prv_turn;
-                size_t turn_id = 0;
-                PDialogue v_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
-                vector<int> i_sel_idx = get_same_length_dialogues(training, nparallel, i_stt_diag_id, v_selected, v_dialogues, training_numturn2did);
-                size_t nutt = i_sel_idx.size();
-
-                if (verbose)
-                {
-                    cerr << "selected " << nutt << " :  ";
-                    for (auto p : i_sel_idx)
-                        cerr << p << " ";
-                    cerr << endl;
-                }
-
-                if (segmental_training)
-                    segmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, false, 0, &sgd);
-                else
-                    nosegmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, true, 0, &sgd);
-
-                si+=nutt;
-                lines+=nutt;
-                iter += nutt;
-
+                cerr << "selected " << nutt << " :  ";
+                for (auto p : i_sel_idx)
+                    cerr << p << " ";
+                cerr << endl;
             }
-        }
-        sgd.status();
-        cerr << "\n***Train [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
 
+            if (segmental_training)
+                segmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, false, 0, &sgd);
+            else
+                nosegmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, true, 0, &sgd);
+
+            si += nutt;
+            lines += nutt;
+            iter += nutt;
+        }
+
+        sgd.status();
+        iteration.WordsPerSecond(dchars_t + dchars_s);
+        cerr << "\n***Train " << (lines / (cnn::real)training.size()) * 100 << " %100 of epoch[" << sgd.epoch << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
+
+
+        vector<SentencePair> vs;
+        for (auto&p : v_dialogues)
+            vs.push_back(p[0]);
+        vector<SentencePair> vres;
+        am.respond(vs, vres, sd);
+        
         // show score on dev data?
         report++;
-        if (devel.size() > 0 && floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0 || fmod(lines, (cnn::real)training.size()) == 0.0) {
+
+        if (devel.size() > 0 && (floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0 || fmod(lines, (cnn::real)training.size()) == 0.0)) {
             cnn::real ddloss = 0;
             cnn::real ddchars_s = 0;
             cnn::real ddchars_t = 0;
@@ -926,7 +953,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             ddloss = smoothed_ppl(ddloss);
             if (ddloss < best) {
                 best = ddloss;
-                ofstream out(out_file , ofstream::out);
+                ofstream out(out_file, ofstream::out);
                 boost::archive::text_oarchive oa(out);
                 oa << model;
                 out.close();
@@ -939,6 +966,19 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
         }
 
         prv_epoch = floor(sgd.epoch);
+
+        if (sgd_update_epochs == false)
+        {
+            /// because there is no update on sgd epoch, this loop can run forever. 
+            /// so just run one iteration and quit
+            break;
+        }
+        else{
+            ofstream out(out_file + "e" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
+        }
     }
 }
 
@@ -1471,288 +1511,6 @@ void TrainProcess<AM_t>::supervised_pretrain(Model &model, AM_t &am, Corpus &tra
 
 }
 
-template<class rnn_t, class TrainProc>
-void prt_model_info(size_t LAYERS, size_t VOCAB_SIZE_SRC, const vector<unsigned>& dims, size_t nreplicate, size_t decoder_additiona_input_to, size_t mem_slots, cnn::real scale)
-{
-    cerr << "layer = " << LAYERS << endl; 
-    cerr << "vocab size = " << VOCAB_SIZE_SRC << endl;
-    cerr << "dims = "; 
-    for (auto & p : dims)
-    {
-        cerr << " " << p;
-    }
-    cerr << endl;
-    cerr << "nreplicate = " << nreplicate << endl;
-    cerr << "decoder_additional_input_to = " << decoder_additiona_input_to << endl;
-    cerr << "mem_slots = " << mem_slots << endl;
-    cerr << "scale = " << scale << endl;
-}
-
-template<class rnn_t, class TrainProc>
-Trainer* select_trainer(variables_map vm, Model* model)
-{
-    Trainer* sgd = nullptr;
-    if (vm["trainer"].as<string>() == "momentum")
-        sgd = new MomentumSGDTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
-    if (vm["trainer"].as<string>() == "sgd")
-        sgd = new SimpleSGDTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
-    if (vm["trainer"].as<string>() == "adagrad")
-        sgd = new AdagradTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
-    if (vm["trainer"].as<string>() == "adadelta")
-        sgd = new AdadeltaTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
-    if (vm["trainer"].as<string>() == "rmsprop")
-        sgd = new RmsPropTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
-    if (vm["trainer"].as<string>() == "rmspropwithmomentum")
-        sgd = new RmsPropWithMomentumTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
-    sgd->clip_threshold = vm["clip"].as<float>();
-    sgd->eta_decay = vm["eta_decay"].as<cnn::real>();
-
-    return sgd;
-}
-
-template <class rnn_t, class TrainProc>
-int main_body(variables_map vm, size_t nreplicate= 0, size_t decoder_additiona_input_to = 0, size_t mem_slots = MEM_SIZE)
-{
-#ifdef INPUT_UTF8
-    kSRC_SOS = sd.Convert(L"<s>");
-    kSRC_EOS = sd.Convert(L"</s>");
-#else
-    kSRC_SOS = sd.Convert("<s>");
-    kSRC_EOS = sd.Convert("</s>");
-#endif
-    verbose = vm.count("verbose");
-    g_train_on_turns = vm["turns"].as<int>();
-
-    typedef vector<int> Sentence;
-    typedef pair<Sentence, Sentence> SentencePair;
-    Corpus training, devel, testcorpus;
-    string line;
-    cnn::real largest_dev_cost = 9e+99;
-    TrainProc  * ptrTrainer = nullptr;
-
-    if (vm.count("readdict"))
-    {
-        string fname = vm["readdict"].as<string>();
-#ifdef INPUT_UTF8
-        wifstream in(fname, wifstream::in);
-        boost::archive::text_wiarchive ia(in);
-#else
-        ifstream in(fname, ifstream::in);
-        boost::archive::text_iarchive ia(in);
-#endif
-        if (!in.is_open())
-            throw("cannot open " + fname);
-        ia >> sd;
-        sd.Freeze();
-    }
-
-    if (vm.count("train") > 0 && vm["epochsize"].as<int>() == -1)
-    {
-        cerr << "Reading training data from " << vm["train"].as<string>() << "...\n";
-        training = read_corpus(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), vm.count("appendBOSEOS")> 0,
-            vm.count("charlevel") > 0);
-        sd.Freeze(); // no new word types allowed
-
-        training_numturn2did = get_numturn2dialid(training);
-
-        if (vm.count("writedict"))
-        {
-            string fname = vm["writedict"].as<string>();
-#ifdef INPUT_UTF8
-            wstring wfname;
-            wfname.assign(fname.begin(), fname.end());
-            wofstream ofs(wfname);
-            boost::archive::text_woarchive oa(ofs);
-#else
-            ofstream on(fname);
-            boost::archive::text_oarchive oa(on);
-#endif
-            oa << sd;
-        }
-    }
-    else
-    {
-        if (vm.count("readdict") == 0)
-        {
-			throw std::invalid_argument("must have either training corpus or dictionary");
-        }
-    }
-
-    LAYERS = vm["layers"].as<int>();
-    HIDDEN_DIM = vm["hidden"].as<int>();
-    ALIGN_DIM = vm["align"].as<int>();
-
-    string flavour = builder_flavour(vm); 
-    VOCAB_SIZE_SRC = sd.size();
-    VOCAB_SIZE_TGT = sd.size(); /// use the same dictionary
-    nparallel = vm["nparallel"].as<int>();
-    mbsize = vm["mbsize"].as < int >();
-
-    if (vm.count("beamsearchdecode"))
-    {
-        beam_search_decode = vm["beamsearchdecode"].as<int>();
-    }
-
-    if (vm.count("devel")) {
-        cerr << "Reading dev data from " << vm["devel"].as<string>() << "...\n";
-        devel = read_corpus(vm["devel"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), vm.count("appendBOSEOS")> 0, vm.count("charlevel") > 0);
-        devel_numturn2did = get_numturn2dialid(devel);
-    }
-
-    if (vm.count("testcorpus")) {
-        cerr << "Reading test corpus from " << vm["testcorpus"].as<string>() << "...\n";
-        testcorpus = read_corpus(vm["testcorpus"].as<string>(), sd, kSRC_SOS, kSRC_EOS);
-        test_numturn2did = get_numturn2dialid(testcorpus);
-    }
-
-    string fname;
-    if (vm.count("parameters")) {
-        fname = vm["parameters"].as<string>();
-    }
-    else {
-        ostringstream os;
-        os << "attentionwithintention"
-            << '_' << LAYERS
-            << '_' << HIDDEN_DIM
-            << '_' << flavour
-            << "-pid" << getpid() << ".params";
-        fname = os.str();
-    }
-    cerr << "Parameters will be written to: " << fname << endl;
-
-    Model model;
-    Trainer* sgd = select_trainer<rnn_t, TrainProc>(vm, &model);
-
-    cerr << "%% Using " << flavour << " recurrent units" << endl;
-
-    std::vector<unsigned> dims;
-    dims.resize(4);
-    if (!vm.count("hidden"))
-        dims[ENCODER_LAYER] = HIDDEN_DIM;
-    else
-        dims[ENCODER_LAYER] = (unsigned)vm["hidden"].as<int>();
-    dims[DECODER_LAYER] = dims[ENCODER_LAYER]; /// if not specified, encoder and decoder have the same dimension
-
-    if (!vm.count("align"))
-        dims[ALIGN_LAYER] = ALIGN_DIM;
-    else
-        dims[ALIGN_LAYER] = (unsigned)vm["align"].as<int>();
-    if (!vm.count("intentiondim"))
-        dims[INTENTION_LAYER] = HIDDEN_DIM;
-    else
-        dims[INTENTION_LAYER] = (unsigned)vm["intentiondim"].as<int>();
-
-
-    std::vector<unsigned int> layers;
-    layers.resize(4, LAYERS);
-    if (!vm.count("intentionlayers"))
-        layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();
-    rnn_t hred(model, layers, VOCAB_SIZE_SRC, VOCAB_SIZE_TGT, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
-    prt_model_info<rnn_t, TrainProc>(LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
-
-    if (vm.count("initialise"))
-    {
-        string fname = vm["initialise"].as<string>();
-        ifstream in(fname, ifstream::in);
-        if (in.is_open())
-        {
-            boost::archive::text_iarchive ia(in);
-            ia >> model;
-        }
-    }
-
-    ptrTrainer = new TrainProc();
-
-    if (vm["pretrain"].as<cnn::real>() > 0)
-    {
-        ptrTrainer->supervised_pretrain(model, hred, training, devel, *sgd, fname, vm["pretrain"].as<cnn::real>(), 1);
-        delete sgd;
-
-        /// reopen sgd
-        sgd = select_trainer<rnn_t, TrainProc>(vm, &model);
-    }
-
-    if (vm.count("sampleresponses"))
-    {
-        cerr << "Reading sample corpus from " << vm["sampleresponses"].as<string>() << "...\n";
-        training = read_corpus(vm["sampleresponses"].as<string>(), sd, kSRC_SOS, kSRC_EOS);
-        ptrTrainer->collect_sample_responses(hred, training);
-    }
-    if (vm.count("dialogue"))
-    {
-        if (vm.count("outputfile") == 0)
-        {
-			throw std::invalid_argument("missing recognition output file");
-        }
-        ptrTrainer->dialogue(model, hred, vm["outputfile"].as<string>(), sd);
-    }
-    if (vm.count("reinforce") && vm.count("nparallel") && !vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
-    {
-        // a mirrow of the agent to generate decoding results so that their results can be evaluated
-        // this is not efficient implementation, better way is to share model parameters
-        int n_reinforce_train = vm["num_reinforce_train"].as<int>();
-        cnn::real largest_cost = 9e+99;
-        ptrTrainer->reset_smoothed_ppl();
-        for (size_t k_reinforce = 0; k_reinforce <= n_reinforce_train; k_reinforce++)
-        {
-            Model model_mirrow;
-            string fname;
-            if (vm.count("parameters") > 0 && k_reinforce == 0) {
-                fname = vm["parameters"].as<string>();
-
-                ofstream out(fname, ofstream::out);
-                boost::archive::text_oarchive oa(out);
-                oa << model;
-                out.close();
-            }
-            else if (vm.count("initialise") > 0){
-                fname = vm["initialise"].as<string>();
-            }
-            else
-                throw("need to specify either parameters or initialise model file name");
-            rnn_t hred_agent_mirrow(model_mirrow, layers, VOCAB_SIZE_SRC, VOCAB_SIZE_TGT, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
-            ifstream in(fname, ifstream::in);
-            if (in.is_open())
-            {
-                boost::archive::text_iarchive ia(in);
-                ia >> model_mirrow;
-            }
-
-            cnn::real threshold_prob;
-            threshold_prob = 1.0  -  k_reinforce / (vm["num_reinforce_train"].as<int>() + 0.0);
-
-            size_t each_epoch = min<int>(2, vm["epochs"].as<int>() / n_reinforce_train);
-            ptrTrainer->REINFORCEtrain(model, hred, hred_agent_mirrow, training, devel, *sgd, fname, sd, each_epoch * n_reinforce_train, vm["nparallel"].as<int>(), largest_cost, vm["reward_baseline"].as<cnn::real>(), threshold_prob);
-        }
-    }
-    else if (vm["epochsize"].as<int>() >1 && !vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
-    {   // split data into nparts and train
-        training.clear();
-        ptrTrainer->split_data_batch_train(vm["train"].as<string>(), model, hred, devel, *sgd, fname, vm["epochs"].as<int>(), vm["nparallel"].as<int>(), vm["epochsize"].as<int>(), vm["segmental_training"].as<bool>());
-    }
-    else if (vm.count("nparallel") && !vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
-    {
-        ptrTrainer->batch_train(model, hred, training, devel, *sgd, fname, vm["epochs"].as<int>(), vm["nparallel"].as<int>(), largest_dev_cost, vm["segmental_training"].as<bool>());
-    }
-    else if (!vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
-    {
-        ptrTrainer->train(model, hred, training, devel, *sgd, fname, vm["epochs"].as<int>(), vm.count("charlevel") > 0, vm.count("nosplitdialogue"));
-    }
-    else if (vm.count("testcorpus"))
-    {
-        if (vm.count("outputfile") == 0)
-        {
-			throw std::invalid_argument("missing recognition output file");
-        }
-        ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, test_numturn2did); 
-    }
-
-    delete sgd;
-    delete ptrTrainer;
-
-    return EXIT_SUCCESS;
-}
-
 /** 
 since the tool loads data into memory and that can cause memory exhaustion, this function do sampling of data for each epoch.
 */
@@ -1766,230 +1524,436 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
     cnn::real largest_cost = 9e+99;
 
     ifstream ifs(train_filename);
-    for (size_t ne = 0; ne < max_epochs; ne++)
+    int trial = 0;
+    while(sgd.epoch < max_epochs)
     {
         cerr << "Reading training data from " << train_filename << "...\n";
         Corpus training = read_corpus(ifs, sd, kSRC_SOS, kSRC_EOS, epochsize);
         training_numturn2did = get_numturn2dialid(training);
 
-        if (training.size() == 0)
+        if (ifs.eof() || training.size() == 0)
         {
-            ifs.seekg(0, ifs.beg);
+            ifs.close();
+            ifs.open(train_filename); 
+            
+            if (training.size() == 0)
+            {
+                continue;
+            }
+            ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
+
+            sgd.update_epoch();
         }
 
-        batch_train(model, am, training, devel, sgd, out_file, ne + 1, nparallel, largest_cost, segmental_training);
+        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false);
 
-        if (sgd.epoch > max_epochs)
-            break;
+        if (fmod(trial , 50) == 0)
+        {
+            ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
+        }
+        trial++;
     }
     ifs.close();
 }
 
 /**
-training on triplet dataset
-decoder_t : the type for decoder network, can be RNN or DNN
+@bcharlevel : true if character output; default false.
 */
-template <class rnn_t, class TrainProc>
-int tuple_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_input_to = 0, size_t mem_slots = MEM_SIZE)
+template <class AM_t>
+void TrainProcess<AM_t>::lda_train(variables_map vm, const Corpus &training, const Corpus& test, Dict& sd)
 {
-#ifdef INPUT_UTF8
-    kSRC_SOS = sd.Convert(L"<s>");
-    kSRC_EOS = sd.Convert(L"</s>");
-#else
-    kSRC_SOS = sd.Convert("<s>");
-    kSRC_EOS = sd.Convert("</s>");
-#endif
-    verbose = vm.count("verbose");
-    g_train_on_turns = vm["turns"].as<int>();
+    ldaModel * pLda = new ldaModel(training, test);
 
-    typedef vector<int> Sentence;
-    typedef pair<Sentence, Sentence> SentencePair;
-    TupleCorpus training, devel, testcorpus;
-    string line;
+    pLda->init(vm);
 
-    TrainProc  * ptrTrainer = nullptr;
+    pLda->read_data(training, sd, test);
 
-    if (vm.count("readdict"))
-    {
-        string fname = vm["readdict"].as<string>();
-#ifdef INPUT_UTF8
-        wifstream in(fname, wifstream::in);
-        boost::archive::text_wiarchive ia(in);
-#else
-        ifstream in(fname, ifstream::in);
-        boost::archive::text_iarchive ia(in);
-#endif
-        ia >> sd;
-        sd.Freeze();
-    }
+    pLda->train();
+    pLda->save_ldaModel_topWords(vm["lda-model"].as<string>() + ".topic.words", sd);
 
-    if (vm.count("train") > 0)
-    {
-        cerr << "Reading training data from " << vm["train"].as<string>() << "...\n";
-        training = read_tuple_corpus(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS, td, kTGT_SOS, kTGT_EOS, vm["mbsize"].as<int>());
-        sd.Freeze(); // no new word types allowed
-        td.Freeze();
+    pLda->load_ldaModel(-1);
+    pLda->test(sd);
 
-        training_numturn2did = get_numturn2dialid(training);
-
-        if (vm.count("writesrcdict"))
-        {
-            string fname = vm["writesrcdict"].as<string>();
-            ofstream on(fname);
-            boost::archive::text_oarchive oa(on);
-            oa << sd;
-        }
-        if (vm.count("writetgtdict"))
-        {
-            string fname = vm["writetgtdict"].as<string>();
-            ofstream on(fname);
-            boost::archive::text_oarchive oa(on);
-            oa << td;
-        }
-    }
-    else
-    {
-        if (vm.count("readtgtdict") == 0 || vm.count("readsrcdict") == 0)
-        {
-            cerr << "must have either training corpus or dictionary" << endl;
-            abort();
-        }
-        if (vm.count("readsrcdict"))
-        {
-            string fname = vm["readsrcdict"].as<string>();
-            ifstream in(fname);
-            boost::archive::text_iarchive ia(in);
-            ia >> sd;
-        }
-        if (vm.count("readtgtdict"))
-        {
-            string fname = vm["readtgtdict"].as<string>();
-            ifstream in(fname);
-            boost::archive::text_iarchive ia(in);
-            ia >> td;
-        }
-    }
-
-    LAYERS = vm["layers"].as<int>();
-    HIDDEN_DIM = vm["hidden"].as<int>();
-    ALIGN_DIM = vm["align"].as<int>();
-
-    string flavour = builder_flavour(vm);
-    VOCAB_SIZE_SRC = sd.size();
-    VOCAB_SIZE_TGT = td.size();
-    nparallel = vm["nparallel"].as<int>();
-    mbsize = vm["mbsize"].as < int >();
-
-    if (vm.count("beamsearchdecode"))
-    {
-        beam_search_decode = vm["beamsearchdecode"].as<int>();
-    }
-
-    if (vm.count("devel")) {
-        cerr << "Reading dev data from " << vm["devel"].as<string>() << "...\n";
-        unsigned min_dev_id = 0;
-        devel = read_tuple_corpus(vm["devel"].as<string>(), sd, kSRC_SOS, kSRC_EOS, td, kTGT_SOS, kTGT_EOS, vm["mbsize"].as<int>());
-        devel_numturn2did = get_numturn2dialid(devel);
-    }
-
-    if (vm.count("testcorpus")) {
-        cerr << "Reading test corpus from " << vm["testcorpus"].as<string>() << "...\n";
-        unsigned min_dev_id = 0;
-        testcorpus = read_tuple_corpus(vm["testcorpus"].as<string>(), sd, kSRC_SOS, kSRC_EOS, td, kTGT_SOS, kTGT_EOS, vm["mbsize"].as<int>());
-        test_numturn2did = get_numturn2dialid(testcorpus);
-    }
-
-    string fname;
-    if (vm.count("parameters")) {
-        fname = vm["parameters"].as<string>();
-    }
-    else {
-        ostringstream os;
-        os << "attentionwithintention"
-            << '_' << LAYERS
-            << '_' << HIDDEN_DIM
-            << '_' << flavour
-            << "-pid" << getpid() << ".params";
-        fname = os.str();
-    }
-    cerr << "Parameters will be written to: " << fname << endl;
-
-    Model model;
-    Trainer* sgd = select_trainer<rnn_t, TrainProc>(vm, &model);
-
-    cerr << "%% Using " << flavour << " recurrent units" << endl;
-
-    std::vector<unsigned> dims;
-    dims.resize(4);
-    if (!vm.count("hidden"))
-        dims[ENCODER_LAYER] = HIDDEN_DIM;
-    else
-        dims[ENCODER_LAYER] = (unsigned)vm["hidden"].as<int>();
-    dims[DECODER_LAYER] = dims[ENCODER_LAYER]; /// if not specified, encoder and decoder have the same dimension
-
-    if (!vm.count("align"))
-        dims[ALIGN_LAYER] = ALIGN_DIM;
-    else
-        dims[ALIGN_LAYER] = (unsigned)vm["align"].as<int>();
-    if (!vm.count("intentiondim"))
-        dims[INTENTION_LAYER] = HIDDEN_DIM;
-    else
-        dims[INTENTION_LAYER] = (unsigned)vm["intentiondim"].as<int>();
-
-
-    std::vector<unsigned int> layers;
-    layers.resize(4, LAYERS);
-    if (!vm.count("intentionlayers"))
-        layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();
-    rnn_t hred(model, layers, VOCAB_SIZE_SRC, VOCAB_SIZE_TGT, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
-    prt_model_info<rnn_t, TrainProc>(LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
-
-    if (vm.count("initialise"))
-    {
-        string fname = vm["initialise"].as<string>();
-        ifstream in(fname, ifstream::in);
-        if (in.is_open())
-        {
-            boost::archive::text_iarchive ia(in);
-            ia >> model;
-        }
-    }
-
-    ptrTrainer = new TrainProc();
-
-/*
-if (vm.count("dialogue"))
-    {
-        if (vm.count("outputfile") == 0)
-        {
-            cerr << "missing recognition output file" << endl;
-            abort();
-        }
-        ptrTrainer->dialogue(model, hred, vm["outputfile"].as<string>(), sd);
-    }
-    if (vm.count("nparallel") && !vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
-    {
-        ptrTrainer->batch_train(model, hred, training, devel, *sgd, fname, vm["epochs"].as<int>(), vm["nparallel"].as<int>());
-    }
-    */
-    if (!vm.count("test") && !vm.count("kbest") && !vm.count("testcorpus"))
-    {
-        ptrTrainer->train(model, hred, training, *sgd, fname, vm["epochs"].as<int>());
-    }
-    else if (vm.count("testcorpus"))
-    {
-        if (vm.count("outputfile") == 0)
-        {
-            cerr << "missing recognition output file" << endl;
-            abort();
-        }
-        ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, td);
-    }
-    
-    delete sgd;
-    delete ptrTrainer;
-
-    return EXIT_SUCCESS;
+    delete[] pLda;
 }
+
+/**
+@bcharlevel : true if character output; default false.
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::lda_test(variables_map vm, const Corpus& test, Dict& sd)
+{
+    Corpus empty;
+    ldaModel * pLda = new ldaModel(empty, test);
+
+    pLda->init(vm);
+    pLda->load_ldaModel(vm["lda-final-model"].as<string>());
+
+    pLda->read_data(empty, sd, test);
+
+    pLda->test(sd);
+
+    delete[] pLda;
+}
+
+/**
+train n-gram model
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::ngram_train(variables_map vm, const Corpus& test, Dict& sd)
+{
+    Corpus empty;
+    nGram pnGram= nGram();
+    pnGram.Initialize(vm);
+
+    for (auto & t : test)
+    {
+        for (auto & s : t)
+        {
+            pnGram.UpdateNgramCounts(s.second, 0, sd);
+            pnGram.UpdateNgramCounts(s.second, 1, sd);
+        }
+    }
+
+    pnGram.ComputeNgramModel();
+
+    pnGram.SaveModel(); 
+
+}
+
+/**
+cluster using n-gram model
+random shuffle training data and use the first half to train ngram model
+after several iterations, which have their log-likelihood reported, the ngram model assign a class id for each sentence
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, Dict& sd)
+{
+    Corpus empty;
+    int ncls = vm["ngram-num-clusters"].as<int>();
+    vector<nGram> pnGram(ncls); 
+    for (auto& p: pnGram)
+        p.Initialize(vm);
+
+    /// flatten corpus
+    Sentences user, response;
+    flatten_corpus(test, user, response);
+
+    for (int iter = 0; iter < vm["epochs"].as<int>(); iter++)
+    {
+        shuffle(response.begin(), response.end(), std::default_random_engine(iter));
+        if (iter == 0)
+        {
+            for (int i = 0; i < ncls; i++)
+            {
+                pnGram[i].LoadModel(".m" + boost::lexical_cast<string>(i));
+            }
+
+            for (int i = 0; i < response.size(); i++)
+            {
+                int cls = rand0n_uniform(ncls - 1);
+                pnGram[cls].UpdateNgramCounts(response[i], 0, sd);
+            }
+#pragma omp parallel for
+            for (int i = 0; i < ncls; i++)
+            {
+                pnGram[i].ComputeNgramModel();
+                pnGram[i].SaveModel(".m" + boost::lexical_cast<string>(i));
+            }
+        }
+        else
+        {
+            /// use half the data to update centroids
+
+            /// reassign data to closest cluster
+            vector<Sentences> current_assignment(ncls);
+            double totallk = 0;
+            for (int i = 0; i < response.size() / 2; i++)
+            {
+                if (response[i].size() == 0)
+                    continue;
+
+                vector<cnn::real> llk(ncls);
+                for (int c = 0; c < ncls; c++)
+                    llk[c] = pnGram[c].GetSentenceLL(response[i]);
+
+                cnn::real largest = llk[0];
+                int iarg = 0;
+                for (int c = 1; c < ncls; c++)
+                {
+                    if (llk[c] > largest)
+                    {
+                        largest = llk[c];
+                        iarg = c;
+                    }
+                }
+                current_assignment[iarg].push_back(response[i]);
+                totallk += largest / response[i].size();
+            }
+            totallk /= response.size();
+
+            cout << "loglikelihood at iteration " << iter << " is " << totallk << endl;
+
+            ///update cluster
+#pragma omp parallel for
+            for (int i = 0; i < ncls; i++)
+                pnGram[i].Clear();
+
+            for (int i = 0; i < current_assignment.size(); i++)
+            {
+                for (auto & p : current_assignment[i])
+                {
+                    pnGram[i].UpdateNgramCounts(p, 0, sd);
+                    pnGram[i].UpdateNgramCounts(p, 1, sd);
+                }
+            }
+
+#pragma omp parallel for
+            for (int i = 0; i < ncls; i++)
+            {
+                pnGram[i].ComputeNgramModel();
+                pnGram[i].SaveModel(".m" + boost::lexical_cast<string>(i));
+            }
+        }
+    }
+
+    /// do classification now
+    ofstream ofs;
+    if (vm.count("outputfile") > 0)
+        ofs.open(vm["outputfile"].as<string>());
+    long did = 0;
+    for (auto& t : test)
+    {
+        int tid = 0;
+        for (auto& s : t)
+        {
+            vector<cnn::real> llk(ncls);
+            for (int i = 0; i < ncls; i++)
+                llk[i] = pnGram[i].GetSentenceLL(s.second);
+
+            cnn::real largest = llk[0];
+            int iarg = 0;
+            for (int i = 1; i < ncls; i++)
+            {
+                if (llk[i] > largest)
+                {
+                    largest = llk[i];
+                    iarg = i;
+                }
+            }
+
+            string userstr;
+            for (auto& p : s.first)
+                userstr = userstr + " " + sd.Convert(p);
+            string responsestr;
+            for (auto& p : s.second)
+                responsestr = responsestr + " " + sd.Convert(p);
+
+            string ostr = boost::lexical_cast<string>(did)+ " ||| " + boost::lexical_cast<string>(tid)+ " ||| " + userstr + " ||| " + responsestr;
+            ostr = ostr + " ||| " + boost::lexical_cast<string>(iarg);
+            if (ofs.is_open())
+            {
+                ofs << ostr << endl;
+            }
+            else
+                cout << ostr << endl;
+
+            tid++;
+        }
+        did++;
+    }
+
+    if (ofs.is_open())
+        ofs.close();
+}
+
+/**
+Find the top representative in each class and assign a representative, together with its index, to the original input
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::representative_presentation(variables_map vm, const CorpusWithClassId& test, Dict& sd)
+{
+    Corpus empty;
+    int ncls = vm["ngram-num-clusters"].as<int>();
+    int nclsInEachCluster = vm["ncls-in-each-cluster"].as<int>();
+    vector<nGram> pnGram(ncls*nclsInEachCluster);
+    for (auto& p : pnGram)
+        p.Initialize(vm);
+
+    /// flatten corpus
+    Sentences user_inputs;
+    vector<SentenceWithId> response, not_randomly_shuffled_response;
+    flatten_corpus(test, user_inputs, response);
+    not_randomly_shuffled_response = response; /// backup of response that is not randomly shuffled
+    user_inputs.clear();
+
+    for (int iter = 0; iter < vm["epochs"].as<int>(); iter++)
+    {
+        shuffle(response.begin(), response.end(), std::default_random_engine(iter));
+        if (iter == 0)
+        {
+            for (int i = 0; i < response.size(); i++)
+            {
+                int this_cls = response[i].second;
+                int cls = rand0n_uniform(nclsInEachCluster - 1);
+                cls += nclsInEachCluster * this_cls;
+                pnGram[cls].UpdateNgramCounts(response[i].first, 0, sd);
+            }
+#pragma omp parallel for
+            for (int i = 0; i < ncls * nclsInEachCluster; i++)
+            {
+                pnGram[i].ComputeNgramModel();
+//                pnGram[i].SaveModel(".m" + boost::lexical_cast<string>(i));
+            }
+        }
+        else
+        {
+            /// use half the data to update centroids
+
+            /// reassign data to closest cluster
+            vector<Sentences> current_assignment(ncls * nclsInEachCluster);
+            double totallk = 0;
+
+            for (int i = 0; i < response.size() / 2; i++)
+            {
+                if (response[i].first.size() == 0)
+                    continue;
+
+                int this_cls = response[i].second;
+                vector<cnn::real> llk(nclsInEachCluster);
+                for (int c = 0; c < nclsInEachCluster; c++)
+                    llk[c] = pnGram[c + this_cls * nclsInEachCluster].GetSentenceLL(response[i].first);
+
+                cnn::real largest = llk[0];
+                int iarg = 0;
+                for (int c = 1; c < nclsInEachCluster; c++)
+                {
+                    if (llk[c] > largest)
+                    {
+                        largest = llk[c];
+                        iarg = c;
+                    }
+                }
+                iarg += nclsInEachCluster * this_cls;
+                current_assignment[iarg].push_back(response[i].first);
+                totallk += largest / response[i].first.size();
+            }
+            totallk /= response.size();
+
+            cout << "loglikelihood at iteration " << iter << " is " << totallk << endl;
+
+            ///update cluster
+#pragma omp parallel for
+            for (int i = 0; i < ncls * nclsInEachCluster; i++)
+                pnGram[i].Clear();
+
+            for (int i = 0; i < current_assignment.size(); i++)
+            {
+                for (auto & p : current_assignment[i])
+                {
+                    pnGram[i].UpdateNgramCounts(p, 0, sd);
+                    pnGram[i].UpdateNgramCounts(p, 1, sd);
+                }
+            }
+
+#pragma omp parallel for
+            for (int i = 0; i < ncls * nclsInEachCluster; i++)
+            {
+                pnGram[i].ComputeNgramModel();
+                pnGram[i].SaveModel(".m" + boost::lexical_cast<string>(i));
+            }
+        }
+    }
+
+    /// do classification now
+    ofstream ofs;
+    if (vm.count("outputfile") > 0)
+        ofs.open(vm["outputfile"].as<string>());
+    long did = 0;
+    vector<cnn::real> i_so_far_largest_score(ncls * nclsInEachCluster, -10000.0);/// the vector saving the largest score of a cluster from any observations so far
+    vector<int> i_the_closet_input(ncls * nclsInEachCluster, -1); /// the index to the input that has the closest distance to centroid of each class
+    vector<int> i_data_to_cls; 
+    for (auto& t : test)
+    {
+        for (auto& s : t)
+        {
+            int this_cls = s.second.second;
+            int cls_offset = this_cls * nclsInEachCluster;
+            vector<cnn::real> llk(nclsInEachCluster);
+            for (int i = 0; i < nclsInEachCluster; i++)
+                llk[i] = pnGram[i + cls_offset].GetSentenceLL(s.second.first);
+
+            cnn::real largest = llk[0];
+            int iarg = 0;
+            for (int i = 1; i < nclsInEachCluster; i++)
+            {
+                if (llk[i] > largest)
+                {
+                    largest = llk[i];
+                    iarg = i;
+                }
+            }
+            iarg += cls_offset;
+            i_data_to_cls.push_back(iarg);
+
+            /// update representation of this class
+            if (i_so_far_largest_score[iarg] < largest)
+            {
+                i_so_far_largest_score[iarg] = largest;
+                i_the_closet_input[iarg] = i_data_to_cls.size() - 1;
+            }
+        }
+    }
+
+    /// represent the cluster with closest observation
+    vector<string> i_representative(ncls * nclsInEachCluster);
+    for (int i = 0; i < ncls *nclsInEachCluster; i++)
+    {
+        i_representative[i] = "";
+        if (i_the_closet_input[i] >= 0)
+            for (auto& p : not_randomly_shuffled_response[i_the_closet_input[i]].first)
+                i_representative[i] = i_representative[i] + " " + sd.Convert(p);
+    }
+
+    long idx = 0;
+    for (auto& t : test)
+    {
+        int tid = 0;
+        for (auto& s : t)
+        {
+            int iarg = i_data_to_cls[idx];
+
+            string userstr;
+            for (auto& p : s.first)
+                userstr = userstr + " " + sd.Convert(p);
+            string responsestr;
+            for (auto& p : s.second.first)
+                responsestr = responsestr + " " + sd.Convert(p);
+
+            string ostr = boost::lexical_cast<string>(did)+" ||| " + boost::lexical_cast<string>(tid)+" ||| " + userstr + " ||| " + responsestr;
+            ostr = ostr + " ||| " + boost::lexical_cast<string>(iarg)+" ||| " + i_representative[iarg];
+            if (ofs.is_open())
+            {
+                ofs << ostr << endl;
+            }
+            else
+                cout << ostr << endl;
+
+            tid++;
+            idx++;
+        }
+        did++;
+    }
+
+    if (ofs.is_open())
+        ofs.close();
+}
+
 
 #endif

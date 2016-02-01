@@ -152,4 +152,11 @@ real rand_normal() {
   return distribution(*rndeng);
 }
 
+int rand0n_uniform(int n)
+{
+    assert(n > 0);
+    uniform_int_distribution<> distribution(0, n);
+    return distribution(*rndeng);
+}
+
 } // namespace cnn

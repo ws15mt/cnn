@@ -1,27 +1,22 @@
 
 REM this run recurrent network language model experiments
-REM baseline is LSTM
-REM alternatively can run Depth-gated LSTM
+REM baseline is class-based LSTM
+REM words are clustered in frequency. Each class has equal probability mass. 
 REM 
 
-set WORKDIR=.
-set DATADIR=c:\data\ptbdata
-set BINDIR=C:\dev\cnn\msbuildcuda\examples\Release
-REM set BINDIR=C:\dev\cnn\msbuild\examples\Release
+set WORKDIR=c:\dev\mycnn\exp\lm
+set DATADIR=c:/data/ptbdata
+set BINDIR=C:\dev\mycnn\msbuildx64\examples\Release
 
 mkdir %WORKDIR%\logs
 mkdir %WORKDIR%\models
 
+REM call %BINDIR%\rnnlm2_cls_based.exe --lstm --layers 2 --seed 127 --parameters %WORKDIR%\models\lstm.l2.h200.mdl --hidden 200 -t %DATADIR%\ptb.trn -d %DATADIR%\ptb.dev --word2cls %DATADIR%/wrd2cls.txt --cls2size %DATADIR%/cls2wrd.txt > %WORKDIR%\logs\train.lstm.l2.hd200.log 2>&1
 
-call %BINDIR%\rnnlm2.exe --lstm --layers 2 --seed 127 --parameters %WORKDIR%\models\lstm.l2.h200.mdl --hidden 200 -t %DATADIR%\ptb.trn -d %DATADIR%\ptb.dev  > %WORKDIR%\logs\train.lstm.l2.hd200.log 2>&1
+call %BINDIR%\rnnlm2_cls_based.exe --lstm --layers 2 --seed 127 --initialise %WORKDIR%\models\lstm.l2.h200.mdl --hidden 200 -t %DATADIR%\ptb.trn --test %DATADIR%\ptb.tst  --word2cls %DATADIR%/wrd2cls.txt --cls2size %DATADIR%/cls2wrd.txt  > %WORKDIR%\logs\tst.lstm.l2.hd200.log 2>&1
 
-call %BINDIR%\rnnlm2.exe --lstm --layers 2 --seed 127 --initialise %WORKDIR%\models\lstm.l2.h200.mdl --hidden 200 -t %DATADIR%\ptb.trn --test %DATADIR%\ptb.tst  > %WORKDIR%\logs\tst.lstm.l2.hd200.log 2>&1
 
-REM run with the following argument in a local machine
-REM  C:\dev\cnn\msbuild\examples\Release\rnnlm2.exe --lstm --layers 2 --seed 127 --parameters c:/temp/models/lstm.l2.h200.mdl --hidden 200 -t c:/data/ptbdata/ptb.trn -d c:/data/ptbdata/ptb.dev
-REM cuda
-REM C:\dev\cnn2\msbuild\examples\Release\rnnlm2.exe --verbose --lstm --layers 2 --seed 127 --parameters c:/temp/models/lstm.l2.h200.mdl --hidden 200 -t c:/data/ptbdata/ptb.trn.1 -d c:/data/ptbdata/ptb.trn.1
-REM C:\dev\cnn2\msbuild\examples\Release\rnnlm2.exe --verbose --lstm --layers 2 --seed 127 --parameters c:/temp/models/lstm.l2.h200.mdl.2 --hidden 200 -t c:/data/ptbdata/ptb.trn.1 -d c:/data/ptbdata/ptb.trn.1
+REM ***DEV [epoch=0] E = 4.32119 ppl=75.2784
 
 goto exit
 

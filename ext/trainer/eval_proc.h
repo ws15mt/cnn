@@ -72,19 +72,7 @@ public:
 template<class Proc>
 void EvaluateProcess<Proc>::readEmbedding(const string& embedding_fn, Dict& sd)
 {
-    ifstream in(embedding_fn);
-    string line;
-
-    while (getline(in, line)) {
-
-        int wrd_idx;
-
-        vector<cnn::real> iv = read_embedding(line, sd, wrd_idx);
-        if (wrd_idx >= 0)
-            vWordEmbedding[wrd_idx] = iv;
-    }
-
-    in.close();
+    read_embedding(embedding_fn, sd, vWordEmbedding);
 }
 
 template<class Proc>
