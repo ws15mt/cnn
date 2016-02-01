@@ -4,9 +4,10 @@ REM baseline is LSTM
 REM alternatively can run Depth-gated LSTM
 REM 
 
-set WORKDIR=\\gcr\scratch\b99\kaisheny\exp\lm
-set DATADIR=\\gcr\scratch\b99\kaisheny\data\ptddata
-set BINDIR=\\gcr\scratch\b99\kaisheny\bin\windows
+set WORKDIR=.
+set DATADIR=c:\data\ptbdata
+set BINDIR=C:\dev\cnn\msbuildcuda\examples\Release
+set BINDIR=C:\dev\cnn\msbuild\examples\Release
 
 mkdir %WORKDIR%\logs
 mkdir %WORKDIR%\models
