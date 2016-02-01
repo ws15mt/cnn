@@ -669,6 +669,9 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDia
     size_t i_turns = 0;
     PTurn prv_turn;
 
+    if (verbose)
+        cout << "start segmental_forward_backward" << endl;
+
     for (auto turn : v_v_dialogues)
     {
         ComputationGraph cg;
@@ -689,11 +692,19 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDia
         cg.incremental_forward();
         if (sgd != nullptr)
         {
+            if (verbose)
+                cout << " start backprop " << endl;
             cg.backward();
+            if (verbose)
+                cout << " done backprop " << endl;
             sgd->update(am.twords);
+            if (verbose)
+                cout << " done update" << endl;
         }
 
         dloss += as_scalar(cg.get_value(am.s2txent.i));
+        if (verbose)
+            cout << "dloss " << dloss << endl;
 
         dchars_s += am.swords;
         dchars_t += am.twords;
@@ -842,7 +853,15 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
     vector<bool> v_selected(training.size(), false);  /// track if a dialgoue is used
     size_t i_stt_diag_id = 0;
 
-    while (sgd.epoch < max_epochs) {
+    /// if no update of sgd in this function, need to train with all data in one pass and then return
+    if (sgd_update_epochs == false)
+    {
+        report_every_i = training.size();
+    }
+
+    while ((sgd_update_epochs && sgd.epoch < max_epochs) ||  /// run multiple passes of data
+           (!sgd_update_epochs && si < training.size()))  /// run one pass of the data
+    {
         Timer iteration("completed in");
         cnn::real dloss = 0;
         cnn::real dchars_s = 0;
