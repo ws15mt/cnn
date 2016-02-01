@@ -83,11 +83,8 @@ namespace cnn {
             fxs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
             dEdfs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
 #else
-            num_mb = 8191UL;
-//            fxs = new AlignedMemoryPool<ALIGN>(8191UL * (1UL << 21));
-//            dEdfs = new AlignedMemoryPool<ALIGN>(8191UL * (1UL << 21));
-            fxs = new AlignedMemoryPool<ALIGN>(num_mb << 20);
-            dEdfs = new AlignedMemoryPool<ALIGN>(num_mb << 20);
+            fxs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 24));
+            dEdfs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 24));
 #endif
         }
         cerr << "Done.\n";

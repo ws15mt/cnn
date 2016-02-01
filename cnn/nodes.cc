@@ -887,7 +887,8 @@ void Concatenate::backward_impl(const vector<const Tensor*>& xs,
 #endif
 }
 
-#define MAX_CONCAT_COLS_ARGS 4096
+#define MAX_CONCAT_COLS_ARGS 16384
+/// 4096
 size_t ConcatenateColumns::aux_storage_size() const {
   return MAX_CONCAT_COLS_ARGS * sizeof(unsigned);
 }
