@@ -28,6 +28,8 @@
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/range/irange.hpp>
 
+extern int verbose; 
+
 namespace cnn {
 
 #define MEM_SIZE 10
@@ -3223,9 +3225,13 @@ public:
         const std::vector<std::vector<int>> &source,
         ComputationGraph &cg) 
     {
+        if (verbose)
+            cout << "MultiSource_LinearEncoder::start_new_instance" << endl;
         nutt = source.size();
         std::vector<Expression> v_tgt2enc;
 
+        if (verbose)
+            cout << "start_new_instance" << endl;
         if (i_h0.size() == 0)
         {
             i_h0.clear();
@@ -3249,6 +3255,8 @@ public:
             i_enc_to_intention = parameter(cg, p_enc_to_intention);
 
             i_zero = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
+            if (verbose)
+                display_value(i_zero,  cg, "i_zero");
         }
 
         std::vector<Expression> source_embeddings;
@@ -3260,10 +3268,14 @@ public:
         encoder_fwd.start_new_sequence(i_h0);
         if (prv_response.size() > 0)
         {
+            if (verbose)
+                cout << "has prv_response" << endl;
             /// get the raw encodeing from source
             unsigned int prvslen = 0;
             Expression prv_response_enc = concatenate_cols(average_embedding(prvslen, prv_response, cg, p_cs));
             encoder_fwd.add_input(prv_response_enc);
+            if (verbose)
+                cout << "done encode prv_response" << endl;
         }
 
         /// encode the source side input, with intial state from the previous response
@@ -3282,10 +3294,14 @@ public:
         }
         /// get the raw encodeing from source
         src_fwd = concatenate_cols(average_embedding(slen, source, cg, p_cs));
+        if (verbose)
+            cout << "done concatenate_cols(average_embedding(slen, source, cg, p_cs))" << endl;
 
         /// combine the previous response and the current input by adding the current input to the 
         /// encoder that is initialized from the state of the encoder for the previous response
         encoder_bwd.add_input(src_fwd);
+        if (verbose)
+            cout << "done encode current input" << endl;
 
         /// update intention, with inputs for each each layer for combination
         /// the context hidden state is tanh(W_h previous_hidden + encoder_bwd.final_s at each layer)
@@ -3293,6 +3309,8 @@ public:
         for (auto p : encoder_bwd.final_s())
             v_to_intention.push_back(i_enc_to_intention* p);
         combiner.add_input(v_to_intention);
+        if (verbose)
+            cout << "done combiner add_input" << endl;
 
         /// decoder start with a context from intention 
         decoder.new_graph(cg);
@@ -3301,31 +3319,59 @@ public:
         for (auto p : combiner.final_s())
             v_to_dec.push_back(i_cxt_to_decoder * p);
         decoder.start_new_sequence(v_to_dec);  /// get the intention
+        if (verbose)
+            cout << "done decoder.start_new_sequence" << endl;
     }
 
     Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
+        if (verbose)
+            cout << "MultiSource_LinearEncoder::decoder_step" << endl;
         Expression i_c_t;
         unsigned int nutt = trg_tok.size();
         Expression i_h_t;  /// the decoder output before attention
         Expression i_h_attention_t; /// the attention state
         vector<Expression> v_x_t;
 
+        if (verbose)
+            cout << "decoder_step" << endl;
         for (auto p : trg_tok)
         {
             Expression i_x_x;
             if (p >= 0)
+            {
+                if (verbose)
+                {
+                    cout << "to call lookup of " << p << endl;
+                }
                 i_x_x = lookup(cg, p_cs, p);
+                if (verbose)
+                    cout << "done call lookup " << p << endl;
+            }
             else
+            {
+                if (verbose)
+                    cout << "to call i_zero" << endl;
                 i_x_x = i_zero;
+            }
+            if (verbose)
+                cout << " before calling display_value i_x_x" << endl;
             if (verbose)
                 display_value(i_x_x, cg, "i_x_x");
             v_x_t.push_back(i_x_x);
         }
 
+        if (verbose)
+            cout << "to call concatenate_cols" << endl;
         Expression i_obs = concatenate_cols(v_x_t);
+        if (verbose)
+            display_value(i_obs, cg, "i_obs");
 
+        if (verbose)
+            cout << "to call decoder.add_input" << endl;
         i_h_t = decoder.add_input(i_obs);
+        if (verbose)
+            display_value(i_h_t, cg, "i_h_t");
 
         return i_h_t;
     }
@@ -3335,6 +3381,8 @@ public:
         const std::vector<std::vector<int>>& target_response,
         ComputationGraph &cg)
     {
+        if (verbose)
+            cout << "MultiSource_LinearEncoder::build_graph" << endl;
         unsigned int nutt = current_user_input.size();
         vector<vector<int>> prv_response;
         start_new_instance(prv_response, current_user_input, cg);
@@ -3361,17 +3409,41 @@ public:
                     vobs.push_back(-1);
             }
             Expression i_y_t = decoder_step(vobs, cg);
+            if (verbose)
+                display_value(i_y_t, cg, "i_y_t");
             Expression i_r_t = i_R * i_y_t;
+            if (verbose)
+            {
+                cg.incremental_forward(); 
+                cout << "i_r_t" << endl;
+            }
 
             Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
+            if (verbose)
+            {
+                cg.incremental_forward();
+                cout << "x_r_t" << endl;
+            }
             for (size_t i = 0; i < nutt; i++)
             {
                 if (t < target_response[i].size() - 1)
                 {
                     /// only compute errors on with output labels
                     Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
+                    if (verbose)
+                    {
+                        cg.incremental_forward();
+                        cout << "r_r_t" << endl;
+                    }
                     Expression i_ydist = log_softmax(r_r_t);
+                    if (verbose)
+                    {
+                        cg.incremental_forward();
+                        cout << "i_ydist" << endl;
+                    }
                     this_errs[i].push_back(-pick(i_ydist, target_response[i][t + 1]));
+                    if (verbose)
+                        display_value(i_ydistthis_errs[i].back(), cg, "this_errs");
                     tgt_words++;
                 }
                 else if (t == target_response[i].size() - 1)
@@ -3408,6 +3480,8 @@ public:
         const std::vector<std::vector<int>>& target_response, 
         ComputationGraph &cg)
     {
+        if (verbose)
+            cout << "MultiSource_LinearEncoder::build_graph" << endl;
         unsigned int nutt = current_user_input.size();
         start_new_instance(prv_response, current_user_input, cg);
 
@@ -3433,23 +3507,53 @@ public:
                     vobs.push_back(-1);
             }
             Expression i_y_t = decoder_step(vobs, cg);
+            if (verbose)
+                display_value(i_y_t, cg, "i_y_t");
             Expression i_r_t = i_R * i_y_t;
+            if (verbose)
+            {
+                cg.incremental_forward();
+                cout << "i_r_t" << endl;
+            }
 
             Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
+            if (verbose)
+            {
+                cg.incremental_forward();
+                cout << "x_r_t" << endl;
+            }
             for (size_t i = 0; i < nutt; i++)
             {
                 if (t < target_response[i].size() - 1)
                 {
                     /// only compute errors on with output labels
                     Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
+                    if (verbose)
+                    {
+                        cg.incremental_forward();
+                        cout << "r_r_t" << endl;
+                    }
                     Expression i_ydist = log_softmax(r_r_t);
+                    if (verbose)
+                    {
+                        cg.incremental_forward();
+                        cout << "i_ydist" << endl;
+                    }
                     this_errs[i].push_back(-pick(i_ydist, target_response[i][t + 1]));
+                    if (verbose)
+                        display_value(this_errs[i].back(), cg, "this_errs utt[" + boost::lexical_cast<string>(i) + "]");
                     tgt_words++;
                 }
                 else if (t == target_response[i].size() - 1)
                 {
                     /// get the last hidden state to decode the i-th utterance
                     vector<Expression> v_t;
+                    if (verbose)
+                    {
+                        cg.incremental_forward();
+                        cout << "before looping decodre.final_s()" << endl;
+                    }
+                    
                     for (auto p : decoder.final_s())
                     {
                         Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
@@ -3458,7 +3562,13 @@ public:
                         Expression i_t = pickrange(i_tt, stt, stp);
                         v_t.push_back(i_t);
                     }
+                    if (verbose)
+                        display_value(v_t.back(), cg, "v_t");
                     v_decoder_context[i] = v_t;
+                    if (verbose)
+                    {
+                        cout << "v_t pushed" << endl;
+                    }
                 }
             }
         }
@@ -3469,7 +3579,8 @@ public:
         for (auto &p : this_errs)
             errs.push_back(sum(p));
         Expression i_nerr = sum(errs);
-
+        if (verbose)
+            display_value(i_nerr, cg, "i_nerr");
         v_errs.push_back(i_nerr);
         turnid++;
         return errs;
@@ -3706,15 +3817,18 @@ public:
         const vector<unsigned>& hidden_dims, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0) :MultiSource_LinearEncoder(model, vocab_size_src, vocab_size_tgt, layers, hidden_dims, hidden_replicates, additional_input, mem_slots, iscale) ,
         attention_layer(1, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], &model, iscale, "attention_layer")
     {
-            p_Wa_local = model.add_parameters({ hidden_dim[ALIGN_LAYER], hidden_dim[DECODER_LAYER] }, iscale);
-            p_ba_local = model.add_parameters({ hidden_dim[ALIGN_LAYER] }, iscale);
-            p_va_local = model.add_parameters({ 1, hidden_dim[ALIGN_LAYER] }, iscale);
+        if (verbose)
+            cout << "start AttMultiSource_LinearEncoder" << endl;
+        
+        p_Wa_local = model.add_parameters({ hidden_dim[ALIGN_LAYER], hidden_dim[DECODER_LAYER] }, iscale);
+        p_ba_local = model.add_parameters({ hidden_dim[ALIGN_LAYER] }, iscale);
+        p_va_local = model.add_parameters({ 1, hidden_dim[ALIGN_LAYER] }, iscale);
 
-            unsigned int align_dim = hidden_dim[ALIGN_LAYER];
-            p_Wa = model.add_parameters({ align_dim, hidden_dim[DECODER_LAYER] }, iscale);
-            p_va = model.add_parameters({ align_dim }, iscale);
+        unsigned int align_dim = hidden_dim[ALIGN_LAYER];
+        p_Wa = model.add_parameters({ align_dim, hidden_dim[DECODER_LAYER] }, iscale);
+        p_va = model.add_parameters({ align_dim }, iscale);
 
-            p_scale = model.add_parameters({ 1 }, 0.0);
+        p_scale = model.add_parameters({ 1 }, 0.0);
 
     }
 
@@ -3724,6 +3838,9 @@ public:
     {
         nutt = source.size();
         std::vector<Expression> v_tgt2enc;
+
+        if (verbose)
+            cout << "start_new_instance" << endl;
 
         if (i_h0.size() == 0)
         {
@@ -3830,6 +3947,8 @@ public:
         Expression i_h_attention_t; /// the attention state
         vector<Expression> v_x_t;
 
+        if (verbose)
+            cout << "AttMultiSource_LinearEncoder::decoder_step" << endl;
         for (auto p : trg_tok)
         {
             Expression i_x_x;
@@ -3891,6 +4010,8 @@ public:
         const std::vector<std::vector<int>>& target_response,
         ComputationGraph &cg)
     {
+        if (verbose)
+            cout << "AttMultiSource_LinearEncoder::build_graph" << endl;
         unsigned int nutt = current_user_input.size();
         start_new_instance(prv_response, current_user_input, cg);
 
