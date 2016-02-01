@@ -342,6 +342,119 @@ Expression DGLSTMBuilder::add_input_impl(int prev, const Expression& x) {
   return ht.back();
 }
 
+Expression DGLSTMBuilder::add_input_impl(int prev, const vector<Expression>& x) {
+    h.push_back(vector<Expression>(layers));
+    c.push_back(vector<Expression>(layers));
+    vector<Expression>& ht = h.back();
+    vector<Expression>& ct = c.back();
+
+    Expression lower_layer_c = x[0];  /// at layer 0, no lower memory but observation
+    Expression in = x[0];
+    Expression in_stb;
+
+    int nutt = data_in_parallel();
+
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        Expression i_stabilizer = biases[i][6];
+        Expression i_v_stab = concatenate_cols(vector<Expression>(nutt, i_stabilizer));
+        in_stb = cwise_multiply(i_v_stab, in);
+        Expression i_h_tm1, i_c_tm1;
+
+        bool has_prev_state = (prev >= 0 || has_initial_state);
+        if (prev < 0) {
+            if (has_initial_state) {
+                // intial value for h and c at timestep 0 in layer i
+                // defaults to zero matrix input if not set in add_parameter_edges
+                i_h_tm1 = h0[i];
+                i_c_tm1 = c0[i];
+            }
+        }
+        else {  // t > 0
+            i_h_tm1 = h[prev][i];
+            i_c_tm1 = c[prev][i];
+        }
+
+        // input
+        Expression i_ait;
+        Expression bimb = biases[i][0];
+        if (has_prev_state)
+            i_ait = affine_transform({ bimb, vars[X2I], in_stb, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
+        else
+            i_ait = affine_transform({ bimb, vars[X2I], in_stb });
+        Expression i_it = logistic(i_ait);
+
+        // forget
+        // input
+#ifdef USE_STANDARD_LSTM_DEFINE
+        Expression i_aft;
+        Expression bfmb = biases[i][7];
+        if (has_prev_state)
+            i_aft = affine_transform({ bfmb, vars[X2F], in_stb, vars[H2F], i_h_tm1, vars[C2F], i_c_tm1 });
+        else
+            i_aft = affine_transform({ bfmb, vars[X2F], in_stb });
+        Expression i_ft = logistic(i_aft);
+#else
+        Expression i_ft = 1.0 - i_it;
+#endif
+
+        // write memory cell
+        Expression bcmb = biases[i][1];
+        Expression i_awt;
+        if (has_prev_state)
+            i_awt = affine_transform({ bcmb, vars[X2C], in_stb, vars[H2C], i_h_tm1 });
+        else
+            i_awt = affine_transform({ bcmb, vars[X2C], in_stb });
+        Expression i_wt = tanh(i_awt);
+
+        // output
+        Expression i_before_add_with_lower_linearly;
+        if (has_prev_state) {
+            Expression i_nwt = cwise_multiply(i_it, i_wt);
+            Expression i_crt = cwise_multiply(i_ft, i_c_tm1);
+            i_before_add_with_lower_linearly = i_crt + i_nwt;
+        }
+        else {
+            i_before_add_with_lower_linearly = cwise_multiply(i_it, i_wt);
+        }
+
+        /// add lower layer memory cell
+        Expression i_k_t;
+        Expression bkmb = biases[i][3];
+        Expression i_k_lowerc = bkmb;
+        if (i > 0)
+        {
+            Expression mc2kmb = biases[i][4];
+            i_k_lowerc = i_k_lowerc + cwise_multiply(mc2kmb, lower_layer_c);
+        }
+
+        if (has_prev_state)
+        {
+            Expression q2kmb = biases[i][5];
+            i_k_t = logistic(i_k_lowerc + vars[X2K] * in_stb + cwise_multiply(q2kmb, i_c_tm1));
+        }
+        else
+            i_k_t = logistic(i_k_lowerc + vars[X2K] * in_stb);
+        ct[i] = i_before_add_with_lower_linearly + cwise_multiply(i_k_t, (i == 0) ? vars[X2K0] * lower_layer_c : lower_layer_c);
+
+
+        Expression i_aot;
+        Expression bomb = biases[i][2];
+        if (has_prev_state)
+            i_aot = affine_transform({ bomb, vars[X2O], in_stb, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
+        else
+            i_aot = affine_transform({ bomb, vars[X2O], in_stb });
+        Expression i_ot = logistic(i_aot);
+        Expression ph_t = tanh(ct[i]);
+        Expression z = cwise_multiply(i_ot, ph_t);
+        if (i > 0)
+            z = z + x[i];
+        in = ht[i] = z; 
+        lower_layer_c = ct[i];
+    }
+    return ht.back();
+}
+
 Expression DGLSTMBuilder::add_input_impl(const std::vector<Expression>& prev_history, const Expression& x) {
     h.push_back(vector<Expression>(layers));
     c.push_back(vector<Expression>(layers));

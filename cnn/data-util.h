@@ -23,14 +23,19 @@ typedef vector<FMatrix>   FCorpus;
 typedef vector<FCorpus*>  FCorpusPointers;
 
 typedef vector<int> Sentence;
+typedef vector<Sentence> Sentences;
 typedef pair<Sentence, Sentence> SentencePair;
 typedef vector<SentencePair> Dialogue;
 typedef vector<Dialogue> Corpus;
 
+typedef pair<Sentence, int> SentenceWithId;
+typedef pair<Sentence, SentenceWithId> SentencePairAndClassId;
+typedef vector<SentencePairAndClassId> DialogueWithClassId;
+typedef vector<DialogueWithClassId> CorpusWithClassId;
+
 /// for parallel processing of data
-typedef vector<SentencePair> PTurn;  /// a turn consits of sentences pairs from difference utterances
-typedef vector<PTurn> PDialogue;  /// a dialogue consists of many turns
-typedef vector<PDialogue> PCorpus; /// a parallel corpus consists of many parallel dialogues
+typedef vector<SentencePair> PTurn;  /// a turn consits of sentences pairs from difference utterances [#sentences]
+typedef vector<PTurn> PDialogue;  /// a parallel dialogue consists of turns from each parallel dialogue [#turns][#sentences]
 
 template<class T>
 struct triplet
@@ -91,6 +96,11 @@ vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, unsigned mbsiz
 /// the 0.418 0.24968 -0.41242 0.1217 0.34527 -0.044457 -0.49688 -0.17862 -0.00066023 -0.6566 0.27843 -0.14767 -0.55677 
 /// return an expression and also an index value of this word according to a dictionary sd
 vector<cnn::real> read_embedding(const string& line, Dict& sd, int & index);
+
+/// read word embedding from a file with format above
+/// for words that are not in the word embeddin file, use the first 100 word embeddings to construct a representation for those words
+void read_embedding(const string& embedding_fn, Dict& sd, map<int, vector<cnn::real>> & vWordEmbedding);
+
 Expression vec2exp(const vector<cnn::real>& v_data, ComputationGraph& cg);
 
 /// return the index of the selected dialogues
@@ -104,11 +114,18 @@ Corpus read_corpus(const string &filename, unsigned& min_diag_id, WDict& sd, int
 int MultiTurnsReadSentencePair(const std::wstring& line, std::vector<int>* s, WDict* sd, std::vector<int>* t, WDict* td, bool appendSBandSE = false, int kSRC_SOS = -1, int kSRC_EOS = -1);
 Corpus read_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength = 10000, bool appendBSandES = false, bool bcharacter = false);
 Corpus read_corpus(ifstream&, Dict& sd, int kSRC_SOS, int kSRC_EOS, long part_size);
+CorpusWithClassId read_corpus_with_classid(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS);
+
 /**
 read sentence pair in one line, with seperaotr |||
 @bcharacter : read data in character level, default is false, which is word-level
 */
 string MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool appendSBandSE = false, int kSRC_SOS = -1, int kSRC_EOS = -1, bool bcharacter = false);
+
+/**
+read sentences pair with class id at the end
+*/
+string MultiTurnsReadSentencePairWithClassId(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, std::vector<int>* cls, int kSRC_SOS, int kSRC_EOS);
 
 /**
 read corpus with triplet
@@ -121,6 +138,9 @@ int MultiTurnsReadSentence(const std::string& line,
 
 NumTurn2DialogId get_numturn2dialid(Corpus corp);
 NumTurn2DialogId get_numturn2dialid(TupleCorpus corp);
+
+void flatten_corpus(const Corpus& corpus, vector<Sentence>& sentences, vector<Sentence>& responses);
+void flatten_corpus(const CorpusWithClassId& corpus, vector<Sentence>& sentences, vector<SentenceWithId>& response);
 
 /// shuffle the data from 
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
@@ -147,3 +167,4 @@ FBCorpus read_facebook_qa_corpus(const string &filename, size_t & diag_id, Dict&
 return flavour of a builder in string
 */
 std::string builder_flavour(variables_map vm);
+

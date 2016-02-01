@@ -74,7 +74,7 @@ class stDict {
       assert(id < (int)words_.size());
       return words_[id];
   }
-  
+
   void SetUnk(const std::string& word) {
     if (!frozen)
       throw std::runtime_error("Please call SetUnk() only after dictionary is frozen");
@@ -89,7 +89,9 @@ class stDict {
     map_unk = true;
   }
 
-  void clear() { words_.clear(); d_.clear();  }
+  void Clear() { words_.clear(); d_.clear();  }
+
+  std::vector<T> GetWordList() { return words_; };
 
  private:
   bool frozen;

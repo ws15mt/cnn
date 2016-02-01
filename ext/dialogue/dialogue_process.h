@@ -14,7 +14,7 @@
 #include "cnn/expr-xtra.h"
 #include "cnn/data-util.h"
 #include "ext/dialogue/dialogue.h"
-//#include "cxtencdec.h"
+#include "ext/ir/ir.h"
 #include "cnn/math-util.h"
 #include "ext/dialogue/attention_with_intention.h"
 #include <algorithm>
@@ -157,6 +157,32 @@ namespace cnn {
             twords = 0;
             swords = 0;
             s2tmodel.reset();
+        }
+
+        void init_word_embedding(const map<int, vector<cnn::real>> &vWordEmbedding)
+        {
+            s2tmodel.init_word_embedding(vWordEmbedding);
+        }
+
+        vector<cnn::real> sentence_embedding(const Sentence& sentence)
+        {
+            ComputationGraph cg;
+            Expression emb = s2tmodel.sentence_embedding(sentence, cg); 
+            return get_value(emb, cg);
+        }
+
+        cnn::real sentence_distance(const Sentence& sentencea, const Sentence& sentenceb)
+        {
+            ComputationGraph cg;
+            Expression emba = s2tmodel.sentence_embedding(sentencea, cg);
+            Expression embb = s2tmodel.sentence_embedding(sentenceb, cg);
+            Expression dist = squared_distance(emba, embb);
+            return get_value(dist, cg)[0];
+        }
+
+        void load_cls_info_from_file(string word2clsfn, string clsszefn, Dict& sd, Model& model)
+        {
+            s2tmodel.load_cls_info_from_file(word2clsfn, clsszefn, sd, model);
         }
 
         void collect_candidates(const std::vector<int>& response)
@@ -655,7 +681,6 @@ namespace cnn {
             vector<Sentence> iret = s2tmodel.batch_decode(insent, cg, tdict);
             return iret;
         }
-
     };
 
     template <class DBuilder>
@@ -1019,6 +1044,110 @@ namespace cnn {
             serialise_cxt(cg);
             return results;
         }
+    };
+
+    template <class DBuilder>
+    class MultiSourceDialogue: public DialogueProcessInfo<DBuilder>{
+    public:
+        explicit MultiSourceDialogue(cnn::Model& model,
+            const vector<unsigned int>& layers,
+            unsigned vocab_size_src,
+            unsigned vocab_size_tgt,
+            const vector<unsigned>& hidden_dim,
+            unsigned hidden_replicates,
+            unsigned decoder_additional_input = 0,
+            unsigned mem_slots = MEM_SIZE,
+            cnn::real iscale = 1.0)
+            : DialogueProcessInfo<DBuilder>(model, layers, vocab_size_src, vocab_size_tgt, hidden_dim, hidden_replicates, decoder_additional_input, mem_slots, iscale)
+        {}
+
+        // return Expression of total loss
+        // only has one pair of sentence so far
+        vector<Expression> build_graph(const Dialogue & cur_sentence, ComputationGraph& cg) override
+        {
+            vector<Expression> object;
+
+            twords = 0;
+            swords = 0;
+            nbr_turns = 1;
+            vector<Sentence> insent, osent, prv_response;
+            for (auto p : cur_sentence)
+            {
+                insent.push_back(p.first);
+                osent.push_back(p.second);
+
+                twords += p.second.size() - 1;
+                swords += p.first.size() - 1;
+            }
+
+            s2tmodel.reset();
+            object = s2tmodel.build_graph(prv_response, insent, osent, cg);
+
+            s2txent = sum(object);
+            assert(twords == s2tmodel.tgt_words);
+            assert(swords == s2tmodel.src_words);
+
+            return object;
+        }
+
+        /// for all speakers with history
+        /// for feedforward network
+        vector<Expression> build_graph(const Dialogue& prv_sentence, const Dialogue& cur_sentence, ComputationGraph& cg) override
+        {
+            vector<Sentence> insent, osent, prv_response;
+            nbr_turns++;
+            twords = 0;
+            swords = 0;
+
+            for (auto p : prv_sentence)
+            {
+                prv_response.push_back(p.second);
+            }
+
+            for (auto p : cur_sentence)
+            {
+                insent.push_back(p.first);
+                osent.push_back(p.second);
+
+                twords += p.second.size() - 1;
+                swords += p.first.size() - 1;
+            }
+
+            s2tmodel.assign_cxt(cg, insent.size());
+            vector<Expression> s2terr = s2tmodel.build_graph(prv_response, insent, osent, cg);
+            Expression i_err = sum(s2terr);
+            s2txent = i_err;
+
+            assert(twords == s2tmodel.tgt_words);
+            assert(swords == s2tmodel.src_words);
+
+            return s2terr;
+        }
+
+        Expression build_graph(const TupleDialogue & cur_sentence, ComputationGraph& cg) override
+        {
+            Expression v;
+            return v;
+        }
+
+        /// for all speakers with history
+        Expression build_graph(const TupleDialogue & prv_sentence, const TupleDialogue & cur_sentence, ComputationGraph& cg)
+        {
+            Expression v;
+            return v;
+        }
+
+        virtual std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict)
+        {
+            s2tmodel.reset();  /// reset network
+            return s2tmodel.decode(source, cg, tdict);
+        }
+
+        virtual std::vector<int> decode(const std::vector<int> &source, const std::vector<int>& cur, ComputationGraph& cg, cnn::Dict  &tdict)
+        {
+            return s2tmodel.decode(source, cur, cg, tdict);
+        }
+
     };
 
     /**

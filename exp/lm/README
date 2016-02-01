@@ -1,3 +1,39 @@
-rnnlm2.bat experiments for LSTM
+This directory contains dos batch to run RNN language model.
+
+Data: pentreebank
+
+Scripts:
+rnnlm2.bat for experiments with LSTM
+
+Experiments:
+Run with CPU: after compilation, the exe directory may be 
+c:/dev/cnn/examples/release/rnnlm2.exe
+expected results:
+
+
+CPU
+The exe may be at C:\dev\cnn\msbuildcuda\examples\Release\rnnlm2.exe
+The first two iterations are printed below
+[epoch=0 eta=0.1 clips=48 updates=50]  report = 0 E = 7.81726 ppl=2483.1 [completed in 35911.6 ms]
+[epoch=0 eta=0.1 clips=50 updates=50]  report = 1 E = 7.09628 ppl=1207.47 [completed in 58092 ms]
+
+GPU:
+The exe may be at C:\dev\cnn\msbuildcuda\examples\Release\rnnlm2.exe
+The first two iterations are printed below
+[epoch=0 eta=0.1 clips=48 updates=50]  report = 0 E = 7.81737 ppl=2483.37 [completed in 11741.3 ms]
+[epoch=0 eta=0.1 clips=50 updates=50]  report = 1 E = 7.09631 ppl=1207.5 [completed in 12162.6 ms]
+
+GPU is about 3 times faster than CPU.
+
+---------------------------------------
+## softmax on all words
+
 rnnlm2.dglstm.bat experiments for DGLSTM
 
+
+---- for class-based LM ----
+## create class information
+python create_lm_class.py c:/data/ptbdata/ptb.trn 100 c:/data/ptbdata/wrd2cls.txt c:/data/ptbdata/cls2wrd.txt
+
+## train model
+rnnlm2_cls.bat
