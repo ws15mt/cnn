@@ -857,6 +857,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
     if (sgd_update_epochs == false)
     {
         report_every_i = training.size();
+        si = 0;
     }
 
     while ((sgd_update_epochs && sgd.epoch < max_epochs) ||  /// run multiple passes of data
