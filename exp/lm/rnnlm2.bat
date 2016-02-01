@@ -7,7 +7,7 @@ REM
 set WORKDIR=.
 set DATADIR=c:\data\ptbdata
 set BINDIR=C:\dev\cnn\msbuildcuda\examples\Release
-set BINDIR=C:\dev\cnn\msbuild\examples\Release
+REM set BINDIR=C:\dev\cnn\msbuild\examples\Release
 
 mkdir %WORKDIR%\logs
 mkdir %WORKDIR%\models
