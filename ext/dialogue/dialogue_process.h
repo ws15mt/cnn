@@ -14,7 +14,7 @@
 #include "cnn/expr-xtra.h"
 #include "cnn/data-util.h"
 #include "ext/dialogue/dialogue.h"
-#include "ext/ir/ir.h"
+//#include "ext/ir/ir.h"
 #include "cnn/math-util.h"
 #include "ext/dialogue/attention_with_intention.h"
 #include <algorithm>
