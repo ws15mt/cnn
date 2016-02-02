@@ -246,11 +246,7 @@ void Transpose::backward_impl(const vector<const Tensor*>& xs,
 void Reshape::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   // just point to the input memory and change dimensions
   // dimensions are handled by forward_dim
-#ifdef HAVE_CUDA
-  throw std::runtime_error("Reshape not yet implemented for CUDA");
-#else
   fx.v = xs[0]->v;
-#endif
 }
 
 void Reshape::backward_impl(const vector<const Tensor*>& xs,
