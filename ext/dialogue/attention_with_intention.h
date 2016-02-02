@@ -4136,6 +4136,7 @@ public:
 
         v_decoder_context.push_back(decoder.final_s());
         save_context(cg);
+        serialise_context(cg);
 
         turnid++;
         return target;
@@ -4187,6 +4188,7 @@ public:
 
         v_decoder_context.push_back(decoder.final_s());
         save_context(cg);
+        serialise_context(cg);
 
         turnid++;
         return target;
