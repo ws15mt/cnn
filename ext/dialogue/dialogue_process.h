@@ -350,12 +350,12 @@ namespace cnn {
 
             prv_response.clear();
 
-            ComputationGraph cg;
-
             results.clear();
             for (auto p : diag)
             {
-                SentencePair input_response; 
+                ComputationGraph cg;
+
+                SentencePair input_response;
 
                 if (prv_response.size() == 0)
                     decode_output = decode(p.first, cg, td);
@@ -1161,6 +1161,7 @@ namespace cnn {
 
         virtual std::vector<int> decode(const std::vector<int> &source, const std::vector<int>& cur, ComputationGraph& cg, cnn::Dict  &tdict)
         {
+            s2tmodel.assign_cxt(cg, 1);
             return s2tmodel.decode(source, cur, cg, tdict);
         }
 
