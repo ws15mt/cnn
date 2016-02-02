@@ -593,7 +593,6 @@ vector<Expression> alignmatrix_to_source(vector<Expression> & v_src, const vecto
 
 void display_value(const Expression &source, ComputationGraph &cg, string what_to_say)
 {
-    cg.incremental_forward();
     const Tensor &a = cg.get_value(source.i);
 
     cnn::real I = a.d.cols();
@@ -603,7 +602,7 @@ void display_value(const Expression &source, ComputationGraph &cg, string what_t
         cout << what_to_say << endl;
     for (unsigned j = 0; j < J; ++j) {
         for (unsigned i = 0; i < I; ++i) {
-            cnn::real v = TensorTools::AccessElement(a, {j, i});
+            cnn::real v = TensorTools::AccessElement(a, j*I + i);
             std::cout << v << ' ';
         }
         std::cout << endl;
