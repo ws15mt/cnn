@@ -1227,6 +1227,8 @@ namespace cnn {
         {
             vector<Sentence> insent, osent, prv_response;
             nbr_turns++;
+            twords = 0;
+            swords = 0;
 
             if (verbose)
                 cout << "start MultiSourceDialogue:build_graph(const Dialogue& prv_sentence, const Dialogue& cur_sentence, ComputationGraph& cg)" << endl;
@@ -1245,7 +1247,7 @@ namespace cnn {
                 swords += p.first.size() - 1;
             }
 
-//            s2tmodel.assign_cxt(cg, insent.size());
+            s2tmodel.assign_cxt(cg, insent.size());
             vector<Expression> s2terr = s2tmodel.build_graph(prv_response, insent, osent, cg);
             Expression i_err = sum(s2terr);
             s2txent = i_err;
@@ -1278,7 +1280,7 @@ namespace cnn {
 
         virtual std::vector<int> decode(const std::vector<int> &source, const std::vector<int>& cur, ComputationGraph& cg, cnn::Dict  &tdict)
         {
-  //          s2tmodel.assign_cxt(cg, insent.size());
+            s2tmodel.assign_cxt(cg, source.size());
             return s2tmodel.decode(source, cur, cg, tdict);
         }
 
@@ -1298,10 +1300,10 @@ namespace cnn {
             prv_response.clear();
             results.clear();
             
-            ComputationGraph cg;
-            
             for (auto p : diag)
             {
+                ComputationGraph cg;
+    
                 SentencePair input_response;
 
                 if (prv_response.size() == 0)
