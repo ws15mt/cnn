@@ -28,13 +28,14 @@ void RNNBuilder::display(ComputationGraph& cg) {
 }
 
 SimpleRNNBuilder::SimpleRNNBuilder(unsigned ilayers,
-                       unsigned input_dim,
-                       unsigned hidden_dim,
+                       const vector<unsigned>& dims,
                        Model* model,
                        cnn::real iscale,
                        string name, 
                        bool support_lags) : lagging(support_lags) 
 {
+  unsigned input_dim = dims[INPUT_LAYER];
+  unsigned hidden_dim = dims[HIDDEN_LAYER];
   string i_name;
   layers = ilayers;
   unsigned layer_input_dim = input_dim;
