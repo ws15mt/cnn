@@ -68,6 +68,7 @@ size_t g_train_on_turns = 1;
 
 cnn::Dict sd;
 cnn::Dict td;
+cnn::stId2String<string> id2str;
 
 int kSRC_SOS;
 int kSRC_EOS;
@@ -2083,6 +2084,247 @@ void TrainProcess<AM_t>::hierarchical_ngram_clustering(variables_map vm, const C
 
     if (ofs.is_open())
         ofs.close();
+}
+
+template <class Proc>
+class ClassificationTrainProcess : public TrainProcess<Proc>{
+public:
+    ClassificationTrainProcess(){
+    }
+
+    void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training);
+    
+    void batch_train(Model &model, Proc &am, Corpus &training, Corpus &devel,
+        Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
+        bool sgd_update_epochs);
+
+};
+
+
+/**
+since the tool loads data into memory and that can cause memory exhaustion, this function do sampling of data for each epoch.
+*/
+template <class AM_t>
+void ClassificationTrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &model, AM_t &am, Corpus &devel,
+    Trainer &sgd, string out_file,
+    int max_epochs, int nparallel, int epochsize, bool segmental_training)
+{
+    // a mirrow of the agent to generate decoding results so that their results can be evaluated
+    // this is not efficient implementation, better way is to share model parameters
+    cnn::real largest_cost = 9e+99;
+
+    ifstream ifs(train_filename);
+    int trial = 0;
+    while (sgd.epoch < max_epochs)
+    {
+        cerr << "Reading training data from " << train_filename << "...\n";
+        Corpus training = read_corpus(ifs, sd, kSRC_SOS, kSRC_EOS, epochsize, make_pair<int,int>(2,4), make_pair<bool, bool>(true, false),
+            id2str.phyId2logicId);
+        training_numturn2did = get_numturn2dialid(training);
+
+        if (ifs.eof() || training.size() == 0)
+        {
+            ifs.close();
+            ifs.open(train_filename);
+
+            if (training.size() == 0)
+            {
+                continue;
+            }
+            ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
+
+            sgd.update_epoch();
+        }
+
+        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false);
+
+        if (fmod(trial, 50) == 0)
+        {
+            ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
+        }
+        trial++;
+    }
+    ifs.close();
+}
+
+/* the following does mutiple sentences per minibatch
+but I comment it out
+*/
+template <class AM_t>
+void ClassificationTrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
+    Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
+    bool sgd_update_epochs)
+{
+    unsigned report_every_i = 50;
+    unsigned dev_every_i_reports = 1000;
+    unsigned si = training.size(); /// number of dialgoues in training
+    vector<unsigned> order(training.size());
+    for (unsigned i = 0; i < order.size(); ++i) order[i] = i;
+
+    bool first = true;
+    int report = 0;
+    unsigned lines = 0;
+    int epoch = 0;
+
+    reset_smoothed_ppl();
+
+    int prv_epoch = -1;
+    vector<bool> v_selected(training.size(), false);  /// track if a dialgoue is used
+    size_t i_stt_diag_id = 0;
+
+    /// if no update of sgd in this function, need to train with all data in one pass and then return
+    if (sgd_update_epochs == false)
+    {
+        report_every_i = training.size();
+        si = 0;
+    }
+
+    while ((sgd_update_epochs && sgd.epoch < max_epochs) ||  /// run multiple passes of data
+        (!sgd_update_epochs && si < training.size()))  /// run one pass of the data
+    {
+        Timer iteration("completed in");
+        cnn::real dloss = 0;
+        cnn::real dchars_s = 0;
+        cnn::real dchars_t = 0;
+        cnn::real dchars_tt = 0;
+
+        PDialogue v_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
+
+        for (unsigned iter = 0; iter < report_every_i;) {
+
+            if (si == training.size()) {
+                si = 0;
+                if (first) { first = false; }
+                else if (sgd_update_epochs){
+                    sgd.update_epoch();
+                    lines -= training.size();
+                }
+            }
+
+            if (si % order.size() == 0) {
+                cerr << "**SHUFFLE\n";
+                /// shuffle number of turns
+                shuffle(training_numturn2did.vNumTurns.begin(), training_numturn2did.vNumTurns.end(), *rndeng);
+                i_stt_diag_id = 0;
+                v_selected = vector<bool>(training.size(), false);
+                for (auto p : training_numturn2did.mapNumTurn2DialogId){
+                    /// shuffle dailogues with the same number of turns
+                    random_shuffle(p.second.begin(), p.second.end());
+                }
+                v_selected.assign(training.size(), false);
+            }
+
+            Dialogue prv_turn;
+            size_t turn_id = 0;
+            vector<int> i_sel_idx = get_same_length_dialogues(training, nparallel, i_stt_diag_id, v_selected, v_dialogues, training_numturn2did);
+            size_t nutt = i_sel_idx.size();
+            if (nutt == 0)
+                break;
+
+            if (verbose)
+            {
+                cerr << "selected " << nutt << " :  ";
+                for (auto p : i_sel_idx)
+                    cerr << p << " ";
+                cerr << endl;
+            }
+
+            if (segmental_training)
+                segmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, false, 0, &sgd);
+            else
+                nosegmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, true, 0, &sgd);
+
+            si += nutt;
+            lines += nutt;
+            iter += nutt;
+        }
+
+        sgd.status();
+        iteration.WordsPerSecond(dchars_t + dchars_s);
+        cerr << "\n***Train " << (lines / (cnn::real)training.size()) * 100 << " %100 of epoch[" << sgd.epoch << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
+
+
+        vector<SentencePair> vs;
+        for (auto&p : v_dialogues)
+            vs.push_back(p[0]);
+        vector<SentencePair> vres;
+        am.respond(vs, vres, sd, id2str);
+
+        // show score on dev data?
+        report++;
+
+        if (devel.size() > 0 && (floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0 || fmod(lines, (cnn::real)training.size()) == 0.0)) {
+            cnn::real ddloss = 0;
+            cnn::real ddchars_s = 0;
+            cnn::real ddchars_t = 0;
+
+            {
+                vector<bool> vd_selected(devel.size(), false);  /// track if a dialgoue is used
+                size_t id_stt_diag_id = 0;
+                PDialogue vd_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
+                vector<int> id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, devel_numturn2did);
+                size_t ndutt = id_sel_idx.size();
+
+                if (verbose)
+                {
+                    cerr << "selected " << ndutt << " :  ";
+                    for (auto p : id_sel_idx)
+                        cerr << p << " ";
+                    cerr << endl;
+                }
+
+                while (ndutt > 0)
+                {
+                    nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+
+                    id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, devel_numturn2did);
+                    ndutt = id_sel_idx.size();
+
+                    if (verbose)
+                    {
+                        cerr << "selected " << ndutt << " :  ";
+                        for (auto p : id_sel_idx)
+                            cerr << p << " ";
+                        cerr << endl;
+                    }
+                }
+            }
+            ddloss = smoothed_ppl(ddloss);
+            if (ddloss < best) {
+                best = ddloss;
+                ofstream out(out_file, ofstream::out);
+                boost::archive::text_oarchive oa(out);
+                oa << model;
+                out.close();
+            }
+            else{
+                sgd.eta0 *= 0.5; /// reduce learning rate
+                sgd.eta *= 0.5; /// reduce learning rate
+            }
+            cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (ddloss / ddchars_t) << " ppl=" << exp(ddloss / ddchars_t) << ' ';
+        }
+
+        prv_epoch = floor(sgd.epoch);
+
+        if (sgd_update_epochs == false)
+        {
+            /// because there is no update on sgd epoch, this loop can run forever. 
+            /// so just run one iteration and quit
+            break;
+        }
+        else{
+            ofstream out(out_file + "e" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
+        }
+    }
 }
 
 
