@@ -351,6 +351,85 @@ CorpusWithClassId read_corpus_with_classid(const string &filename, Dict& sd, int
     return corpus;
 }
 
+void get_string_and_its_id(const string &filename, const pair<int, int>& columids, const string& save_to_filename)
+{
+    ifstream in(filename);
+    string line;
+
+    if (save_to_filename.size() == 0)
+        throw("need to have filename to write a mapping of string id to the string");
+
+    stId2String<string> id2string;
+
+    while (getline(in, line)) {
+        trim_left(line);
+        trim_right(line);
+        if (line.length() == 0)
+            continue;
+
+        Sentence source;
+        string diagid = ReadStringWithItsId(line, source, id2string, columids);
+        if (diagid.size() == 0)
+            continue;
+    }
+
+    ofstream on(save_to_filename);
+    boost::archive::text_oarchive oa(on);
+    oa << id2string;
+}
+
+/**
+columnids : <int,int>
+For example, the input has
+<diag_id> ||| <turn_id> ||| <user_intput> ||| <response> ||| <response_id> ||| <typical response>
+setting columnids as <2,3> will output
+<user_input> and <response>
+*/
+Corpus read_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS, bool backofftounk, const pair<int, int>& columnids)
+{
+    ifstream in(filename);
+    string line;
+
+    Corpus corpus;
+    Dialogue diag;
+    string prv_diagid = "-1";
+    int lc = 0, stoks = 0, ttoks = 0;
+
+    while (getline(in, line)) {
+        trim_left(line);
+        trim_right(line);
+        if (line.length() == 0)
+            continue;
+        ++lc;
+        Sentence source, target;
+        string diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, backofftounk, kSRC_SOS, kSRC_EOS, columnids, make_pair<bool, bool>(true, true));
+        if (diagid.size() == 0)
+            continue;
+
+        if (diagid != prv_diagid)
+        {
+            if (diag.size() > 0)
+                corpus.push_back(diag);
+            diag.clear();
+            prv_diagid = diagid;
+        }
+
+        diag.push_back(SentencePair(source, target));
+        stoks += source.size();
+        ttoks += target.size();
+
+        if ((source.front() != kSRC_SOS && source.back() != kSRC_EOS)) {
+            cerr << "Sentence in " << filename << ":" << lc << " didn't start or end with <s>, </s>\n";
+            abort();
+        }
+    }
+
+    if (diag.size() > 0)
+        corpus.push_back(diag);
+    cerr << lc << " lines, " << stoks << " & " << ttoks << " tokens (s & t), " << sd.size() << " & " << sd.size() << " types\n";
+    return corpus;
+}
+
 Corpus read_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength, bool backofftounk, bool bcharacter)
 {
     ifstream in(filename);
@@ -444,6 +523,69 @@ Corpus read_corpus(ifstream & in, Dict& sd, int kSRC_SOS, int kSRC_EOS, long par
             abort();
         }
         
+        iln++;
+    }
+
+    if (diag.size() > 0)
+        corpus.push_back(diag);
+    cerr << lc << " lines, " << stoks << " & " << ttoks << " tokens (s & t), " << sd.size() << " & " << sd.size() << " types\n";
+    return corpus;
+}
+
+/**
+phyid2logicid : the physical id in the training data file is mapped to a logic id. 
+*/
+Corpus read_corpus(ifstream & in, Dict& sd, int kSRC_SOS, int kSRC_EOS, long part_size, const pair<int, int>& columids, const pair<bool, bool>& use_dict, unordered_map<int,int>& phyid2logicid)
+{
+    string line;
+
+    Corpus corpus;
+    Dialogue diag;
+    string prv_diagid = "-1";
+    int lc = 0, stoks = 0, ttoks = 0;
+
+    long iln = 0;
+    while (getline(in, line) && iln < part_size) {
+        trim_left(line);
+        trim_right(line);
+        if (line.length() == 0)
+            break;
+        ++lc;
+        Sentence source, target;
+        string diagid;
+
+        diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, true, kSRC_SOS, kSRC_EOS, columids, use_dict);
+        if (diagid == "")
+            continue;
+
+        if (phyid2logicid.size() > 0)
+        {
+            Sentence newtarget; 
+            for (auto& p : target){
+                if (phyid2logicid.find(p) != phyid2logicid.end())
+                    newtarget.push_back(phyid2logicid[p]);
+                else
+                    throw("cannot find a physical id that has a logic id");
+            }
+            target = newtarget;
+        }
+
+        if (diagid != prv_diagid)
+        {
+            if (diag.size() > 0)
+                corpus.push_back(diag);
+            diag.clear();
+            prv_diagid = diagid;
+        }
+        diag.push_back(SentencePair(source, target));
+        stoks += source.size();
+        ttoks += target.size();
+
+        if ((source.front() != kSRC_SOS && source.back() != kSRC_EOS)) {
+            cerr << "Sentence in " << lc << " didn't start or end with <s>, </s>\n";
+            abort();
+        }
+
         iln++;
     }
 
@@ -572,7 +714,133 @@ string MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, 
     return diagid;
 }
 
-string MultiTurnsReadSentencePairWithClassId(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, std::vector<int>* cls , int kSRC_SOS, int kSRC_EOS)
+string MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool backofftounk, int kSRC_SOS, int kSRC_EOS, const pair<int, int>& columnids, const pair<bool, bool>& use_dict)
+{
+    int cid = 0;
+    int work_on_id = columnids.first;
+    bool to_use_dict = use_dict.first;
+    std::istringstream in(line);
+    std::string word;
+    std::string sep = "|||";
+    Dict* d = sd;
+    std::string diagid, turnid;
+
+    std::vector<int>* v = s;
+
+    if (line.length() == 0)
+        return "";
+
+    in >> diagid;
+    trim(diagid);
+    in >> word;
+    if (word != sep)
+    {
+        cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
+        cerr << "expecting diagid" << endl;
+        return "";
+    }
+    cid++;
+
+    in >> turnid;
+    in >> word;
+    if (word != sep)
+    {
+        cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
+        cerr << "expecting turn id" << endl;
+        return "";
+    }
+    cid++;
+
+    while (in) {
+        in >> word;
+        trim(word);
+        if (!in) break;
+        if (word == sep) {
+            d = td; v = t;
+            cid++;
+            work_on_id = columnids.second;
+            to_use_dict = use_dict.second;
+            continue;
+        }
+        if (cid == work_on_id)
+        {
+            if (to_use_dict)
+                v->push_back(d->Convert(word, backofftounk));
+            else
+                v->push_back(boost::lexical_cast<int>(word));
+        }
+    }
+
+    return diagid;
+}
+
+/// read string and its id. their positions are decided in columnids
+/// columnids is a pair saving <string position, id position>
+string ReadStringWithItsId(const std::string& line, std::vector<int>& s, stId2String<string>& sd, const pair<int, int>& columnids)
+{
+    int cid = 0;
+    int string_position = columnids.first;
+    int id_position = columnids.second;
+    std::istringstream in(line);
+    std::string word;
+    std::string sep = "|||";
+    std::string diagid, turnid;
+
+    if (line.length() == 0)
+        return "";
+
+    in >> diagid;
+    trim(diagid);
+    in >> word;
+    if (word != sep)
+    {
+        cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
+        cerr << "expecting diagid" << endl;
+        return "";
+    }
+    cid++;
+
+    in >> turnid;
+    in >> word;
+    if (word != sep)
+    {
+        cerr << "format should be <diagid> ||| <turnid> ||| src || tgt" << endl;
+        cerr << "expecting turn id" << endl;
+        return "";
+    }
+    cid++;
+
+    string str = "";
+    vector<string> wid;
+    while (in) {
+        in >> word;
+        trim(word);
+        if (!in) break;
+        if (word == sep) {
+            cid++;
+            continue;
+        }
+        if (cid == string_position)
+        {
+            str = str + " " + word;
+        }
+        if (cid == id_position)
+            wid.push_back(word); 
+    }
+
+    if (wid.size() != 1)
+    {
+        for (auto& p : wid)
+            cout << " " << p;
+        throw("ReadStringWithItsId : word position column has multiple ids");
+    }
+    int id = boost::lexical_cast<int>(wid[0]);
+    s.push_back(id);
+    sd.Convert(id, str);
+    return diagid;
+}
+
+string MultiTurnsReadSentencePairWithClassId(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, std::vector<int>* cls, int kSRC_SOS, int kSRC_EOS)
 {
     std::istringstream in(line);
     std::string word;
