@@ -51,7 +51,7 @@ struct RNNLanguageModel {
       const vector<long> & acc_cls2size, /// the accumulated class size
       const vector<long>& word2cls, 
       const vector<long>& dict_wrd_id2within_class_id,
-      Model& model) : builder(LAYERS, INPUT_DIM, HIDDEN_DIM, &model),
+      Model& model) : builder(LAYERS, vector<unsigned>{INPUT_DIM, HIDDEN_DIM}, &model),
       clssize(cls2nbrwords), word2cls(word2cls), acc_cls2size(acc_cls2size), dict_wrd_id2within_class_id(dict_wrd_id2within_class_id)
   {
       unsigned int n_cls = clssize.size();

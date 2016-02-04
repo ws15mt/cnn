@@ -41,7 +41,7 @@ struct RNNLanguageModel {
   Parameters* p_R;
   Parameters* p_bias;
   Builder builder;
-  explicit RNNLanguageModel(Model& model) : builder(LAYERS, INPUT_DIM, HIDDEN_DIM, &model) {
+  explicit RNNLanguageModel(Model& model) : builder(LAYERS, vector<unsigned>{INPUT_DIM, HIDDEN_DIM}, &model) {
       if (verbose)
           cout << "building RNNLanguageModel" << endl;
     p_c = model.add_lookup_parameters(VOCAB_SIZE, {INPUT_DIM}); 
