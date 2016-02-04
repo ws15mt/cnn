@@ -123,6 +123,30 @@ namespace cnn {
             nutt = source.size();
             std::vector<Expression> v_tgt2enc;
 
+            if (i_h0.size() == 0)
+            {
+                i_h0.resize(p_h0.size());
+
+                for (int k = 0; k < p_h0.size(); k++)
+                {
+                    i_h0[k] = concatenate_cols(vector<Expression>(nutt, parameter(cg, p_h0[k])));
+                }
+
+                combiner.new_graph(cg);
+
+                if (last_context_exp.size() == 0)
+                    combiner.start_new_sequence();
+                else
+                    combiner.start_new_sequence(last_context_exp);
+                combiner.set_data_in_parallel(nutt);
+
+                i_R = parameter(cg, p_R); // hidden -> word rep parameter
+                i_bias = parameter(cg, p_bias);
+
+                i_cxt_to_decoder = parameter(cg, p_cxt_to_decoder);
+                i_enc_to_intention = parameter(cg, p_enc_to_intention);
+            }
+
             /// take the previous response as input
             encoder_fwd.new_graph(cg);
             encoder_fwd.set_data_in_parallel(nutt);
@@ -172,7 +196,7 @@ namespace cnn {
             }
 
             unsigned int nutt = current_user_input.size();
-            start_new_instance(current_user_input, cg);
+            start_new_instance(std::vector<std::vector<int>>(), current_user_input, cg);
 
             vector<vector<Expression>> this_errs(nutt);
             vector<Expression> errs;
@@ -197,7 +221,7 @@ namespace cnn {
             }
 
             save_context(cg);
-  //          serialise_context(cg);
+            serialise_context(cg);
 
             for (auto &p : this_errs)
                 errs.push_back(sum(p));
@@ -244,7 +268,7 @@ namespace cnn {
             }
 
             save_context(cg);
-//            serialise_context(cg);
+            serialise_context(cg);
 
             for (auto &p : this_errs)
                 errs.push_back(sum(p));
@@ -255,16 +279,80 @@ namespace cnn {
             return errs;
         };
 
+        void assign_cxt(ComputationGraph &cg, unsigned int nutt)
+        {
+            if (turnid <= 0 || last_cxt_s.size() == 0)
+            {
+                /// no information from previous turns
+                reset();
+                return;
+            }
+
+            last_context_exp.clear();
+            for (const auto &p : last_cxt_s)
+            {
+                Expression iv;
+                if (nutt > 1)
+                    iv = input(cg, { (unsigned int)p.size() / nutt, nutt }, &p);
+                else
+                    iv = input(cg, { (unsigned int)p.size() }, &p);
+                last_context_exp.push_back(iv);
+            }
+            /// prepare for the next run
+            i_h0.clear();
+            v_errs.clear();
+            tgt_words = 0;
+            src_words = 0;
+        }
+
+        void assign_cxt(ComputationGraph &cg, unsigned int nutt,
+            vector<vector<cnn::real>>& v_last_s, vector<vector<cnn::real>>& v_decoder_s){
+            throw("not implemented"); 
+        }
+
+        void serialise_context(ComputationGraph& cg,
+            vector<vector<cnn::real>>& v_last_cxt_s,
+            vector<vector<cnn::real>>& v_last_decoder_s)
+        {
+            /// get the top output
+            vector<vector<cnn::real>> vm;
+
+            vm.clear();
+            for (const auto &p : combiner.final_s())
+            {
+                vm.push_back(get_value(p, cg));
+            }
+            last_cxt_s = vm;
+            v_last_cxt_s = last_cxt_s;
+        }
+
+        /**
+        1) save context hidden state
+        in last_cxt_s as [replicate_hidden_layers][nutt]
+        2) organize the context from decoder
+        data is organized in v_decoder_context as [nutt][replicate_hidden_layers]
+        after this process, last_decoder_s will save data in dimension [replicate_hidden_layers][nutt]
+        */
+        void serialise_context(ComputationGraph& cg)
+        {
+            /// get the top output
+            vector<vector<cnn::real>> vm;
+
+            vm.clear();
+            for (const auto &p : combiner.final_s())
+            {
+                vm.push_back(get_value(p, cg));
+            }
+            last_cxt_s = vm;
+        }
+
         void start_new_single_instance(const std::vector<int> &prv_response, const std::vector<int> &src, ComputationGraph &cg)
         {
             std::vector<std::vector<int>> source(1, src);
             std::vector<std::vector<int>> prv_resp;
             if (prv_response.size() > 0)
                 prv_resp.resize(1, prv_response);
-            if (prv_resp.size() > 0)
-                start_new_instance(prv_resp, source, cg);
-            else
-                start_new_instance(source, cg);
+            start_new_instance(prv_resp, source, cg);
         }
 
         std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict)
@@ -302,7 +390,7 @@ namespace cnn {
             
             v_decoder_context.push_back(decoder.final_s());
             save_context(cg);
-  //          serialise_context(cg);
+            serialise_context(cg);
 
             turnid++;
             return target;
@@ -342,7 +430,7 @@ namespace cnn {
             
             v_decoder_context.push_back(decoder.final_s());
             save_context(cg);
-//            serialise_context(cg);
+            serialise_context(cg);
 
             turnid++;
             return target;
