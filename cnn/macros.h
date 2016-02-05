@@ -10,4 +10,8 @@ namespace cnn {
 #define INPUT_LAYER ENCODER_LAYER
 #define HIDDEN_LAYER INTENTION_LAYER
 #define OUTPUT_LAYER DECODER_LAYER
+
+
+/// this is for ngram models
+#define MIN_OCC_COUNT 20
 };

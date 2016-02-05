@@ -707,13 +707,6 @@ int hirearchical_clustering_main_body(variables_map vm)
         throw std::invalid_argument("must have either training corpus or dictionary");
     }
 
-    if (vm.count("representative_presentation") > 0)
-    {
-        CorpusWithClassId training = read_corpus_with_classid(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS);
-
-        ptrTrainer->representative_presentation(vm, training, sd);
-    }
-
     if (vm.count("hierarchical_ngram_clustering") > 0)
     {
         CorpusWithClassId training = read_corpus_with_classid(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS);

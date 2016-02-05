@@ -89,7 +89,7 @@ public:
         return prob;
     }
 
-    cnn::real GetSentenceLL(const Sentence & refTokens)
+    cnn::real GetSentenceLL(const Sentence & refTokens, cnn::real interpolation_wgt)
     {
         int prv_wrd = -1;
         cnn::real prob = 0.0;
