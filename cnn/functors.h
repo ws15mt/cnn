@@ -2,14 +2,14 @@
 #define CNN_GPU_FUNCTORS_H
 
 #include <cstdint>
-
+using namespace std;
 #if HAVE_CUDA
 #define CNN_DEVICE_FUNC __device__
 #define CNN_DEVICE_MIN -1.175494351e-38f
 #else
 #include <boost/math/special_functions/digamma.hpp>
 #define CNN_DEVICE_FUNC
-#define CNN_DEVICE_MIN std::numeric_limits<float>::min()
+#define CNN_DEVICE_MIN -1.175494351e-38f
 #endif
 
 // these functions are used both in CPU and in GPU computation
