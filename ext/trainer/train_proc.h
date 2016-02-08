@@ -136,6 +136,7 @@ public:
     /// for ngram
     void ngram_train(variables_map vm, const Corpus& test, Dict& sd);
     void ngram_clustering(variables_map vm, const Corpus& test, Dict& sd);
+    void ngram_one_pass_clustering(variables_map vm, const Corpus& test, Dict& sd);
     void representative_presentation(
         vector<nGram> pnGram,
         const Sentences& responses,
@@ -1681,9 +1682,9 @@ void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, 
 
     for (int iter = 0; iter < vm["epochs"].as<int>(); iter++)
     {
-        shuffle(response.begin(), response.end(), std::default_random_engine(iter));
         if (iter == 0)
         {
+            shuffle(response.begin(), response.end(), std::default_random_engine(iter));
             for (int i = 0; i < ncls; i++)
             {
                 pnGram[i].LoadModel(".m" + boost::lexical_cast<string>(i));
@@ -1722,19 +1723,19 @@ void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, 
             /// reassign data to closest cluster
             vector<Sentences> current_assignment(ncls);
             double totallk = 0;
-            for (int i = 0; i < response.size() / 2; i++)
+            for (int i = 0; i < order_kept_responses.size(); i++)
             {
-                if (response[i].size() == 0)
+                if (order_kept_responses[i].size() == 0)
                     continue;
 
                 cnn::real largest ;
-                int iarg = closest_class_id(pnGram, 0, ncls, response[i], largest, interpolation_wgt);
+                int iarg = closest_class_id(pnGram, 0, ncls, order_kept_responses[i], largest, interpolation_wgt);
                 
-                current_assignment[iarg].push_back(response[i]);
-                totallk += largest / response[i].size();
+                current_assignment[iarg].push_back(order_kept_responses[i]);
+                totallk += largest / order_kept_responses[i].size();
                 ncnt[iarg]++;
             }
-            totallk /= response.size();
+            totallk /= order_kept_responses.size();
 
             cout << "loglikelihood at iteration " << iter << " is " << totallk << endl;
 
@@ -1746,7 +1747,7 @@ void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, 
                     if (p < MIN_OCC_COUNT)
                     {
                         /// randomly pick one sample for this class
-                        current_assignment[icls].push_back(response[rand0n_uniform(response.size()) - 1]);
+                        current_assignment[icls].push_back(response[rand0n_uniform(order_kept_responses.size()) - 1]);
                     }
                     icls++;
                 }
@@ -1810,6 +1811,138 @@ void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, 
                 cout << ostr << endl;
 
             tid++;
+        }
+        did++;
+    }
+
+    if (ofs.is_open())
+        ofs.close();
+}
+
+/**
+keep turn id
+each turn has its own clusters
+ngram counts are not reliable. so use edit distance
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::ngram_one_pass_clustering(variables_map vm, const Corpus& test, Dict& sd)
+{
+#define MAXTURNS 100
+    Corpus empty;
+    int ncls = vm["ngram-num-clusters"].as<int>();
+    vector<int> data2cls;
+    vector<cnn::real> cls2score; /// the highest score in this class
+    vector<Sentence> cls2data;  /// class to its closest response
+
+    vector<int> cls_cnt; 
+    vector<nGram> pnGram; 
+
+    cnn::real threshold = vm["llkthreshold"].as<cnn::real>();
+
+    cnn::real interpolation_wgt = vm["interpolation_wgt"].as<cnn::real>();
+
+    vector<long> ncnt(MAXTURNS, 0); /// every class must have at least one sample
+
+    long sid = 0; 
+    for (auto& d : test)
+    {
+        for (auto &t : d)
+        {
+            Sentence rep = remove_first_and_last(t.second);
+
+            cnn::real largest = LZERO;
+            int iarg;
+
+            if (pnGram.size() > 0)
+                iarg = closest_class_id(pnGram, 0, pnGram.size(), rep, largest, interpolation_wgt);
+
+            if (largest < threshold && pnGram.size() < ncls)
+            {
+                pnGram.push_back(nGram());
+                pnGram.back().Initialize(vm);
+                pnGram.back().UpdateNgramCounts(rep, 0, sd);
+                pnGram.back().UpdateNgramCounts(rep, 1, sd);
+                iarg = pnGram.size() - 1; 
+            }
+            else{
+                pnGram[iarg].UpdateNgramCounts(rep, 0, sd);
+                pnGram[iarg].UpdateNgramCounts(rep, 1, sd);
+            }
+
+            /// update centroid periodically
+            if ((pnGram.size() < ncls) || ((pnGram.size() > ncls - 1) && sid % 1000 == 0))
+            {
+                for (auto &p : pnGram){
+                    p.ComputeNgramModel();
+                }
+            }
+            
+            sid++;
+        }
+    }
+
+    /// do classification now
+    vector<Sentence> typical_response(pnGram.size()); 
+    vector<cnn::real> best_score(pnGram.size(), LZERO);
+
+    ofstream ofs;
+    if (vm.count("outputfile") > 0)
+        ofs.open(vm["outputfile"].as<string>());
+    long did = 0;
+    long idx = 0;
+    for (auto& t : test)
+    {
+        int tid = 0;
+        for (auto& s : t)
+        {
+            cnn::real largest;
+            Sentence rep = remove_first_and_last(s.second);
+            long iarg = closest_class_id(pnGram, 0, pnGram.size(), rep, largest, interpolation_wgt);
+
+            if (best_score[iarg] < largest)
+            {
+                best_score[iarg] = largest;
+                typical_response[iarg] = s.second;
+            }
+            data2cls.push_back(iarg);
+        }
+    }
+
+    vector<string> i_representative;
+    for (auto& p : typical_response)
+    {
+        string sl = "";
+        for (auto w : p)
+            sl = sl + sd.Convert(w) + " ";
+        i_representative.push_back(sl);
+    }
+
+    long dataid = 0; 
+    did = 0; 
+    for (auto& t : test)
+    {
+        int tid = 0;
+        for (auto& s : t)
+        {
+            string userstr;
+            for (auto& p : s.first)
+                userstr = userstr + " " + sd.Convert(p);
+            string responsestr;
+            for (auto& p : s.second)
+                responsestr = responsestr + " " + sd.Convert(p);
+
+            int iarg = data2cls[dataid];
+            string ostr = boost::lexical_cast<string>(did)+" ||| " + boost::lexical_cast<string>(tid)+" ||| " + userstr + " ||| " + responsestr;
+            ostr = ostr + " ||| " + boost::lexical_cast<string>(iarg)+" ||| " + i_representative[iarg];
+            if (ofs.is_open())
+            {
+                ofs << ostr << endl;
+            }
+            else
+                cout << ostr << endl;
+
+            tid++;
+            dataid++;
         }
         did++;
     }
