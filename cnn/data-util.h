@@ -185,3 +185,5 @@ return flavour of a builder in string
 */
 std::string builder_flavour(variables_map vm);
 
+/// remove the firest and the last element
+vector<int> remove_first_and_last(const vector<int>& rep);

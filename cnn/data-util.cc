@@ -1314,3 +1314,10 @@ string builder_flavour(variables_map vm)
     return flavour;
 }
 
+vector<int> remove_first_and_last(const vector<int>& rep)
+{
+    Sentence trimedrep(rep.size() - 2);
+    /// remove <s> and </s>
+    std::copy(rep.begin() + 1, rep.end() - 1, trimedrep.begin());
+    return trimedrep;
+}
