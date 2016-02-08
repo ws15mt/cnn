@@ -16,7 +16,6 @@ set(cnn_library_SRCS
     gru.cc
     init.cc
     lstm.cc
-    math-util.cc
     model.cc
     nodes.cc
     nodes-common.cc
@@ -30,7 +29,7 @@ set(cnn_library_SRCS
     training.cc
     dglstm.cc
     treelstm.cc
-    math-util.cc
+    metric-util.cc
 )
 
 # Headers:
@@ -54,7 +53,6 @@ set(cnn_library_HDRS
     gru.h
     init.h
     lstm.h
-    math-util.h
     model.h
     nodes.h
     param-nodes.h
@@ -69,7 +67,6 @@ set(cnn_library_HDRS
     training.h
     dglstm.h
     treelstm.h
-    math-util.h
     metric-util.h
 )
 
