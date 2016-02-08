@@ -660,6 +660,9 @@ int clustering_main_body(variables_map vm)
         ptrTrainer->ngram_clustering(vm, training, sd);
     }
 
+    if (vm.count("ngram_one_pass_clustering") > 0)
+        ptrTrainer->ngram_one_pass_clustering(vm, training, sd);
+
     delete ptrTrainer;
 
     return EXIT_SUCCESS;
