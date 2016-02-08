@@ -108,11 +108,12 @@ public:
                 prob += lgUniLM[wrd];
             else
                 prob += log(exp(lgBiLM[bins]) * (1.0 - interpolation_wgt) + interpolation_wgt * exp(lgUniLM[wrd]));
+            prv_wrd = wrd;
         }
-        if (refTokens.size() > 0)
-            prob /= refTokens.size();
-        else
+        if (refTokens.size() == 0)
             prob = LZERO;
+        else
+            prob /= refTokens.size();
         return prob;
     }
 
@@ -177,6 +178,8 @@ public:
     void UpdateNgramCounts(const vector<string> & tokens, int order, Dict& sd)
     {
         vocab_size = sd.size();
+        if (tokens.size() < order)
+            return;
 
         int n = order;
         if (n > 2)
@@ -222,7 +225,9 @@ public:
     void UpdateNgramCounts(const Sentence & tokens, int order, Dict& sd)
     {
         vocab_size = sd.size();
-        
+        if (tokens.size() < order)
+            return;
+
         int n = order;
         if (n > NgramOrder)
             throw("only support bigram");
