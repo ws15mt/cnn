@@ -11,6 +11,7 @@ using namespace std;
 #define CNN_DEVICE_FUNC
 #define CNN_DEVICE_MIN -1.175494351e-38f
 #endif
+#include <cnn/macros.h>
 
 // these functions are used both in CPU and in GPU computation
 // this file may be compiled with NVCC or a standard C++ tool.
@@ -101,10 +102,16 @@ struct FHuberBackward {
   const float d;
 };
 
+struct FSubtract {
+    CNN_DEVICE_FUNC inline float operator()(const float &a, const float &b) const {
+        return a - b;
+    }
+};
+
 struct FProduct {
-  CNN_DEVICE_FUNC inline float operator()(const float &a, const float &b) const {
-    return a * b;
-  }
+    CNN_DEVICE_FUNC inline float operator()(const float &a, const float &b) const {
+        return a * b;
+    }
 };
 
 struct FQuotient {
@@ -265,6 +272,34 @@ struct FLogSoftmaxNormalize {
   float logz;
 };
 
+template <class ElemType>
+void logsoftmax_forward(int row, int col, const ElemType* a, ElemType* v, const bool isColWise)
+{
+
+    if (isColWise)
+    {
+#pragma omp parallel for
+        for (int j = 0; j < col; j++)
+        {
+            // we need to extract max before applying exp to avoid overflow
+            ElemType maxV = a[IDX2C(0, j, row)];
+            for (int i = 1; i < row; i++)
+                maxV = (maxV > a[IDX2C(i, j, row)]) ? maxV : a[IDX2C(i, j, row)];
+
+            ElemType sum = 0;
+            for (int i = 0; i < row; i++)
+                sum += exp(v[IDX2C(i, j, row)] = a[IDX2C(i, j, row)] - maxV);
+            sum = log(sum);
+            for (int i = 0; i < row; i++)
+                v[IDX2C(i, j, row)] -= sum;
+        }
+    }
+    else
+    {
+        throw("not supported for row-major");
+    }
+}
+
 struct FWeightedError {
   CNN_DEVICE_FUNC float operator()(const float & t, const float &d) const {
     return CNN_EXPF(t) * d / CNN_EXPF(t);
@@ -408,6 +443,7 @@ struct saxpy_functor
         return a * x + y;
     }
 };
+
 
 } // namespace cnn
 
