@@ -9,7 +9,7 @@
 #include <Eigen/LU>
 
 using namespace std;
-namespace cnn { namespace math {
+namespace cnn { namespace metric {
 
     int levenshtein_distance(const vector<std::string> &s1, const vector<std::string> &s2)
     {
