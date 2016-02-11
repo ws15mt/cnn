@@ -1189,40 +1189,52 @@ void PickNegLogSoftmax::backward_impl(const vector<const Tensor*>& xs,
 }
 */
 
+size_t LogSoftmax::aux_storage_size() const {
+    /// save space for softmax and a vector of nutt 
+    int sz = dim.size() + dim.cols();
+    return sz* sizeof(cnn::real);
+}
+
 void LogSoftmax::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
-  assert(xs.size() == 1);
-  if (xs[0]->d.cols() == 1) {
 #if HAVE_CUDA
-      gpu::softmax(xs[0]->d.size(), xs[0]->v, fx.v);
-      gpu::vlog(xs[0]->d.size(), fx.v, fx.v);
+  gpu::logsoftmax_forward(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v);
 #else
-    auto x = **xs[0];
-    *fx = x.unaryExpr(FLogSoftmaxNormalize(logsumexp(x)));
+  logsoftmax_forward<float>(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v, true);
 #endif
-  } else {
-    throw std::runtime_error("LogSoftmax::forward not yet implemented for multiple columns");
-  }
 }
 
 void LogSoftmax::backward_impl(const vector<const Tensor*>& xs,
                           const Tensor& fx,
                           const Tensor& dEdf,
                           unsigned i,
-                          Tensor& dEdxi) const {
-  if (xs[0]->d.cols() == 1) {
+                          Tensor& dEdxi) const 
+{
+    unsigned rows = dEdf.d.rows();
+    unsigned cols = dEdf.d.cols();
+    Tensor softmax(fx.d, static_cast<cnn::real*>(aux_mem)+cols);
+    cnn::real* off_diag_sum = static_cast<cnn::real*>(aux_mem);
+
 #if HAVE_CUDA
-      gpu::logsoftmax_backward(xs[0]->d.size(), fx.v, dEdf.v, dEdxi.v);
+    gpu::logsoftmax_backward(xs[0]->d.rows(), xs[0]->d.cols(), fx.v, dEdf.v, dEdxi.v, softmax.v, off_diag_sum);
 #else
-      cnn::real off_diag_sum = 0;
-      for (auto p : as_vector(dEdf))
-          off_diag_sum += p;
-      off_diag_sum *= -1;
-//      cnn::real off_diag_sum = -(*fx).binaryExpr(*dEdf, FWeightedError()).sum();
-      *dEdxi += (*fx).binaryExpr(*dEdf, FLogSoftmaxBackward(off_diag_sum));
+
+    (*softmax).array() = (*fx).array().exp();
+
+#pragma omp parallel for
+    for (int k = 0; k < cols; k++)
+    {
+        off_diag_sum[k] = 0;
+        for (unsigned r = 0; r < rows; r ++)
+            off_diag_sum[k] += dEdf.v[IDX2C(r,k, rows)];
+
+        /// row-element-wise multiplication
+        for (unsigned r = 0; r < rows; r++)
+        {
+            softmax.v[IDX2C(r, k, rows)] *= off_diag_sum[k];
+            dEdxi.v[IDX2C(r, k, rows)] += (dEdf.v[IDX2C(r, k, rows)] - softmax.v[IDX2C(r, k, rows)]);
+        }
+    }
 #endif
-  } else {
-    throw std::runtime_error("LogSoftmax::backward not yet implemented for multiple columns");
-  }
 }
 
 template <class T>
