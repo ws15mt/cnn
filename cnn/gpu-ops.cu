@@ -1,3 +1,4 @@
+#include <cudnn.h>
 #include "cnn/cuda.h"
 #include "cnn/gpu-ops.h"
 #include "cnn/gpu-kernels.h"
@@ -8,6 +9,7 @@
 #include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
 #include <thrust/sort.h>
+#include "gpu-ops.cuh"
 
 namespace cnn {
 namespace gpu {
@@ -25,11 +27,11 @@ void add_to(int n, const float* x, float *y)
 {
     thrust::device_ptr<float> src_ptr = thrust::device_pointer_cast((float*)x);
     thrust::device_ptr<float> tgt_ptr = thrust::device_pointer_cast(y);
-    // Y <- A * X + Y
-    thrust::transform(src_ptr, src_ptr + n, tgt_ptr, tgt_ptr, thrust::plus<float>()); 
+    // Y <- X + Y
+    thrust::transform(src_ptr, src_ptr + n, tgt_ptr, tgt_ptr, thrust::plus<float>());
 }
 
-void set_to_value_of(int n, float* x0, float val) 
+void set_to_value_of(int n, float* x0, float val)
 {
     thrust::device_ptr<float> dev_ptr = thrust::device_pointer_cast(x0);
     thrust::fill(thrust::device, dev_ptr, dev_ptr + n, val);
@@ -278,6 +280,79 @@ void softmax_backward(int n, const float* fx, const float* dEdf, float* dEdx) {
   cudaMemcpy(&ods, gpu_ods, sizeof(float), cudaMemcpyDeviceToHost);
   cudaFree(gpu_ods);
   accBinaryExprKernel<<<tb.first, tb.second>>>(n, fx, dEdf, dEdx, FSoftmaxBackward(-ods));
+}
+
+void VectorSum(int rows, int cols, const float * a, float* c, const bool isColWise)
+{
+    assert(rows > 0 && cols > 0); // converting from size_t to int may cause overflow
+
+    int m = cols;
+    int n = rows;
+
+    cudaEvent_t done = nullptr;
+
+    int blocksPerGrid = 0;
+    if (isColWise) // col-wise
+    {
+        blocksPerGrid = (int)ceil(1.0 * m / MAX_THREADS_PER_BLOCK);
+    }
+    else
+    {
+        blocksPerGrid = (int)ceil(1.0 * n / MAX_THREADS_PER_BLOCK);
+    }
+
+    cudaEventCreate(&done);
+    _vectorSum<float> << <blocksPerGrid, MAX_THREADS_PER_BLOCK, 0, cudaStreamDefault >> >(c, a, n, m, isColWise);
+    cudaEventRecord(done);
+    cudaEventSynchronize(done);
+    cudaEventDestroy(done);
+}
+
+/// assume that a is a vector with col dimension
+void RowElementMultiplyWith(int arow, int acol, const float * a, int brow, int bcol, float * b)
+{
+    if (arow != 1 || acol != bcol)
+    {
+        abort();
+    }
+
+    int N = brow; 
+    int M = acol;
+    int blocksPerGrid = (int)ceil(1.0 * M / MAX_THREADS_PER_BLOCK);
+
+    cudaEvent_t done = nullptr;
+    cudaEventCreate(&done);
+    _rowElementMultiplyWith<float> << <blocksPerGrid, MAX_THREADS_PER_BLOCK >> >(b, a, N, M);
+    cudaEventRecord(done);
+    cudaEventSynchronize(done);
+    cudaEventDestroy(done);
+}
+
+void logsoftmax_forward(int row, int col, const float* x0, float* y) 
+{
+    cudaStream_t t_stream = cudaStreamDefault;
+
+    int N = col;
+    int M = row;
+    cudaEvent_t done = nullptr;
+    cudaEventCreate(&done);
+    _assignColumnwiseLogSoftmaxOf<float> << <N, 512, 0, t_stream >> >(x0, y, N, M);
+    
+    cudaEventRecord(done);
+    
+    cudaEventSynchronize(done);
+    
+    cudaEventDestroy(done);
+}
+
+void logsoftmax_backward(int row, int col, const float *fx, const float *dEdf, float *dEdx, float * gpu_softmax, float *grd)
+{
+    vexp(row * col, fx, gpu_softmax);
+    VectorSum(row, col, dEdf, grd, true); 
+    RowElementMultiplyWith(1, col, grd, row, col, gpu_softmax);
+
+    auto tb = SizeToBlockThreadPair(col * row);
+    accBinaryExprKernel << <tb.first, tb.second >> >(col * row, dEdf, gpu_softmax, dEdx, FSubtract());
 }
 
 void logsoftmax_backward(int n, const float* fx, const float* dEdf, float* dEdx) 
