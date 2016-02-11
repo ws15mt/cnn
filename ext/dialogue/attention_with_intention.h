@@ -4037,17 +4037,17 @@ public:
             }
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_R * i_y_t;
+            Expression i_ydist = log_softmax(i_r_t);
 
-            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
+            Expression x_r_t = reshape(i_ydist, { vocab_size * nutt });
 
             for (int i = 0; i < nutt; i++)
             {
+                long offset = i * vocab_size; 
                 if (t < target_response[i].size() - 1)
                 {
                     /// only compute errors on with output labels
-                    Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
-                    Expression i_ydist = log_softmax(r_r_t);
-                    this_errs[i].push_back(-pick(i_ydist, target_response[i][t + 1]));
+                    this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
                     tgt_words++;
                 }
                 else if (t == target_response[i].size() - 1)
