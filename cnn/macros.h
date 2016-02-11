@@ -14,4 +14,11 @@ namespace cnn {
 
 /// this is for ngram models
 #define MIN_OCC_COUNT 20
+
+/// assume column major
+#define IDX2C(i, j, ld) (((j) * (ld)) + (i)) // 0 based indexing
+
+/// for GPU
+#define MAX_THREADS_PER_BLOCK 512
+
 };
