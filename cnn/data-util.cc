@@ -1240,8 +1240,6 @@ vector<cnn::real> read_embedding(const string& line, Dict& sd, int & index)
     while (in) {
         in >> word;
         trim(word);
-        if (i==0)
-            std::transform(word.begin(), word.end(), word.begin(), ::tolower);
         if (!in) break;
 
         if (i == 0)
