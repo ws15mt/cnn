@@ -15,7 +15,7 @@
 #include "cnn/data-util.h"
 #include "ext/dialogue/dialogue.h"
 //#include "ext/ir/ir.h"
-#include "cnn/math-util.h"
+#include "cnn/metric-util.h"
 #include "ext/dialogue/attention_with_intention.h"
 #include <algorithm>
 #include <queue>
@@ -162,6 +162,11 @@ namespace cnn {
         void init_word_embedding(const map<int, vector<cnn::real>> &vWordEmbedding)
         {
             s2tmodel.init_word_embedding(vWordEmbedding);
+        }
+
+        void dump_word_embedding(const map<int, vector<cnn::real>>& vWordEmbedding, Dict& td, string ofn)
+        {
+            s2tmodel.dump_word_embedding(vWordEmbedding, td, ofn);
         }
 
         vector<cnn::real> sentence_embedding(const Sentence& sentence)
@@ -330,7 +335,7 @@ namespace cnn {
                 for (auto pp : decode_output)
                     sres.push_back(td.Convert(pp));
 
-                iDist += cnn::math::levenshtein_distance(sref, sres);
+                iDist += cnn::metric::levenshtein_distance(sref, sres);
             }
             return iDist;
         }
@@ -388,7 +393,7 @@ namespace cnn {
                 input_response = make_pair(p.first, decode_output);
                 results.push_back(input_response);
 
-                iDist += cnn::math::levenshtein_distance(sref, sres);
+                iDist += cnn::metric::levenshtein_distance(sref, sres);
             }
             return iDist;
         }
