@@ -8,13 +8,22 @@ using namespace std;
 
 namespace cnn {
 
-inline bool LooksLikeVector(const Dim& d) {
-  if (d.ndims() == 1) return true;
-  if (d.ndims() > 1) {
-    for (int i = 1; i < d.ndims(); ++i)
-      if (d[i] != 1) return false;
-  }
-  return true;
+    inline bool LooksLikeVector(const Dim& d) {
+        if (d.ndims() == 1) return true;
+        if (d.ndims() > 1) {
+            for (int i = 1; i < d.ndims(); ++i)
+            if (d[i] != 1) return false;
+        }
+        return true;
+    }
+
+    inline bool LooksLikeMatrix(const Dim& d) {
+        if (d.ndims() == 2) return true;
+        if (d.ndims() > 2) {
+            for (int i = 2; i < d.ndims(); ++i)
+            if (d[i] != 1) return false;
+        }
+        return true;
 }
 
 string Min::as_string(const vector<string>& arg_names) const {
@@ -545,12 +554,12 @@ string LogSoftmax::as_string(const vector<string>& arg_names) const {
 }
 
 Dim LogSoftmax::dim_forward(const vector<Dim>& xs) const {
-  assert(xs.size() == 1);
-  if (!LooksLikeVector(xs[0])) {
-    ostringstream s; s << "Bad input dimensions in LogSoftmax: " << xs;
-    throw std::invalid_argument(s.str());
-  }
-  return xs[0];
+    assert(xs.size() == 1 || xs.size() == 2);
+    if (!LooksLikeVector(xs[0]) && !LooksLikeMatrix(xs[0])) {
+        ostringstream s; s << "Bad input dimensions in PickElement: " << xs;
+        throw std::invalid_argument(s.str());
+    }
+    return xs[0];
 }
 
 string RestrictedLogSoftmax::as_string(const vector<string>& arg_names) const {
