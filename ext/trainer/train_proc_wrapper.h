@@ -199,6 +199,8 @@ int main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_
         string emb_filename = vm["embeddingfn"].as<string>();
         read_embedding(emb_filename, sd, vWordEmbedding);
         hred.init_word_embedding(vWordEmbedding);
+        if (vm.count("dumpembeddingfn") > 0)
+            hred.dump_word_embedding(vWordEmbedding, sd, vm["dumpembeddingfn"].as<string>());
     }
 
     if (vm.count("initialise"))
@@ -475,6 +477,8 @@ int classification_main_body(variables_map vm, size_t nreplicate = 0, size_t dec
         string emb_filename = vm["embeddingfn"].as<string>();
         read_embedding(emb_filename, sd, vWordEmbedding);
         hred.init_word_embedding(vWordEmbedding);
+        if (vm.count("dumpembeddingfn") > 0)
+            hred.dump_word_embedding(vWordEmbedding, sd, vm["dumpembeddingfn"].as<string>());
     }
 
     if (vm.count("initialise"))

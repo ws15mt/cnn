@@ -699,6 +699,7 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDia
         }
 
         cg.incremental_forward();
+//        CheckGrad(model, cg);
         if (sgd != nullptr)
         {
             if (verbose)
