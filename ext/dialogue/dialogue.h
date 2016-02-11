@@ -153,6 +153,20 @@ public:
         p_cs->copy(vWordEmbedding);
     }
 
+    void dump_word_embedding(const map<int, vector<cnn::real>>& vWordEmbedding, Dict& td, string ofn)
+    {
+        ofstream ofs(ofn.c_str());
+        for (auto & p : vWordEmbedding)
+        {
+            string wrd = td.Convert(p.first);
+            ofs << wrd << " "; 
+            for (auto & v : p.second)
+                ofs << v << " ";
+            ofs << endl; 
+        }
+        ofs.close();
+    }
+
     Expression sentence_embedding(const Sentence& sent, ComputationGraph& cg)
     {
         vector<Expression> vm;
