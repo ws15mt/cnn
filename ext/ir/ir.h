@@ -210,13 +210,14 @@ namespace cnn {
             Expression i_h_t = decoder_step(target_response[0], cg); /// get the top layer output
 
             Expression i_r_t = i_R * i_h_t;
-            Expression x_r_t = reshape(i_r_t, { cls_size * nutt });
+            Expression i_ydist = log_softmax(i_r_t);
 
+            Expression i_reshaped_t = reshape(i_ydist, { cls_size * nutt });
             for (int i = 0; i < nutt; i++)
             {
-                Expression r_r_t = pickrange(x_r_t, i * cls_size, (i + 1)*cls_size);
-                Expression i_ydist = log_softmax(r_r_t);
-                this_errs[i].push_back(-pick(i_ydist, target_response[i][0]));
+//                Expression r_r_t = pickrange(x_r_t, i * cls_size, (i + 1)*cls_size);
+//                Expression i_ydist = log_softmax(r_r_t);
+                this_errs[i].push_back(-pick(i_reshaped_t, target_response[i][0] + cls_size * i));
                 tgt_words++;
             }
 
