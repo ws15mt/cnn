@@ -319,16 +319,6 @@ void softmax_backward(int row, int col, const float *fx, const float *dEdf, floa
     accBinaryExprKernel << <tb.first, tb.second >> > (row * col, fx, gpu_gradient, dEdx, FProduct());
 }
 
-/*
-void softmax_backward(int n, const float* fx, const float* dEdf, float* dEdx, float* gpu_ods) {
-    auto tb = SizeToBlockThreadPair(n);
-    float ods;
-    ker_dotproduct << <tb.first, tb.second >> >(n, fx, dEdf, gpu_ods);
-    cudaMemcpy(&ods, gpu_ods, sizeof(float), cudaMemcpyDeviceToHost);
-    accBinaryExprKernel << <tb.first, tb.second >> >(n, fx, dEdf, dEdx, FSoftmaxBackward(-ods));
-}
-*/
-
 // adapted from NVIDIA example
 __global__ void ker_pnlsoftmax(int n, int elem_idx, const float *x0, float* res, float* logz) {
   __shared__ float buf[256];
