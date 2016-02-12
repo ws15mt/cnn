@@ -1100,6 +1100,8 @@ namespace cnn {
             if (verbose)
                 display_value(s2txent, cg, "s2txent");
 
+            s2tmodel.serialise_context(cg);
+
             assert(twords == s2tmodel.tgt_words);
             assert(swords == s2tmodel.src_words);
 
@@ -1138,6 +1140,8 @@ namespace cnn {
             s2txent = i_err;
             if (verbose)
                 display_value(s2txent, cg, "s2txent");
+
+            s2tmodel.serialise_context(cg);
 
             assert(twords == s2tmodel.tgt_words);
             assert(swords == s2tmodel.src_words);
