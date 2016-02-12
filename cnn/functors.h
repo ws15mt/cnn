@@ -354,12 +354,23 @@ struct FEuclideanBackward {
 };
 
 struct FL2SGDUpdate {
-  FL2SGDUpdate(float l, float s) : lambda(l), scale(-s) {}
-  CNN_DEVICE_FUNC inline float operator()(const float &x, const float &g) const {
-    return scale * g - x * lambda;
-  }
-  float lambda;
-  float scale;
+    FL2SGDUpdate(float l, float s) : lambda(l), scale(-s) {}
+    CNN_DEVICE_FUNC inline float operator()(const float &x, const float &g) const {
+        return scale * g - x * lambda;
+    }
+    float lambda;
+    float scale;
+};
+
+struct FL2SGDMomentumUpdate {
+    FL2SGDMomentumUpdate(float l, float s, float m) : lambda(l), scale(-s), momentum(m) {}
+    CNN_DEVICE_FUNC inline float operator()(const float &x, const float &g, float &v) const {
+        v = momentum * v + scale * g;
+        return v - x * lambda;
+    }
+    float lambda;
+    float scale;
+    float momentum;
 };
 
 struct FBinaryLogLoss {

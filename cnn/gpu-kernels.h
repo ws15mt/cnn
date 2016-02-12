@@ -41,11 +41,20 @@ __global__ void binaryExprKernel(int n, const float* x0, const float* x1, float*
 
 template<typename Func>
 __global__ void accBinaryExprKernel(int n, const float* x0, const float* x1, float* y, Func func) {
-  int i = threadIdx.x + blockIdx.x * blockDim.x;
-  while (i < n) {
-    y[i] += func(x0[i], x1[i]);
-    i += gridDim.x * blockDim.x;
-  }
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    while (i < n) {
+        y[i] += func(x0[i], x1[i]);
+        i += gridDim.x * blockDim.x;
+    }
+}
+
+template<typename Func>
+__global__ void accTripletExprKernel(int n, const float* x0, const float* x1, float *x2, float* y, Func func) {
+    int i = threadIdx.x + blockIdx.x * blockDim.x;
+    while (i < n) {
+        y[i] += func(x0[i], x1[i], x2[i]);
+        i += gridDim.x * blockDim.x;
+    }
 }
 
 template<typename Func>

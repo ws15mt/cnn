@@ -145,8 +145,13 @@ void sqeucdist_backward(int n, const float* dEdy, const float* x0, const float* 
 }
 
 void sgd_update(int n, const float* g, float* x, float scale, float lambda) {
-  auto tb = SizeToBlockThreadPair(n);
-  accBinaryExprKernel<<<tb.first, tb.second>>>(n, x, g, x, FL2SGDUpdate(lambda, scale));
+    auto tb = SizeToBlockThreadPair(n);
+    accBinaryExprKernel << <tb.first, tb.second >> >(n, x, g, x, FL2SGDUpdate(lambda, scale));
+}
+
+void sgd_momentum_update(int n, const float* g, float* x, float* v, float scale, float lambda, float momentum) {
+    auto tb = SizeToBlockThreadPair(n);
+    accTripletExprKernel << <tb.first, tb.second >> >(n, x, g, v, x, FL2SGDMomentumUpdate(lambda, scale, momentum));
 }
 
 // adapted from NVIDIA example
