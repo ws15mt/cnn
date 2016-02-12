@@ -97,7 +97,8 @@ public:
     void prt_model_info(size_t LAYERS, size_t VOCAB_SIZE_SRC, const vector<unsigned>& dims, size_t nreplicate, size_t decoder_additiona_input_to, size_t mem_slots, cnn::real scale);
 
     void batch_train(Model &model, Proc &am, Corpus &training, Corpus &devel,
-        Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real& largest_cost, bool do_segmental_training, bool update_sgd);
+        Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real& largest_cost, bool do_segmental_training, bool update_sgd, 
+        bool doGradientCheck);
     void supervised_pretrain(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, cnn::real target_ppl, int min_diag_id,
         bool bcharlevel = false, bool nosplitdialogue = false);
@@ -106,7 +107,7 @@ public:
         bool bcharlevel = false, bool nosplitdialogue = false);
     void train(Model &model, Proc &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs);
     void REINFORCEtrain(Model &model, Proc &am, Proc &am_agent_mirrow, Corpus &training, Corpus &devel, Trainer &sgd, string out_file, Dict & td, int max_epochs, int nparallel, cnn::real& largest_cost, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0);
-    void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training);
+    void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training, bool do_gradient_check);
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo, const string& score_embedding_fn = "");
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & sd);
     void test(Model &model, Proc &am, TupleCorpus &devel, string out_file, Dict & sd, Dict & td);
@@ -117,7 +118,7 @@ public:
     void nosegmental_forward_backward(Model &model, Proc &am, PDialogue &v_v_dialogues, int nutt,
         cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr);
     void segmental_forward_backward(Model &model, Proc &am, PDialogue &v_v_dialogues, int nutt,
-        cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr);
+        cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, bool doGradientCheck = false, Trainer* sgd = nullptr);
     void REINFORCE_nosegmental_forward_backward(Model &model, Proc &am, Proc &am_mirrow, PDialogue &v_v_dialogues, int nutt,
         cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, Trainer* sgd, Dict& sd, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0,
         bool update_model = true);
@@ -672,9 +673,9 @@ void TrainProcess<AM_t>::nosegmental_forward_backward(Model &model, AM_t &am, PD
 
 template <class AM_t>
 void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDialogue &v_v_dialogues, int nutt,
-    cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr)
+    cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel, bool doGradientCheck, Trainer* sgd)
 {
-    size_t turn_id = init_turn_id;
+    size_t turn_id = 0;
     size_t i_turns = 0;
     PTurn prv_turn;
 
@@ -698,8 +699,9 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDia
             am.build_graph(prv_turn, turn, cg);
         }
 
-        cg.incremental_forward();
-//        CheckGrad(model, cg);
+        if (doGradientCheck)
+            CheckGrad(model, cg);
+
         if (sgd != nullptr)
         {
             if (verbose)
@@ -715,7 +717,7 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDia
         dloss += as_scalar(cg.get_value(am.s2txent.i));
         if (verbose)
             cout << "dloss " << dloss << endl;
-
+    
         dchars_s += am.swords;
         dchars_t += am.twords;
 
@@ -844,7 +846,7 @@ but I comment it out
 template <class AM_t>
 void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
     Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
-    bool sgd_update_epochs)
+    bool sgd_update_epochs, bool do_gradient_check)
 {
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
@@ -882,7 +884,6 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
         PDialogue v_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
 
         for (unsigned iter = 0; iter < report_every_i;) {
-
             if (si == training.size()) {
                 si = 0;
                 if (first) { first = false; }
@@ -921,7 +922,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             }
 
             if (segmental_training)
-                segmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, false, 0, &sgd);
+                segmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, false, do_gradient_check, &sgd);
             else
                 nosegmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, true, 0, &sgd);
 
@@ -1547,7 +1548,8 @@ since the tool loads data into memory and that can cause memory exhaustion, this
 template <class AM_t>
 void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &model, AM_t &am, Corpus &devel, 
     Trainer &sgd, string out_file, 
-    int max_epochs, int nparallel, int epochsize, bool segmental_training)
+    int max_epochs, int nparallel, int epochsize, bool segmental_training,
+    bool do_gradient_check)
 {
     // a mirrow of the agent to generate decoding results so that their results can be evaluated
     // this is not efficient implementation, better way is to share model parameters
@@ -1578,7 +1580,7 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
             sgd.update_epoch();
         }
 
-        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false);
+        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check);
 
         if (fmod(trial , 50) == 0)
         {
@@ -2155,11 +2157,11 @@ public:
     ClassificationTrainProcess(){
     }
 
-    void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training);
+    void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training, bool do_gradient_check);
     
     void batch_train(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
-        bool sgd_update_epochs);
+        bool sgd_update_epochs, bool do_gradient_check);
 
 };
 
@@ -2170,7 +2172,7 @@ since the tool loads data into memory and that can cause memory exhaustion, this
 template <class AM_t>
 void ClassificationTrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &model, AM_t &am, Corpus &devel,
     Trainer &sgd, string out_file,
-    int max_epochs, int nparallel, int epochsize, bool segmental_training)
+    int max_epochs, int nparallel, int epochsize, bool segmental_training, bool do_gradient_check)
 {
     // a mirrow of the agent to generate decoding results so that their results can be evaluated
     // this is not efficient implementation, better way is to share model parameters
@@ -2202,7 +2204,7 @@ void ClassificationTrainProcess<AM_t>::split_data_batch_train(string train_filen
             sgd.update_epoch();
         }
 
-        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false);
+        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check);
 
         if (fmod(trial, 50) == 0)
         {
@@ -2222,7 +2224,7 @@ but I comment it out
 template <class AM_t>
 void ClassificationTrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
     Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
-    bool sgd_update_epochs)
+    bool sgd_update_epochs, bool doGradientCheck)
 {
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
@@ -2299,7 +2301,7 @@ void ClassificationTrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpu
             }
 
             if (segmental_training)
-                segmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, false, 0, &sgd);
+                segmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, false, doGradientCheck, &sgd);
             else
                 nosegmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, true, 0, &sgd);
 
