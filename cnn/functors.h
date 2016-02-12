@@ -364,7 +364,7 @@ struct FL2SGDUpdate {
 
 struct FL2SGDMomentumUpdate {
     FL2SGDMomentumUpdate(float l, float s, float m) : lambda(l), scale(-s), momentum(m) {}
-    CNN_DEVICE_FUNC inline float operator()(const float &x, const float &g, float &v) const {
+    CNN_DEVICE_FUNC inline float operator()(const float &x, const float &g, float &v) {
         v = momentum * v + scale * g;
         return v - x * lambda;
     }

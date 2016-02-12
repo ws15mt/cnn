@@ -24,7 +24,12 @@ Trainer* select_trainer(variables_map vm, Model* model)
 {
     Trainer* sgd = nullptr;
     if (vm["trainer"].as<string>() == "momentum")
-        sgd = new MomentumSGDTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
+    {
+        if (vm.count("mom") > 0)
+            sgd = new MomentumSGDTrainer(model, 1e-6, vm["eta"].as<cnn::real>(), vm["mom"].as<cnn::real>());
+        else
+            sgd = new MomentumSGDTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
+    }
     if (vm["trainer"].as<string>() == "sgd")
         sgd = new SimpleSGDTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
     if (vm["trainer"].as<string>() == "adagrad")
