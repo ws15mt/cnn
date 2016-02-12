@@ -23,14 +23,6 @@ void saxpy_fast(float A, thrust::device_vector<float>& X, thrust::device_vector<
     thrust::transform(X.begin(), X.end(), Y.begin(), Y.begin(), saxpy_functor(A));
 }
 
-void add_to(int n, const float* x, float *y)
-{
-    thrust::device_ptr<float> src_ptr = thrust::device_pointer_cast((float*)x);
-    thrust::device_ptr<float> tgt_ptr = thrust::device_pointer_cast(y);
-    // Y <- X + Y
-    thrust::transform(src_ptr, src_ptr + n, tgt_ptr, tgt_ptr, thrust::plus<float>());
-}
-
 void set_to_value_of(int n, float* x0, float val)
 {
     thrust::device_ptr<float> dev_ptr = thrust::device_pointer_cast(x0);
@@ -209,49 +201,6 @@ void l2_norm_reducer(int n, const float* x0, float* y, bool square, bool accumul
   ker_l2_norm_reducer<<<tb.first,tb.second>>>(n, x0, y, square, accumulate);
 }
 
-// adapted from NVIDIA example
-__global__ void ker_softmax(int n, const float *x0, float* res) {
-  __shared__ float buf[256];
-  for (int i = threadIdx.x; i < 256; i += blockDim.x) {
-    float me = __int_as_float(0xff800000);
-    for (int pos = i; pos < n; pos += 256) {
-      const float d = x0[pos];
-      me = d > me ? d : me;
-    }
-    buf[i] = me;
-  }
-  for (int stride = 128; stride > 0; stride >>= 1) {
-    __syncthreads();
-    for (int i = threadIdx.x; i < stride; i += blockDim.x)
-        buf[i] = buf[i] > buf[stride + i] ? buf[i] : buf[stride + i];
-  }
-  __syncthreads();
-  const float max_elem = buf[0];
-  for (int i = threadIdx.x; i < 256; i += blockDim.x) {
-    float sum = 0;
-    for (int pos = i; pos < n; pos += 256)
-      sum += expf(x0[pos] - max_elem);
-    buf[i] = sum;
-  }
-  for (int stride = 128; stride > 0; stride >>= 1) {
-    __syncthreads();
-    for (int i = threadIdx.x; i < stride; i += blockDim.x)
-        buf[i] += buf[stride + i];
-  }
-  __syncthreads();
-  float lz = log(buf[0]) + max_elem;
-  int i = threadIdx.x + blockIdx.x * blockDim.x;
-  while (i < n) {
-    res[i] = exp(x0[i] - lz);
-    i += gridDim.x * blockDim.x;
-  }
-}
-
-void softmax(int n, const float* x0, float* y) {
-  auto tb = SizeToBlockThreadPair(n);
-  ker_softmax<<<tb.first,tb.second>>>(n, x0, y);
-}
-
 // A kernel to calculate the dot product between two arrays
 __global__ void ker_dotproduct(int n, const float* x, const float* y, float* z) {
   __shared__ float buf[256];
@@ -269,17 +218,6 @@ __global__ void ker_dotproduct(int n, const float* x, const float* y, float* z) 
   __syncthreads();
   if (threadIdx.x == 0)
     z[0] = buf[0];
-}
-
-void softmax_backward(int n, const float* fx, const float* dEdf, float* dEdx) {
-  auto tb = SizeToBlockThreadPair(n);
-  float* gpu_ods;
-  float ods;
-  cudaMalloc((void **)&gpu_ods, sizeof(float));
-  ker_dotproduct<<<tb.first, tb.second>>>(n, fx, dEdf, gpu_ods);
-  cudaMemcpy(&ods, gpu_ods, sizeof(float), cudaMemcpyDeviceToHost);
-  cudaFree(gpu_ods);
-  accBinaryExprKernel<<<tb.first, tb.second>>>(n, fx, dEdf, dEdx, FSoftmaxBackward(-ods));
 }
 
 void VectorSum(int rows, int cols, const float * a, float* c, const bool isColWise)
@@ -328,7 +266,7 @@ void RowElementMultiplyWith(int arow, int acol, const float * a, int brow, int b
     cudaEventDestroy(done);
 }
 
-void logsoftmax_forward(int row, int col, const float* x0, float* y) 
+void logsoftmax(int row, int col, const float* x0, float* y) 
 {
     cudaStream_t t_stream = cudaStreamDefault;
 
@@ -355,23 +293,40 @@ void logsoftmax_backward(int row, int col, const float *fx, const float *dEdf, f
     accBinaryExprKernel << <tb.first, tb.second >> >(col * row, dEdf, gpu_softmax, dEdx, FSubtract());
 }
 
-void logsoftmax_backward(int n, const float* fx, const float* dEdf, float* dEdx) 
+void softmax(int row, int col, const float* x0, float* y)
 {
-    /*
-    float off_diag_sum = 0;
-    for (auto p : as_vector(dEdf))
-    off_diag_sum += p;
-    off_diag_sum *= -1;
-    *dEdxi += (*fx).binaryExpr(*dEdf, FLogSoftmaxBackward(off_diag_sum));
-    */
-    thrust::device_ptr<float> dp = thrust::device_pointer_cast((float*)fx);
-    thrust::device_ptr<float> de = thrust::device_pointer_cast((float*)dEdf);
-    thrust::device_ptr<float> dr = thrust::device_pointer_cast(dEdx);
-    thrust::device_vector<float> dtemp(n);
-//    thrust::transform(dp, dp + n, de, dtemp.begin(), FWeightedError());
-    float off_diag_sum  = - thrust::reduce(de, de + n);
-    thrust::transform(dp, dp + n, de, dtemp.begin(), FLogSoftmaxBackward(off_diag_sum)); 
-    thrust::transform(dtemp.begin(), dtemp.end(), dr, dr, thrust::plus<float>());
+    cudaStream_t t_stream = cudaStreamDefault;
+
+    int N = col;
+    int M = row;
+    cudaEvent_t done = nullptr;
+    cudaEventCreate(&done);
+    _assignColumnwiseSoftmaxOf<float> << <N, MAX_THREADS_PER_BLOCK, 0, t_stream >> >(x0, y, N, M);
+
+    cudaEventRecord(done);
+
+    cudaEventSynchronize(done);
+
+    cudaEventDestroy(done);
+}
+
+/// see http://research.microsoft.com/pubs/226641/CNTKBook-20160121.pdf
+/*
+void softmax_backward(const float  kSCALAR_MINUSONE, int row, int col, const float *fx, const float *dEdf, float *dEdx, float *tmp_one_row, float * gpu_gradient)
+{
+    InnerProduct(row, col, dEdf, row, col, fx, 1, col, tmp_one_row, true);
+    auto tb = SizeToBlockThreadPair(col * row);
+//    ScaleAndAdd<float>(kSCALAR_MINUSONE, 1, col, tmp_one_row, row, col, dEdf, row, col, gpu_gradient);
+    accBinaryExprKernel << <tb.first, tb.second >> > (row * col, fx, gpu_gradient, dEdx, FProduct());
+}
+*/
+
+void softmax_backward(int n, const float* fx, const float* dEdf, float* dEdx, float* gpu_ods) {
+    auto tb = SizeToBlockThreadPair(n);
+    float ods;
+    ker_dotproduct << <tb.first, tb.second >> >(n, fx, dEdf, gpu_ods);
+    cudaMemcpy(&ods, gpu_ods, sizeof(float), cudaMemcpyDeviceToHost);
+    accBinaryExprKernel << <tb.first, tb.second >> >(n, fx, dEdf, dEdx, FSoftmaxBackward(-ods));
 }
 
 // adapted from NVIDIA example
