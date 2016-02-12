@@ -501,8 +501,12 @@ string Softmax::as_string(const vector<string>& arg_names) const {
 
 Dim Softmax::dim_forward(const vector<Dim>& xs) const {
   assert(xs.size() == 1);
+#ifdef HAVE_CUDA
   if (!LooksLikeVector(xs[0]) && !LooksLikeMatrix(xs[0])) {
-    ostringstream s; s << "Bad input dimensions in Softmax: " << xs;
+#else
+  if (!LooksLikeVector(xs[0])) {
+#endif
+    ostringstream s; s << "Bad input dimensions in Softmax: GPU supports multiple columns. CPU supports only one column." << xs;
     throw std::invalid_argument(s.str());
   }
   return xs[0];
