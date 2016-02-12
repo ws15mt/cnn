@@ -153,8 +153,6 @@ Expression AttentionWithIntention<Builder, Decoder>::build_graph(const std::vect
         errs.push_back(pick(i_ydist, osent[t + 1]));
     }
 
-    cg.incremental_forward();
-
     save_context(cg);
 
     Expression i_nerr = sum(errs);
@@ -241,7 +239,7 @@ std::vector<int> AttentionWithIntention<Builder, Decoder>::beam_decode(const std
 
             // find the top k best next words
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             real mscore = log(*max_element(dist.begin(), dist.end())) + hprev.cost; 
             if (mscore < best_score - beam_width)
             {
@@ -322,7 +320,7 @@ std::vector<int> AttentionWithIntention<Builder, Decoder>::sample(const std::vec
         Expression ydist = softmax(i_scores);
 
 	    // in rnnlm.cc there's a loop around this block -- why? can incremental_forward fail?
-        auto dist = as_vector(cg.incremental_forward());
+        auto dist = get_value(ydist, cg);
 	    cnn::real p = rand01();
         unsigned w = 0;
         for (; w < dist.size(); ++w) {
@@ -528,7 +526,7 @@ public:
 
             // find the argmax next word (greedy)
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             auto pr_w = dist[w];
             for (unsigned x = 1; x < dist.size(); ++x) {
                 if (dist[x] > pr_w) {
@@ -1255,7 +1253,7 @@ public:
 
             // find the argmax next word (greedy)
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             auto pr_w = dist[w];
             for (unsigned x = 1; x < dist.size(); ++x) {
                 if (dist[x] > pr_w) {
@@ -1590,7 +1588,7 @@ public:
 
             // find the argmax next word (greedy)
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             auto pr_w = dist[w];
             for (unsigned x = 1; x < dist.size(); ++x) {
                 if (dist[x] > pr_w) {
@@ -3148,7 +3146,7 @@ public:
 
         // find the argmax next word (greedy)
         unsigned w = 0;
-        auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+        auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
         auto pr_w = dist[w];
         for (unsigned x = 1; x < dist.size(); ++x) {
             if (dist[x] > pr_w) {
@@ -3620,7 +3618,7 @@ public:
 
             // find the argmax next word (greedy)
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             auto pr_w = dist[w];
             for (unsigned x = 1; x < dist.size(); ++x) {
                 if (dist[x] > pr_w) {
@@ -3671,7 +3669,7 @@ public:
 
             // find the argmax next word (greedy)
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             auto pr_w = dist[w];
             for (unsigned x = 1; x < dist.size(); ++x) {
                 if (dist[x] > pr_w) {
@@ -4068,7 +4066,6 @@ public:
         }
 
         save_context(cg);
-        serialise_context(cg);
 
         for (auto &p : this_errs)
             errs.push_back(sum(p));
@@ -4112,17 +4109,17 @@ public:
             }
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_R * i_y_t;
+            Expression i_ydist = log_softmax(i_r_t);
 
-            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
+            Expression x_r_t = reshape(i_ydist, { vocab_size * nutt });
 
             for (int i = 0; i < nutt; i++)
             {
+                int offset = i * vocab_size; 
                 if (t < target_response[i].size() - 1)
                 {
                     /// only compute errors on with output labels
-                    Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
-                    Expression i_ydist = log_softmax(r_r_t);
-                    this_errs[i].push_back(-pick(i_ydist, target_response[i][t + 1]));
+                    this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
                     tgt_words++;
                 }
                 else if (t == target_response[i].size() - 1)
@@ -4143,7 +4140,6 @@ public:
         }
 
         save_context(cg);
-        serialise_context(cg);
 
         for (auto &p : this_errs)
             errs.push_back(sum(p));
@@ -4188,7 +4184,7 @@ public:
 
             // find the argmax next word (greedy)
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             auto pr_w = dist[w];
             for (unsigned x = 1; x < dist.size(); ++x) {
                 if (dist[x] > pr_w) {
@@ -4240,7 +4236,7 @@ public:
 
             // find the argmax next word (greedy)
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             auto pr_w = dist[w];
             for (unsigned x = 1; x < dist.size(); ++x) {
                 if (dist[x] > pr_w) {
