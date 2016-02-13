@@ -27,12 +27,13 @@ namespace cnn {
         X2O, H2O, C2O, BO, X2C, H2C, BC, X2K, C2K, Q2K, BK, STAB, X2K0 };
 
 DGLSTMBuilder::DGLSTMBuilder(unsigned ilayers,
-    unsigned input_dim,
-    unsigned hidden_dim,
+    const vector<unsigned>& dims,
     Model* model,
     cnn::real iscale, 
     string name) 
 {
+    unsigned input_dim = dims[INPUT_LAYER];
+    unsigned hidden_dim = dims[HIDDEN_LAYER];
     string i_name;
     layers = ilayers;
     Parameters * p_x2k, *p_c2k, *p_q2k, *p_bk, *p_x2k0;

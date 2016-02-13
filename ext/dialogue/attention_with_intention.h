@@ -153,8 +153,6 @@ Expression AttentionWithIntention<Builder, Decoder>::build_graph(const std::vect
         errs.push_back(pick(i_ydist, osent[t + 1]));
     }
 
-    cg.incremental_forward();
-
     save_context(cg);
 
     Expression i_nerr = sum(errs);
@@ -241,7 +239,7 @@ std::vector<int> AttentionWithIntention<Builder, Decoder>::beam_decode(const std
 
             // find the top k best next words
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             real mscore = log(*max_element(dist.begin(), dist.end())) + hprev.cost; 
             if (mscore < best_score - beam_width)
             {
@@ -322,7 +320,7 @@ std::vector<int> AttentionWithIntention<Builder, Decoder>::sample(const std::vec
         Expression ydist = softmax(i_scores);
 
 	    // in rnnlm.cc there's a loop around this block -- why? can incremental_forward fail?
-        auto dist = as_vector(cg.incremental_forward());
+        auto dist = get_value(ydist, cg);
 	    cnn::real p = rand01();
         unsigned w = 0;
         for (; w < dist.size(); ++w) {
@@ -528,7 +526,7 @@ public:
 
             // find the argmax next word (greedy)
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             auto pr_w = dist[w];
             for (unsigned x = 1; x < dist.size(); ++x) {
                 if (dist[x] > pr_w) {
@@ -1042,7 +1040,7 @@ public:
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
     const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
     : AWI_Bilinear_Simpler<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale),
-    attention_layer(1, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], &model, iscale, "attention_layer")
+    attention_layer(1, vector<unsigned>{hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER]}, &model, iscale, "attention_layer")
     {
         p_Wa_local = model.add_parameters({ hidden_dim[ALIGN_LAYER], hidden_dim[DECODER_LAYER] }, iscale);
         p_ba_local = model.add_parameters({ hidden_dim[ALIGN_LAYER] }, iscale);
@@ -1255,7 +1253,7 @@ public:
 
             // find the argmax next word (greedy)
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             auto pr_w = dist[w];
             for (unsigned x = 1; x < dist.size(); ++x) {
                 if (dist[x] > pr_w) {
@@ -1387,7 +1385,7 @@ public:
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
         : AWI_Bilinear_Simpler<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale),
-        attention_layer(1, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], &model, iscale, "attention_layer")
+        attention_layer(1, vector<unsigned>{hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER]}, &model, iscale, "attention_layer")
     {
             p_Wa = model.add_parameters({ hidden_dim[ENCODER_LAYER], hidden_dim[DECODER_LAYER] }, iscale);
             p_scale = model.add_parameters({ 1 }, 0.0);
@@ -1590,7 +1588,7 @@ public:
 
             // find the argmax next word (greedy)
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             auto pr_w = dist[w];
             for (unsigned x = 1; x < dist.size(); ++x) {
                 if (dist[x] > pr_w) {
@@ -1896,8 +1894,8 @@ public:
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
         const vector<unsigned>& hidden_dim, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0)
         : AWI_GeneralInputFeedingWDropout<Builder, Decoder>(model, vocab_size_src, vocab_size_tgt, layers, hidden_dim, hidden_replicates, additional_input, mem_slots, iscale),
-        true_attention_layer(2, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], 1, &model, iscale, "true attention layer"),
-        response_layer(1, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], &model, iscale, "response layer")
+        true_attention_layer(2, vector<unsigned>{hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], 1}, &model, iscale, "true attention layer"),
+        response_layer(1, vector<unsigned>{hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER]}, &model, iscale, "response layer")
     {
         }
 
@@ -3148,7 +3146,7 @@ public:
 
         // find the argmax next word (greedy)
         unsigned w = 0;
-        auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+        auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
         auto pr_w = dist[w];
         for (unsigned x = 1; x < dist.size(); ++x) {
             if (dist[x] > pr_w) {
@@ -3214,7 +3212,7 @@ public:
     MultiSource_LinearEncoder(Model& model,
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
         const vector<unsigned>& hidden_dims, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0) :DialogueBuilder(model, vocab_size_src, vocab_size_tgt, layers, hidden_dims, hidden_replicates, additional_input, mem_slots, iscale),
-        combiner(layers[INTENTION_LAYER], hidden_dims[INTENTION_LAYER], hidden_dims[INTENTION_LAYER], &model, iscale)
+        combiner(layers[INTENTION_LAYER], vector<unsigned>{hidden_dims[INTENTION_LAYER], hidden_dims[INTENTION_LAYER], hidden_dims[INTENTION_LAYER]}, &model, iscale)
     {
         p_cxt_to_decoder = model.add_parameters({ hidden_dim[DECODER_LAYER], hidden_dim[INTENTION_LAYER] }, iscale, "p_cxt_to_decoder");
 
@@ -3443,7 +3441,7 @@ public:
                     }
                     this_errs[i].push_back(-pick(i_ydist, target_response[i][t + 1]));
                     if (verbose)
-                        display_value(i_ydistthis_errs[i].back(), cg, "this_errs");
+                        display_value(this_errs[i].back(), cg, "this_errs");
                     tgt_words++;
                 }
                 else if (t == target_response[i].size() - 1)
@@ -3620,7 +3618,7 @@ public:
 
             // find the argmax next word (greedy)
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             auto pr_w = dist[w];
             for (unsigned x = 1; x < dist.size(); ++x) {
                 if (dist[x] > pr_w) {
@@ -3671,7 +3669,7 @@ public:
 
             // find the argmax next word (greedy)
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             auto pr_w = dist[w];
             for (unsigned x = 1; x < dist.size(); ++x) {
                 if (dist[x] > pr_w) {
@@ -3815,7 +3813,7 @@ public:
     AttMultiSource_LinearEncoder(Model& model,
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
         const vector<unsigned>& hidden_dims, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0) :MultiSource_LinearEncoder(model, vocab_size_src, vocab_size_tgt, layers, hidden_dims, hidden_replicates, additional_input, mem_slots, iscale) ,
-        attention_layer(1, hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], &model, iscale, "attention_layer")
+        attention_layer(1, vector<unsigned>{hidden_dim[ENCODER_LAYER] + hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER], hidden_dim[DECODER_LAYER]}, &model, iscale, "attention_layer")
     {
         if (verbose)
             cout << "start AttMultiSource_LinearEncoder" << endl;
@@ -4005,6 +4003,79 @@ public:
         return i_h_attention_t;
     }
     
+    vector<Expression> build_graph(const std::vector<std::vector<int>> &current_user_input,
+        const std::vector<std::vector<int>>& target_response,
+        ComputationGraph &cg)
+    {
+        if (verbose)
+            cout << "AttMultiSource_LinearEncoder::build_graph" << endl;
+        unsigned int nutt = current_user_input.size();
+        start_new_instance(std::vector<std::vector<int>>(), current_user_input, cg);
+
+        vector<vector<Expression>> this_errs(nutt);
+        vector<Expression> errs;
+
+        Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
+        Expression i_bias = parameter(cg, p_bias);  // word bias
+
+        int oslen = 0;
+        for (auto p : target_response)
+            oslen = (oslen < p.size()) ? p.size() : oslen;
+
+        v_decoder_context.clear();
+        v_decoder_context.resize(nutt);
+        for (int t = 0; t < oslen; ++t) {
+            vector<int> vobs;
+            for (auto p : target_response)
+            {
+                if (t < p.size())
+                    vobs.push_back(p[t]);
+                else
+                    vobs.push_back(-1);
+            }
+            Expression i_y_t = decoder_step(vobs, cg);
+            Expression i_r_t = i_R * i_y_t;
+            Expression i_ydist = log_softmax(i_r_t);
+
+            Expression x_r_t = reshape(i_ydist, { vocab_size * nutt });
+
+            for (int i = 0; i < nutt; i++)
+            {
+                long offset = i * vocab_size; 
+                if (t < target_response[i].size() - 1)
+                {
+                    /// only compute errors on with output labels
+                    this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
+                    tgt_words++;
+                }
+                else if (t == target_response[i].size() - 1)
+                {
+                    /// get the last hidden state to decode the i-th utterance
+                    vector<Expression> v_t;
+                    for (auto p : decoder.final_s())
+                    {
+                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
+                        int stt = i * hidden_dim[DECODER_LAYER];
+                        int stp = stt + hidden_dim[DECODER_LAYER];
+                        Expression i_t = pickrange(i_tt, stt, stp);
+                        v_t.push_back(i_t);
+                    }
+                    v_decoder_context[i] = v_t;
+                }
+            }
+        }
+
+        save_context(cg);
+
+        for (auto &p : this_errs)
+            errs.push_back(sum(p));
+        Expression i_nerr = sum(errs);
+
+        v_errs.push_back(i_nerr);
+        turnid++;
+        return errs;
+    };
+
     vector<Expression> build_graph(const std::vector<std::vector<int>> &prv_response,
         const std::vector<std::vector<int>> &current_user_input,
         const std::vector<std::vector<int>>& target_response,
@@ -4038,17 +4109,17 @@ public:
             }
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_R * i_y_t;
+            Expression i_ydist = log_softmax(i_r_t);
 
-            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
+            Expression x_r_t = reshape(i_ydist, { vocab_size * nutt });
 
             for (int i = 0; i < nutt; i++)
             {
+                int offset = i * vocab_size; 
                 if (t < target_response[i].size() - 1)
                 {
                     /// only compute errors on with output labels
-                    Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
-                    Expression i_ydist = log_softmax(r_r_t);
-                    this_errs[i].push_back(-pick(i_ydist, target_response[i][t + 1]));
+                    this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
                     tgt_words++;
                 }
                 else if (t == target_response[i].size() - 1)
@@ -4069,7 +4140,6 @@ public:
         }
 
         save_context(cg);
-        serialise_context(cg);
 
         for (auto &p : this_errs)
             errs.push_back(sum(p));
@@ -4114,7 +4184,7 @@ public:
 
             // find the argmax next word (greedy)
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             auto pr_w = dist[w];
             for (unsigned x = 1; x < dist.size(); ++x) {
                 if (dist[x] > pr_w) {
@@ -4166,7 +4236,7 @@ public:
 
             // find the argmax next word (greedy)
             unsigned w = 0;
-            auto dist = as_vector(cg.incremental_forward()); // evaluates last expression, i.e., ydist
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
             auto pr_w = dist[w];
             for (unsigned x = 1; x < dist.size(); ++x) {
                 if (dist[x] > pr_w) {
@@ -4351,7 +4421,7 @@ public:
                 else
                     vtarget.push_back(-1);
             }
-            errs.push_back(p_clsbased_error->add_input(i_y_t, vtarget));
+            errs.push_back(sum(p_clsbased_error->add_input(i_y_t, vtarget)));
 
             for (size_t i = 0; i < nutt; i++)
             {

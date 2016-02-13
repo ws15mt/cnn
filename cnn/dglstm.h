@@ -15,8 +15,7 @@ class Model;
 struct DGLSTMBuilder: public RNNBuilder {
   DGLSTMBuilder() = default;
   explicit DGLSTMBuilder(unsigned layers,
-                       unsigned input_dim,
-                       unsigned hidden_dim,
+                       const vector<unsigned>& dims,
                        Model* model,
                        cnn::real iscale = 1.0,
                        string name = "");

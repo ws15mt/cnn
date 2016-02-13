@@ -74,6 +74,9 @@ void MomentumSGDTrainer::update(cnn::real nutt, cnn::real scale) {
   unsigned pi = 0;
   for (auto p : model->parameters_list()) {
     Tensor& v = vp[pi++].h;
+#if HAVE_CUDA
+    gpu::sgd_momentum_update(p->values.d.size(), p->g.v, p->values.v, v.v, eta * scale * gscale * nutt_scale, lambda, momentum);
+#else
     auto reg = *p->values * lambda;
     (*v) = momentum * (*v) - (eta * scale * gscale*nutt_scale) * (*p->g);
     if (verbose)
@@ -81,16 +84,21 @@ void MomentumSGDTrainer::update(cnn::real nutt, cnn::real scale) {
         cout << "name= " << p->name << " v= " << p->values.v[0] << " g= " << p->g.v[0] << " dv=" << v.v[0] << endl;
     }
     *p->values += *v - reg;
+#endif
     p->clear();
   }
   pi = 0;
   for (auto p : model->lookup_parameters_list()) {
     vector<Tensor>& vx = vlp[pi++].h;
     for (auto i : p->non_zero_grads) {
+#if HAVE_CUDA
+        gpu::sgd_momentum_update(p->values[i].d.size(), p->grads[i].v, p->values[i].v, vx[i].v, eta * scale * gscale * nutt_scale, lambda, momentum);
+#else
       Tensor& v = vx[i];
       auto reg = (*p->values[i]) * lambda;
       (*v) = momentum * (*v) - (eta * scale * gscale*nutt_scale) * (*p->grads[i]);
       *p->values[i] += *v - reg;
+#endif
     }
     p->clear();
   }
@@ -270,14 +278,18 @@ void RmsPropWithMomentumTrainer::update(real nutt, real scale) {
     pi = 0;
     for (auto p : model->parameters_list()) {
         real& d2 = hg[pi];
+        Tensor& v = vp[pi++].h;
+#if HAVE_CUDA
+        gpu::rmsprop_momentum_update(p->values.d.size(), p->g.v, p->values.v, v.v, &d2, eta * scale * gscale, lambda, momentum, rho, epsilon);
+#else
         auto reg = (*p->values) * lambda;
         real g2 = (*p->g).squaredNorm();
         d2 = rho * d2 + (1.0 - rho) * g2;
 
-        Tensor& v = vp[pi++].h;
-        (*v) = momentum * (*v) - (eta * scale * gscale * nutt_scale / sqrt(d2 + epsilon)) * *p->g;
+        (*v) = momentum * (*v) - (eta * scale * gscale / sqrt(d2 + epsilon)) * *p->g;
 
         *p->values += *v - reg; 
+#endif
         p->clear();
     }
 
@@ -288,11 +300,15 @@ void RmsPropWithMomentumTrainer::update(real nutt, real scale) {
         for (auto i : p->non_zero_grads) {
             Tensor& v = vx[i];
             real& d2 = hlgx[i];
+#if HAVE_CUDA
+            gpu::rmsprop_momentum_update(p->values[i].d.size(), p->grads[i].v, p->values[i].v, v.v, &d2, eta * scale * gscale , lambda, momentum, rho, epsilon);
+#else
             auto reg = (*p->values[i]) * lambda;
             real g2 = (*p->grads[i]).squaredNorm();
             d2 = rho * d2 + (1.0 - rho) * g2;
-            (*v) = momentum * (*v) - (eta * scale * gscale * nutt_scale / sqrt(d2 + epsilon)) * *p->grads[i];
+            (*v) = momentum * (*v) - (eta * scale * gscale  / sqrt(d2 + epsilon)) * *p->grads[i];
             *p->values[i] += *v - reg; 
+#endif
         }
         p->clear();
     }

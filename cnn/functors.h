@@ -2,15 +2,16 @@
 #define CNN_GPU_FUNCTORS_H
 
 #include <cstdint>
-
+using namespace std;
 #if HAVE_CUDA
 #define CNN_DEVICE_FUNC __device__
 #define CNN_DEVICE_MIN -1.175494351e-38f
 #else
 #include <boost/math/special_functions/digamma.hpp>
 #define CNN_DEVICE_FUNC
-#define CNN_DEVICE_MIN std::numeric_limits<float>::min()
+#define CNN_DEVICE_MIN -1.175494351e-38f
 #endif
+#include <cnn/macros.h>
 
 // these functions are used both in CPU and in GPU computation
 // this file may be compiled with NVCC or a standard C++ tool.
@@ -101,16 +102,28 @@ struct FHuberBackward {
   const float d;
 };
 
+struct FSubtract {
+    CNN_DEVICE_FUNC inline float operator()(const float &a, const float &b) const {
+        return a - b;
+    }
+};
+
 struct FProduct {
-  CNN_DEVICE_FUNC inline float operator()(const float &a, const float &b) const {
-    return a * b;
-  }
+    CNN_DEVICE_FUNC inline float operator()(const float &a, const float &b) const {
+        return a * b;
+    }
 };
 
 struct FQuotient {
   CNN_DEVICE_FUNC inline float operator()(const float &a, const float &b) const {
     return a / b;
   }
+};
+
+struct FSquare {
+    CNN_DEVICE_FUNC inline float operator()(const float &x) const {
+        return x * x;
+    }
 };
 
 struct FConstantMultiply{
@@ -135,6 +148,12 @@ struct FConstantMinus {
     return c - x;
   }
   float c;
+};
+
+struct FCopy {
+    CNN_DEVICE_FUNC inline float operator()(const float &x) const {
+        return x;
+    }
 };
 
 struct FNegate {
@@ -341,12 +360,23 @@ struct FEuclideanBackward {
 };
 
 struct FL2SGDUpdate {
-  FL2SGDUpdate(float l, float s) : lambda(l), scale(-s) {}
-  CNN_DEVICE_FUNC inline float operator()(const float &x, const float &g) const {
-    return scale * g - x * lambda;
-  }
-  float lambda;
-  float scale;
+    FL2SGDUpdate(float l, float s) : lambda(l), scale(-s) {}
+    CNN_DEVICE_FUNC inline float operator()(const float &x, const float &g) const {
+        return scale * g - x * lambda;
+    }
+    float lambda;
+    float scale;
+};
+
+struct FL2SGDMomentumUpdate {
+    FL2SGDMomentumUpdate(float l, float s, float m) : lambda(l), scale(-s), momentum(m) {}
+    CNN_DEVICE_FUNC inline float operator()(const float &x, const float &g, float &v) {
+        v = momentum * v + scale * g;
+        return v - x * lambda;
+    }
+    float lambda;
+    float scale;
+    float momentum;
 };
 
 struct FBinaryLogLoss {
@@ -408,6 +438,65 @@ struct saxpy_functor
         return a * x + y;
     }
 };
+
+template <class ElemType>
+void logsoftmax(int row, int col, const ElemType* a, ElemType* v, const bool isColWise)
+{
+
+    if (isColWise)
+    {
+#pragma omp parallel for
+        for (int j = 0; j < col; j++)
+        {
+            // we need to extract max before applying exp to avoid overflow
+            ElemType maxV = a[IDX2C(0, j, row)];
+            for (int i = 1; i < row; i++)
+                maxV = (maxV > a[IDX2C(i, j, row)]) ? maxV : a[IDX2C(i, j, row)];
+
+            ElemType sum = 0;
+            for (int i = 0; i < row; i++)
+                sum += exp(v[IDX2C(i, j, row)] = a[IDX2C(i, j, row)] - maxV);
+            sum = log(sum);
+            for (int i = 0; i < row; i++)
+                v[IDX2C(i, j, row)] -= sum;
+        }
+    }
+    else
+    {
+        throw("not supported for row-major");
+    }
+}
+
+template <class ElemType>
+void softmax(int row, int col, const ElemType* a, ElemType* v, const bool isColWise)
+{
+
+    if (isColWise)
+    {
+#pragma omp parallel for
+        for (int j = 0; j < col; j++)
+        {
+            // we need to extract max before applying exp to avoid overflow
+            ElemType maxV = a[IDX2C(0, j, row)];
+            for (int i = 1; i < row; i++)
+                maxV = (maxV > a[IDX2C(i, j, row)]) ? maxV : a[IDX2C(i, j, row)];
+
+            ElemType sum = 0;
+            for (int i = 0; i < row; i++)
+                sum += exp(v[IDX2C(i, j, row)] = a[IDX2C(i, j, row)] - maxV);
+            sum = log(sum);
+            for (int i = 0; i < row; i++)
+            {
+                ElemType tmp = v[IDX2C(i, j, row)] - sum;
+                v[IDX2C(i, j, row)] = exp(tmp);
+            }
+        }
+    }
+    else
+    {
+        throw("not supported for row-major");
+    }
+}
 
 } // namespace cnn
 

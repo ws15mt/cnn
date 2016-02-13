@@ -9,8 +9,6 @@ namespace gpu {
     void set_to_value_of(int n, float* x0, float val);
     void set_to_value_of(int n, float* x0, float *val);
 
-    void add_to(int n, const float* x, float *y);
-
 /// for convlution networks
     void conv1dwide(const int n, const int m, const float* xs, const int k, const float *fx, float *fy);
     void conv1dwide_backward(const int i, const int n, const int m, const float* xs, const int k, const float *fx, const float* dEdf, float *dEdx);
@@ -48,13 +46,15 @@ void vlogistic_backward(int n, const float* fx, const float* dEdf, float* dEdx);
 void l2_norm_reducer(int n, const float* x0, float* y, bool square, bool accumulate);
 void sqeucdist(int n, const float* x0, const float *x1, float* y);
 void sqeucdist_backward(int n, const float* dEdy, const float* x0, const float* x1, float* dEdx, int i);
-void softmax(int n, const float* x0, float* y);
-void softmax_backward(int n, const float* x0, const float* dEdf, float* dEdx);
 void pnlsoftmax(int n, int elem_idx, const float* x0, float* y, float* logz);
 void pnlsoftmax_backward(int n, int elem_idx, const float* x0, const float* dEdf, const float* logz, float* dEdx);
-void logsoftmax_backward(int n, const float* fx, const float* dEdf, float* dEdx);
+void logsoftmax(int row, int col, const float* x0, float* y);
+void logsoftmax_backward(int row, int col, const float* fx, const float* dEdf, float* dEdx, float *softmax, float* row_sum_grd);
+void softmax(int row, int col, const float* x0, float* y);
+void softmax_backward(int row, int col, const float *fx, const float *dEdf, float *dEdx, float * tmp_one_row, float * gpu_gradient);
 void sgd_update(int n, const float* g, float* x, float scale, float lambda);
-
+void sgd_momentum_update(int n, const float* g, float* x, float * v, float scale, float lambda, float momentum);
+void rmsprop_momentum_update(int n, const float* g, float* x, float* v, float *r, float scale, float lambda, float momentum, float rho, float epsilon);
 } // namespace gpu
 } // namespace cnn
 

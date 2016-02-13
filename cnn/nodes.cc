@@ -187,7 +187,7 @@ void ConstScalarMultiply::backward_impl(const vector<const Tensor*>& xs,
 {
     assert(i == 0);
 #if HAVE_CUDA
-    gpu::vconstant_multiplyx_backward(fx.d.size(), alpha, xs[0]->v, fx.v);
+    gpu::vconstant_multiplyx_backward(fx.d.size(), alpha, dEdf.v, dEdxi.v);
 #else
     *dEdxi += *dEdf * alpha;
 #endif
@@ -220,7 +220,7 @@ void Transpose::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const 
 #if HAVE_CUDA
     for(unsigned b = 0; b < xs[0]->d.bd; ++b)
       CUBLAS_CHECK(cublasSgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, fx.d.rows(), fx.d.cols(),
-                               kSCALAR_ONE, xs[0]->batch_ptr(b), xs[0]->d.rows(), kSCALAR_ZERO, NULL, fx.d.rows(), fx.batch_ptr(b), fx.d.rows()));
+                               kSCALAR_ONE, xs[0]->batch_ptr(b), xs[0]->d.rows(), kSCALAR_ZERO, NULL, fx.d.cols(), fx.batch_ptr(b), fx.d.rows()));
 #else
     for(unsigned b = 0; b < xs[0]->d.bd; ++b)
       fx.batch_matrix(b).noalias() = xs[0]->batch_matrix(b).transpose();
@@ -234,6 +234,8 @@ void Transpose::backward_impl(const vector<const Tensor*>& xs,
                             unsigned i,
                             Tensor& dEdxi) const {
 #if HAVE_CUDA
+  /// for usage of of cublassegeam see 
+  /// http://scikit-cuda.readthedocs.org/en/latest/generated/skcuda.cublas.cublasSgeam.html
   for(unsigned b = 0; b < xs[0]->d.bd; ++b)
     CUBLAS_CHECK(cublasSgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, dEdxi.d.rows(), dEdxi.d.cols(),
                              kSCALAR_ONE, dEdf.batch_ptr(b), dEdf.d.rows(), kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows(), dEdxi.batch_ptr(b), dEdxi.d.rows()));
@@ -256,7 +258,7 @@ void Reshape::backward_impl(const vector<const Tensor*>& xs,
                             Tensor& dEdxi) const {
   const Tensor reshaped(dEdxi.d, dEdf.v);
 #ifdef HAVE_CUDA
-  gpu::add_to(reshaped.d.cols() * reshaped.d.rows(), reshaped.v, dEdxi.v);
+  gpu::vconstant_multiplyx_backward(reshaped.d.size(), 1.0, reshaped.v, dEdxi.v); 
 #else
   *dEdxi += *reshaped;
 #endif
@@ -604,12 +606,14 @@ void SumBatches::backward_impl(const vector<const Tensor*>& xs,
 #endif
 }
 
+size_t Average::aux_storage_size() const {
+    /// save space for softmax and a vector of nutt 
+    int sz = 1;
+    return sz* sizeof(cnn::real);
+}
+
 void Average::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   const unsigned num_args = xs.size();
-  if (num_args == 1) {
-    fx.v = xs[0]->v;
-    return;
-  }
 #if HAVE_CUDA
   TensorTools::Zero(fx);
   for (unsigned i = 0; i < num_args; ++i)
@@ -639,11 +643,9 @@ void Average::backward_impl(const vector<const Tensor*>& xs,
 
 #if HAVE_CUDA
     cnn::real fscale = 1. / xs.size();
-    cnn::real *fdevptr;
-    CUDA_CHECK(cudaMalloc((void**)&fdevptr, sizeof(cnn::real)));
+    cnn::real *fdevptr = static_cast<cnn::real*>(aux_mem);
     CUDA_CHECK(cudaMemcpy(fdevptr, &fscale, sizeof(cnn::real), cudaMemcpyHostToDevice));
     CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), fdevptr, dEdf.v, 1, dEdxi.v, 1));
-    CUDA_CHECK(cudaFree(fdevptr));
 #else
     *dEdxi += (*dEdf / xs.size());
 #endif
@@ -851,10 +853,10 @@ void Concatenate::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) cons
     const unsigned rows = xi.d.rows();
 #if HAVE_CUDA
     /// relaxed to support multiple columns!
-    size_t stt = ind;
-    for (size_t k = 0; k < cols; k++) /// not efficient, unfortunately
+    int stt = ind;
+    for (int k = 0; k < cols; k++) /// not efficient, unfortunately
     {
-        CUDA_CHECK(cudaMemcpyAsync(&fx.v[stt], &xi.v[k * cols], sizeof(cnn::real) * rows, cudaMemcpyDeviceToDevice));
+        CUDA_CHECK(cudaMemcpyAsync(&fx.v[stt], &xi.v[k * rows], sizeof(cnn::real) * rows, cudaMemcpyDeviceToDevice));
         stt += total_rows;
     }
 #else
@@ -877,7 +879,7 @@ void Concatenate::backward_impl(const vector<const Tensor*>& xs,
 #if HAVE_CUDA
   /// not efficient unfortunately
   for (size_t k = 0; k < cols; k++)
-      CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows, kSCALAR_ONE, &dEdf.v[begin + k * total_rows], 1, &dEdxi.v[k * cols], 1));
+      CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows, kSCALAR_ONE, &dEdf.v[begin + k * total_rows], 1, &dEdxi.v[k * rows], 1));
 #else
   *dEdxi += (*dEdf).middleRows(begin, rows);
 #endif
@@ -1076,17 +1078,17 @@ void MaxPooling1D::backward_impl(const vector<const Tensor*>& xs,
 #endif
 }
 
+size_t Softmax::aux_storage_size() const {
+    return (dim.size() + dim.cols()) * sizeof(cnn::real);
+}
+
 void Softmax::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
-  if (xs[0]->d.cols() == 1) {
+    assert(xs.size() == 1);
 #if HAVE_CUDA
-    gpu::softmax(xs[0]->d.size(), xs[0]->v, fx.v);
+  gpu::softmax(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v);
 #else
-    auto x = **xs[0];
-    *fx = x.unaryExpr(FSoftmaxNormalize(logsumexp(x)));
+  softmax<cnn::real>(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v, true);
 #endif
-  } else {
-    throw std::runtime_error("Softmax not yet implemented for multiple columns");
-  }
 }
 
 void Softmax::backward_impl(const vector<const Tensor*>& xs,
@@ -1095,7 +1097,11 @@ void Softmax::backward_impl(const vector<const Tensor*>& xs,
                             unsigned i,
                             Tensor& dEdxi) const {
 #if HAVE_CUDA
-  gpu::softmax_backward(fx.d.size(), fx.v, dEdf.v, dEdxi.v);
+    Tensor gradient(fx.d, static_cast<cnn::real*>(aux_mem) + fx.d.cols());
+    cnn::real *tmp2 = static_cast<cnn::real*>(aux_mem);
+    gpu::softmax_backward(fx.d.rows(), fx.d.cols(), fx.v, dEdf.v, dEdxi.v, tmp2, gradient.v);
+//    gpu::softmax_backward(fx.d.size(), fx.v, dEdf.v, dEdxi.v, scale); 
+
 #else
   cnn::real off_diag_sum = -(*fx).cwiseProduct(*dEdf).sum();
   *dEdxi += (*fx).binaryExpr(*dEdf, FSoftmaxBackward(off_diag_sum));
@@ -1189,40 +1195,52 @@ void PickNegLogSoftmax::backward_impl(const vector<const Tensor*>& xs,
 }
 */
 
+size_t LogSoftmax::aux_storage_size() const {
+    /// save space for softmax and a vector of nutt 
+    int sz = dim.size() + dim.cols();
+    return sz* sizeof(cnn::real);
+}
+
 void LogSoftmax::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
-  assert(xs.size() == 1);
-  if (xs[0]->d.cols() == 1) {
 #if HAVE_CUDA
-      gpu::softmax(xs[0]->d.size(), xs[0]->v, fx.v);
-      gpu::vlog(xs[0]->d.size(), fx.v, fx.v);
+  gpu::logsoftmax(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v);
 #else
-    auto x = **xs[0];
-    *fx = x.unaryExpr(FLogSoftmaxNormalize(logsumexp(x)));
+  logsoftmax<float>(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v, true);
 #endif
-  } else {
-    throw std::runtime_error("LogSoftmax::forward not yet implemented for multiple columns");
-  }
 }
 
 void LogSoftmax::backward_impl(const vector<const Tensor*>& xs,
                           const Tensor& fx,
                           const Tensor& dEdf,
                           unsigned i,
-                          Tensor& dEdxi) const {
-  if (xs[0]->d.cols() == 1) {
+                          Tensor& dEdxi) const 
+{
+    unsigned rows = dEdf.d.rows();
+    unsigned cols = dEdf.d.cols();
+    Tensor softmax(fx.d, static_cast<cnn::real*>(aux_mem)+cols);
+    cnn::real* off_diag_sum = static_cast<cnn::real*>(aux_mem);
+
 #if HAVE_CUDA
-      gpu::logsoftmax_backward(xs[0]->d.size(), fx.v, dEdf.v, dEdxi.v);
+    gpu::logsoftmax_backward(xs[0]->d.rows(), xs[0]->d.cols(), fx.v, dEdf.v, dEdxi.v, softmax.v, off_diag_sum);
 #else
-      cnn::real off_diag_sum = 0;
-      for (auto p : as_vector(dEdf))
-          off_diag_sum += p;
-      off_diag_sum *= -1;
-//      cnn::real off_diag_sum = -(*fx).binaryExpr(*dEdf, FWeightedError()).sum();
-      *dEdxi += (*fx).binaryExpr(*dEdf, FLogSoftmaxBackward(off_diag_sum));
+
+    (*softmax).array() = (*fx).array().exp();
+
+#pragma omp parallel for
+    for (int k = 0; k < cols; k++)
+    {
+        off_diag_sum[k] = 0;
+        for (unsigned r = 0; r < rows; r ++)
+            off_diag_sum[k] += dEdf.v[IDX2C(r,k, rows)];
+
+        /// row-element-wise multiplication
+        for (unsigned r = 0; r < rows; r++)
+        {
+            softmax.v[IDX2C(r, k, rows)] *= off_diag_sum[k];
+            dEdxi.v[IDX2C(r, k, rows)] += (dEdf.v[IDX2C(r, k, rows)] - softmax.v[IDX2C(r, k, rows)]);
+        }
+    }
 #endif
-  } else {
-    throw std::runtime_error("LogSoftmax::backward not yet implemented for multiple columns");
-  }
 }
 
 template <class T>
@@ -1500,40 +1518,34 @@ void CwiseMultiply::backward_impl(const vector<const Tensor*>& xs,
 
 void AffineTransform::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() % 2 == 1);
-  if (xs.size() == 1) {
-    fx.v = xs[0]->v;
-    return;
-  } else {
 #if HAVE_CUDA
-    for (unsigned i = 1; i < xs.size(); i += 2)
-      // fx = (acc_sclar)*fx + xs[0] * xs[1]
-      CUDAMatrixMultiply(*xs[i], *xs[i + 1], fx, (i == 1) ? kSCALAR_ZERO : kSCALAR_ONE);
-    assert(fx.d.bd == 1);
-    assert(xs[0]->d.bd == 1);
-    CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), kSCALAR_ONE, xs[0]->v, 1, fx.v, 1));
+  for (unsigned i = 1; i < xs.size(); i += 2)
+    // fx = (acc_sclar)*fx + xs[0] * xs[1]
+    CUDAMatrixMultiply(*xs[i], *xs[i + 1], fx, (i == 1) ? kSCALAR_ZERO : kSCALAR_ONE);
+  assert(fx.d.bd == 1);
+  assert(xs[0]->d.bd == 1);
+  CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), kSCALAR_ONE, xs[0]->v, 1, fx.v, 1));
 #else
-    assert(fx.d.bd == 1);
-    // Add, using broadcasting or not
-    if(fx.d.bd > 1 && xs[0]->d.bd == 1) {
-      fx.rowcol_matrix().colwise() = xs[0]->vec();
-    } else {
-      for(unsigned b = 0; b < fx.d.bd; ++b)
-        fx.batch_matrix(b) = xs[0]->batch_matrix(b);
-    }
-
-    // Multiply
-    for (unsigned i = 1; i < xs.size(); i += 2) {
-      if(xs[i]->d.bd == 1) {
-        fx.colbatch_matrix().noalias() += **xs[i] * xs[i+1]->colbatch_matrix();
-      } else {
-        assert(xs[i+1]->d.bd == 1 || xs[i+1]->d.bd == xs[i]->d.bd);
-        for(unsigned b = 0; b < xs[i]->d.bd; ++b)
-          fx.batch_matrix(b).noalias() += xs[i]->batch_matrix(b) * xs[i+1]->batch_matrix(b);
-      }
-    }
-
-#endif
+  assert(fx.d.bd == 1);
+  // Add, using broadcasting or not
+  if(fx.d.bd > 1 && xs[0]->d.bd == 1) {
+    fx.rowcol_matrix().colwise() = xs[0]->vec();
+  } else {
+    for(unsigned b = 0; b < fx.d.bd; ++b)
+      fx.batch_matrix(b) = xs[0]->batch_matrix(b);
   }
+
+  // Multiply
+  for (unsigned i = 1; i < xs.size(); i += 2) {
+    if(xs[i]->d.bd == 1) {
+      fx.colbatch_matrix().noalias() += **xs[i] * xs[i+1]->colbatch_matrix();
+    } else {
+      assert(xs[i+1]->d.bd == 1 || xs[i+1]->d.bd == xs[i]->d.bd);
+      for(unsigned b = 0; b < xs[i]->d.bd; ++b)
+        fx.batch_matrix(b).noalias() += xs[i]->batch_matrix(b) * xs[i+1]->batch_matrix(b);
+    }
+  }
+#endif
 }
 
 void AffineTransform::backward_impl(const vector<const Tensor*>& xs,

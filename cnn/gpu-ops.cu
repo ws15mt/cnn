@@ -8,6 +8,7 @@
 #include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
 #include <thrust/sort.h>
+#include "gpu-ops.cuh"
 
 namespace cnn {
 namespace gpu {
@@ -21,15 +22,7 @@ void saxpy_fast(float A, thrust::device_vector<float>& X, thrust::device_vector<
     thrust::transform(X.begin(), X.end(), Y.begin(), Y.begin(), saxpy_functor(A));
 }
 
-void add_to(int n, const float* x, float *y)
-{
-    thrust::device_ptr<float> src_ptr = thrust::device_pointer_cast((float*)x);
-    thrust::device_ptr<float> tgt_ptr = thrust::device_pointer_cast(y);
-    // Y <- A * X + Y
-    thrust::transform(src_ptr, src_ptr + n, tgt_ptr, tgt_ptr, thrust::plus<float>()); 
-}
-
-void set_to_value_of(int n, float* x0, float val) 
+void set_to_value_of(int n, float* x0, float val)
 {
     thrust::device_ptr<float> dev_ptr = thrust::device_pointer_cast(x0);
     thrust::fill(thrust::device, dev_ptr, dev_ptr + n, val);
@@ -151,28 +144,25 @@ void sqeucdist_backward(int n, const float* dEdy, const float* x0, const float* 
 }
 
 void sgd_update(int n, const float* g, float* x, float scale, float lambda) {
-  auto tb = SizeToBlockThreadPair(n);
-  accBinaryExprKernel<<<tb.first, tb.second>>>(n, x, g, x, FL2SGDUpdate(lambda, scale));
+    auto tb = SizeToBlockThreadPair(n);
+    accBinaryExprKernel << <tb.first, tb.second >> >(n, x, g, x, FL2SGDUpdate(lambda, scale));
 }
 
-// adapted from NVIDIA example
-__global__ void ker_sqeucdist(int n, const float *x0, const float *x1, float* res) {
-  __shared__ float buf[256];
-  for (int i = threadIdx.x; i < 256; i += blockDim.x) {
-    float sum = 0;
-    for (int pos = i; pos < n; pos += 256) {
-      const float d = x0[pos] - x1[pos];
-      sum += d * d;
-    }
-    buf[i] = sum;
-  }
-  for (int stride = 128; stride > 0; stride >>= 1) {
-    __syncthreads();
-    for (int i = threadIdx.x; i < stride; i += blockDim.x)
-        buf[i] += buf[stride + i];
-  }
-  __syncthreads();
-  if (threadIdx.x == 0) res[0] = buf[0];
+void sgd_momentum_update(int n, const float* g, float* x, float* v, float scale, float lambda, float momentum) {
+    auto tb = SizeToBlockThreadPair(n);
+    accTripletExprKernel << <tb.first, tb.second >> >(n, x, g, v, x, FL2SGDMomentumUpdate(lambda, scale, momentum));
+}
+
+/** followed some examples of using thrust at
+https://github.com/OrangeOwlSolutions/Thrust/blob/master/Calculating_the_norm_of_arrays.cu
+*/
+void rmsprop_momentum_update(int n, const float* g, float* x, float* v, float *r, float scale, float lambda, float momentum, float rho, float epsilon) {
+    auto tb = SizeToBlockThreadPair(n);
+    float squared_norm = thrust::transform_reduce(thrust::device_pointer_cast(g), thrust::device_pointer_cast(g + n), FSquare(), (float)0.0, thrust::plus<float>());
+    *r = rho * (*r) + (1 - rho) * squared_norm;
+    float den = sqrt(*r + epsilon);
+    accTripletExprKernel << <tb.first, tb.second >> >(n, x, g, v, x, FL2SGDMomentumUpdate(lambda, scale / den, momentum));
+    //CUDA_CHECK(cudaFree(sqnorm));
 }
 
 void sqeucdist(int n, const float* x0, const float *x1, float* y) {
@@ -180,123 +170,108 @@ void sqeucdist(int n, const float* x0, const float *x1, float* y) {
   ker_sqeucdist<<<tb.first,tb.second>>>(n, x0, x1, y);
 }
 
-// adapted from NVIDIA example
-__global__ void ker_l2_norm_reducer(int n, const float *x0, float* res, bool sq, bool acc) {
-  __shared__ float buf[256];
-  for (int i = threadIdx.x; i < 256; i += blockDim.x) {
-    float sum = 0;
-    for (int pos = i; pos < n; pos += 256) {
-      const float d = x0[pos];
-      sum += sq ? d * d : d;
-    }
-    buf[i] = sum;
-  }
-  for (int stride = 128; stride > 0; stride >>= 1) {
-    __syncthreads();
-    for (int i = threadIdx.x; i < stride; i += blockDim.x)
-        buf[i] += buf[stride + i];
-  }
-  __syncthreads();
-  if (threadIdx.x == 0) {
-    if (acc) res[0] += buf[0]; else res[0] = buf[0];
-  }
-}
-
 void l2_norm_reducer(int n, const float* x0, float* y, bool square, bool accumulate) {
   auto tb = SizeToBlockThreadPair(n);
   ker_l2_norm_reducer<<<tb.first,tb.second>>>(n, x0, y, square, accumulate);
 }
 
-// adapted from NVIDIA example
-__global__ void ker_softmax(int n, const float *x0, float* res) {
-  __shared__ float buf[256];
-  for (int i = threadIdx.x; i < 256; i += blockDim.x) {
-    float me = __int_as_float(0xff800000);
-    for (int pos = i; pos < n; pos += 256) {
-      const float d = x0[pos];
-      me = d > me ? d : me;
-    }
-    buf[i] = me;
-  }
-  for (int stride = 128; stride > 0; stride >>= 1) {
-    __syncthreads();
-    for (int i = threadIdx.x; i < stride; i += blockDim.x)
-        buf[i] = buf[i] > buf[stride + i] ? buf[i] : buf[stride + i];
-  }
-  __syncthreads();
-  const float max_elem = buf[0];
-  for (int i = threadIdx.x; i < 256; i += blockDim.x) {
-    float sum = 0;
-    for (int pos = i; pos < n; pos += 256)
-      sum += expf(x0[pos] - max_elem);
-    buf[i] = sum;
-  }
-  for (int stride = 128; stride > 0; stride >>= 1) {
-    __syncthreads();
-    for (int i = threadIdx.x; i < stride; i += blockDim.x)
-        buf[i] += buf[stride + i];
-  }
-  __syncthreads();
-  float lz = log(buf[0]) + max_elem;
-  int i = threadIdx.x + blockIdx.x * blockDim.x;
-  while (i < n) {
-    res[i] = exp(x0[i] - lz);
-    i += gridDim.x * blockDim.x;
-  }
-}
-
-void softmax(int n, const float* x0, float* y) {
-  auto tb = SizeToBlockThreadPair(n);
-  ker_softmax<<<tb.first,tb.second>>>(n, x0, y);
-}
-
-// A kernel to calculate the dot product between two arrays
-__global__ void ker_dotproduct(int n, const float* x, const float* y, float* z) {
-  __shared__ float buf[256];
-  for (int i = threadIdx.x; i < 256; i += blockDim.x) {
-    float sum = 0;
-    for (int pos = i; pos < n; pos += 256)
-      sum += x[pos] * y[pos];
-    buf[i] = sum;
-  }
-  for (int stride = 128; stride > 0; stride >>= 1) {
-    __syncthreads();
-    for (int i = threadIdx.x; i < stride; i += blockDim.x)
-        buf[i] += buf[stride + i];
-  }
-  __syncthreads();
-  if (threadIdx.x == 0)
-    z[0] = buf[0];
-}
-
-void softmax_backward(int n, const float* fx, const float* dEdf, float* dEdx) {
-  auto tb = SizeToBlockThreadPair(n);
-  float* gpu_ods;
-  float ods;
-  cudaMalloc((void **)&gpu_ods, sizeof(float));
-  ker_dotproduct<<<tb.first, tb.second>>>(n, fx, dEdf, gpu_ods);
-  cudaMemcpy(&ods, gpu_ods, sizeof(float), cudaMemcpyDeviceToHost);
-  cudaFree(gpu_ods);
-  accBinaryExprKernel<<<tb.first, tb.second>>>(n, fx, dEdf, dEdx, FSoftmaxBackward(-ods));
-}
-
-void logsoftmax_backward(int n, const float* fx, const float* dEdf, float* dEdx) 
+void VectorSum(int rows, int cols, const float * a, float* c, const bool isColWise)
 {
-    /*
-    float off_diag_sum = 0;
-    for (auto p : as_vector(dEdf))
-    off_diag_sum += p;
-    off_diag_sum *= -1;
-    *dEdxi += (*fx).binaryExpr(*dEdf, FLogSoftmaxBackward(off_diag_sum));
-    */
-    thrust::device_ptr<float> dp = thrust::device_pointer_cast((float*)fx);
-    thrust::device_ptr<float> de = thrust::device_pointer_cast((float*)dEdf);
-    thrust::device_ptr<float> dr = thrust::device_pointer_cast(dEdx);
-    thrust::device_vector<float> dtemp(n);
-//    thrust::transform(dp, dp + n, de, dtemp.begin(), FWeightedError());
-    float off_diag_sum  = - thrust::reduce(de, de + n);
-    thrust::transform(dp, dp + n, de, dtemp.begin(), FLogSoftmaxBackward(off_diag_sum)); 
-    thrust::transform(dtemp.begin(), dtemp.end(), dr, dr, thrust::plus<float>());
+    assert(rows > 0 && cols > 0); // converting from size_t to int may cause overflow
+
+    int m = cols;
+    int n = rows;
+
+    cudaEvent_t done = nullptr;
+
+    int blocksPerGrid = 0;
+    if (isColWise) // col-wise
+    {
+        blocksPerGrid = (int)ceil(1.0 * m / MAX_THREADS_PER_BLOCK);
+    }
+    else
+    {
+        blocksPerGrid = (int)ceil(1.0 * n / MAX_THREADS_PER_BLOCK);
+    }
+
+    cudaEventCreate(&done);
+    _vectorSum<float> << <blocksPerGrid, MAX_THREADS_PER_BLOCK, 0, cudaStreamDefault >> >(c, a, n, m, isColWise);
+    cudaEventRecord(done);
+    cudaEventSynchronize(done);
+    cudaEventDestroy(done);
+}
+
+/// assume that a is a vector with col dimension
+void RowElementMultiplyWith(int arow, int acol, const float * a, int brow, int bcol, float * b)
+{
+    if (arow != 1 || acol != bcol)
+    {
+        abort();
+    }
+
+    int N = brow; 
+    int M = acol;
+    int blocksPerGrid = (int)ceil(1.0 * M / MAX_THREADS_PER_BLOCK);
+
+    cudaEvent_t done = nullptr;
+    cudaEventCreate(&done);
+    _rowElementMultiplyWith<float> << <blocksPerGrid, MAX_THREADS_PER_BLOCK >> >(b, a, N, M);
+    cudaEventRecord(done);
+    cudaEventSynchronize(done);
+    cudaEventDestroy(done);
+}
+
+void logsoftmax(int row, int col, const float* x0, float* y) 
+{
+    cudaStream_t t_stream = cudaStreamDefault;
+
+    int N = col;
+    int M = row;
+    cudaEvent_t done = nullptr;
+    cudaEventCreate(&done);
+    _assignColumnwiseLogSoftmaxOf<float> << <N, 512, 0, t_stream >> >(x0, y, N, M);
+    
+    cudaEventRecord(done);
+    
+    cudaEventSynchronize(done);
+    
+    cudaEventDestroy(done);
+}
+
+void logsoftmax_backward(int row, int col, const float *fx, const float *dEdf, float *dEdx, float * gpu_softmax, float *grd)
+{
+    vexp(row * col, fx, gpu_softmax);
+    VectorSum(row, col, dEdf, grd, true); 
+    RowElementMultiplyWith(1, col, grd, row, col, gpu_softmax);
+
+    auto tb = SizeToBlockThreadPair(col * row);
+    accBinaryExprKernel << <tb.first, tb.second >> >(col * row, dEdf, gpu_softmax, dEdx, FSubtract());
+}
+
+void softmax(int row, int col, const float* x0, float* y)
+{
+    cudaStream_t t_stream = cudaStreamDefault;
+
+    int N = col;
+    int M = row;
+    cudaEvent_t done = nullptr;
+    cudaEventCreate(&done);
+    _assignColumnwiseSoftmaxOf<float> << <N, MAX_THREADS_PER_BLOCK, 0, t_stream >> >(x0, y, N, M);
+
+    cudaEventRecord(done);
+
+    cudaEventSynchronize(done);
+
+    cudaEventDestroy(done);
+}
+
+/// see http://research.microsoft.com/pubs/226641/CNTKBook-20160121.pdf
+void softmax_backward(int row, int col, const float *fx, const float *dEdf, float *dEdx, float *tmp_one_row, float * gpu_gradient)
+{
+    InnerProduct(row, col, dEdf, row, col, fx, 1, col, tmp_one_row, true);
+    auto tb = SizeToBlockThreadPair(col * row);
+    ScaleAndAdd<float>(-1.0, 1, col, tmp_one_row, row, col, dEdf, row, col, gpu_gradient);
+    accBinaryExprKernel << <tb.first, tb.second >> > (row * col, fx, gpu_gradient, dEdx, FProduct());
 }
 
 // adapted from NVIDIA example

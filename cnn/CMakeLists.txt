@@ -16,7 +16,6 @@ set(cnn_library_SRCS
     gru.cc
     init.cc
     lstm.cc
-    math-util.cc
     model.cc
     nodes.cc
     nodes-common.cc
@@ -30,7 +29,7 @@ set(cnn_library_SRCS
     training.cc
     dglstm.cc
     treelstm.cc
-    math-util.cc
+    metric-util.cc
 )
 
 # Headers:
@@ -54,7 +53,6 @@ set(cnn_library_HDRS
     gru.h
     init.h
     lstm.h
-    math-util.h
     model.h
     nodes.h
     param-nodes.h
@@ -69,7 +67,6 @@ set(cnn_library_HDRS
     training.h
     dglstm.h
     treelstm.h
-    math-util.h
     metric-util.h
 )
 
@@ -127,7 +124,8 @@ add_library(cnn_shared SHARED ${cnn_library_SRCS} ${cnn_library_HDRS} ${dialogue
 
 if(WITH_CUDA_BACKEND)
   set(CUDA_SEPARABLE_COMPILATION ON)
-  list(APPEND CUDA_NVCC_FLAGS "-gencode;arch=compute_20,code=sm_20;-gencode;arch=compute_30,code=sm_30;-gencode;arch=compute_35,code=sm_35;-gencode;arch=compute_37,code=sm_37;-gencode;arch=compute_50,code=sm_50;-gencode;arch=compute_52,code=sm_52;-gencode;arch=compute_52,code=compute_52;-std=c++11;-O2;-DVERBOSE;--expt-relaxed-constexpr")
+  list(APPEND CUDA_NVCC_FLAGS "-gencode;arch=compute_20,code=sm_20;-gencode;arch=compute_30,code=sm_30;-gencode;arch=compute_35,code=sm_35;-gencode;arch=compute_37,code=sm_37;-gencode;arch=compute_50,code=sm_50;-gencode;arch=compute_52,code=sm_52;-gencode;arch=compute_52,code=compute_52;-std=c++11;-O2;-DVERBOSE;")
+#--expt-relaxed-constexpr")
   SET(CUDA_PROPAGATE_HOST_FLAGS OFF)
   cuda_add_library(cnncuda STATIC gpu-ops.cu)
 endif(WITH_CUDA_BACKEND)

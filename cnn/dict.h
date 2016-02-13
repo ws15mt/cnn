@@ -124,6 +124,75 @@ std::vector<int> ReadSentence(const std::string& line, WDict* sd);
 void ReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td);
 void ReadSentencePair(const std::string& line, std::vector<int>* s, WDict* sd, std::vector<int>* t, WDict* td);
 
+template<class T>
+class stId2String {
+    typedef std::unordered_map<int, T> I2TMap;
+    typedef std::unordered_map<T, int> T2IMap;
+    std::vector<int> logicId2phyId; /// logic id is in sequence order
+
+public:
+    stId2String() : frozen(false) {
+    }
+
+    std::unordered_map<int, int> phyId2logicId; /// physical id to logic id
+    int phyIdOflogicId(int logicid) { if (logicid >= 0 && logicid < logicId2phyId.size()) return logicId2phyId[logicid]; return -1; }
+
+    inline unsigned size() const { return words_.size(); }
+
+    inline bool Contains(const T& words) {
+        return !(words_.find(words) == words_.end());
+    }
+
+    inline bool Contains(const int& id) {
+        return !(d_.find(id) == d_.end());
+    }
+
+    void Freeze() { frozen = true; }
+
+    inline int Convert(const int & id, const T& word)
+    {
+        auto i = words_.find(word);
+        if (i == words_.end()) {
+            if (frozen)
+                return -1; 
+            words_[word] = id; 
+            d_[id] = word; 
+            logicId2phyId.push_back(id); 
+            phyId2logicId[id] = logicId2phyId.size() - 1; 
+        }
+        return id;
+    }
+
+    inline T Convert(const int& id)
+    {
+        if (d_.find(id) != d_.end())
+            return d_[id];
+        else
+            return boost::lexical_cast<T>("");
+    }
+
+    void Clear() { words_.clear(); d_.clear(); }
+private:
+    bool frozen;
+    I2TMap d_;
+    T2IMap words_;
+
+    friend class boost::serialization::access;
+#if BOOST_VERSION >= 105600
+    template<class Archive> void serialize(Archive& ar, const unsigned int) {
+        ar & d_;
+        ar & words_;
+        ar & frozen;
+        ar & logicId2phyId;
+        ar & phyId2logicId;
+    }
+#else
+    template<class Archive> void serialize(Archive& ar, const unsigned int) {
+        throw std::invalid_argument("Serializing dictionaries is only supported on versions of boost 1.56 or higher");
+    }
+#endif
+};
+
 } // namespace cnn
 
 

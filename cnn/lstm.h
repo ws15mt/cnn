@@ -14,8 +14,7 @@ class Model;
 struct LSTMBuilder : public RNNBuilder {
   LSTMBuilder() = default;
   explicit LSTMBuilder(unsigned layers,
-                       unsigned input_dim,
-                       unsigned hidden_dim,
+                       const vector<unsigned>& dims,
                        Model* model,
                        cnn::real iscale = 1.0,
                        string name = "");
