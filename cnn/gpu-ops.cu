@@ -1,4 +1,3 @@
-#include <cudnn.h>
 #include "cnn/cuda.h"
 #include "cnn/gpu-ops.h"
 #include "cnn/gpu-kernels.h"
