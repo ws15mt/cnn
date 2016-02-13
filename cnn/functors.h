@@ -120,6 +120,12 @@ struct FQuotient {
   }
 };
 
+struct FSquare {
+    CNN_DEVICE_FUNC inline float operator()(const float &x) const {
+        return x * x;
+    }
+};
+
 struct FConstantMultiply{
     FConstantMultiply(float c) : c(c) {}
     CNN_DEVICE_FUNC inline float operator()(const float &x) const {
@@ -491,7 +497,6 @@ void softmax(int row, int col, const ElemType* a, ElemType* v, const bool isColW
         throw("not supported for row-major");
     }
 }
-
 
 } // namespace cnn
 

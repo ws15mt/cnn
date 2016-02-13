@@ -154,24 +154,16 @@ void sgd_momentum_update(int n, const float* g, float* x, float* v, float scale,
     accTripletExprKernel << <tb.first, tb.second >> >(n, x, g, v, x, FL2SGDMomentumUpdate(lambda, scale, momentum));
 }
 
-// adapted from NVIDIA example
-__global__ void ker_sqeucdist(int n, const float *x0, const float *x1, float* res) {
-  __shared__ float buf[256];
-  for (int i = threadIdx.x; i < 256; i += blockDim.x) {
-    float sum = 0;
-    for (int pos = i; pos < n; pos += 256) {
-      const float d = x0[pos] - x1[pos];
-      sum += d * d;
-    }
-    buf[i] = sum;
-  }
-  for (int stride = 128; stride > 0; stride >>= 1) {
-    __syncthreads();
-    for (int i = threadIdx.x; i < stride; i += blockDim.x)
-        buf[i] += buf[stride + i];
-  }
-  __syncthreads();
-  if (threadIdx.x == 0) res[0] = buf[0];
+/** followed some examples of using thrust at
+https://github.com/OrangeOwlSolutions/Thrust/blob/master/Calculating_the_norm_of_arrays.cu
+*/
+void rmsprop_momentum_update(int n, const float* g, float* x, float* v, float *r, float scale, float lambda, float momentum, float rho, float epsilon) {
+    auto tb = SizeToBlockThreadPair(n);
+    float squared_norm = thrust::transform_reduce(thrust::device_pointer_cast(g), thrust::device_pointer_cast(g + n), FSquare(), (float)0.0, thrust::plus<float>());
+    *r = rho * (*r) + (1 - rho) * squared_norm;
+    float den = sqrt(*r + epsilon);
+    accTripletExprKernel << <tb.first, tb.second >> >(n, x, g, v, x, FL2SGDMomentumUpdate(lambda, scale / den, momentum));
+    //CUDA_CHECK(cudaFree(sqnorm));
 }
 
 void sqeucdist(int n, const float* x0, const float *x1, float* y) {
@@ -179,50 +171,9 @@ void sqeucdist(int n, const float* x0, const float *x1, float* y) {
   ker_sqeucdist<<<tb.first,tb.second>>>(n, x0, x1, y);
 }
 
-// adapted from NVIDIA example
-__global__ void ker_l2_norm_reducer(int n, const float *x0, float* res, bool sq, bool acc) {
-  __shared__ float buf[256];
-  for (int i = threadIdx.x; i < 256; i += blockDim.x) {
-    float sum = 0;
-    for (int pos = i; pos < n; pos += 256) {
-      const float d = x0[pos];
-      sum += sq ? d * d : d;
-    }
-    buf[i] = sum;
-  }
-  for (int stride = 128; stride > 0; stride >>= 1) {
-    __syncthreads();
-    for (int i = threadIdx.x; i < stride; i += blockDim.x)
-        buf[i] += buf[stride + i];
-  }
-  __syncthreads();
-  if (threadIdx.x == 0) {
-    if (acc) res[0] += buf[0]; else res[0] = buf[0];
-  }
-}
-
 void l2_norm_reducer(int n, const float* x0, float* y, bool square, bool accumulate) {
   auto tb = SizeToBlockThreadPair(n);
   ker_l2_norm_reducer<<<tb.first,tb.second>>>(n, x0, y, square, accumulate);
-}
-
-// A kernel to calculate the dot product between two arrays
-__global__ void ker_dotproduct(int n, const float* x, const float* y, float* z) {
-  __shared__ float buf[256];
-  for (int i = threadIdx.x; i < 256; i += blockDim.x) {
-    float sum = 0;
-    for (int pos = i; pos < n; pos += 256)
-      sum += x[pos] * y[pos];
-    buf[i] = sum;
-  }
-  for (int stride = 128; stride > 0; stride >>= 1) {
-    __syncthreads();
-    for (int i = threadIdx.x; i < stride; i += blockDim.x)
-        buf[i] += buf[stride + i];
-  }
-  __syncthreads();
-  if (threadIdx.x == 0)
-    z[0] = buf[0];
 }
 
 void VectorSum(int rows, int cols, const float * a, float* c, const bool isColWise)
