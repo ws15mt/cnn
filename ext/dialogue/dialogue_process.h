@@ -74,12 +74,17 @@ namespace cnn {
         virtual std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict)
         {
             s2tmodel.reset();  /// reset network
-            return s2tmodel.decode(source, cg, tdict);
+            vector<int> results = s2tmodel.decode(source, cg, tdict);
+            s2tmodel.serialise_context(cg);
+            return results;
         }
 
         virtual std::vector<int> decode(const std::vector<int> &source, const std::vector<int>& cur, ComputationGraph& cg, cnn::Dict  &tdict)
         {
-            return s2tmodel.decode(cur, cg, tdict);
+            s2tmodel.assign_cxt(cg, 1);
+            vector<int> results = s2tmodel.decode(cur, cg, tdict);
+            s2tmodel.serialise_context(cg);
+            return results;
         }
 
         virtual std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict,
@@ -87,17 +92,6 @@ namespace cnn {
         {
             s2tmodel.reset();  /// reset network
             vector<int> iret = s2tmodel.decode(source, cg, tdict);
-
-            s2tmodel.serialise_context(cg, v_cxt_s, v_decoder_s);
-            return iret;
-        }
-
-        virtual std::vector<int> decode(const std::vector<int> &source, const std::vector<int>& cur, ComputationGraph& cg, cnn::Dict  &tdict,
-            vector<vector<cnn::real>>& v_cxt_s, vector<vector<cnn::real>>& v_decoder_s)
-        {
-            if (v_cxt_s.size() > 0 && v_decoder_s.size() > 0)
-                assign_cxt(cg, 1, v_cxt_s, v_decoder_s);
-            vector<int> iret = s2tmodel.decode(cur, cg, tdict);
 
             s2tmodel.serialise_context(cg, v_cxt_s, v_decoder_s);
             return iret;
@@ -133,18 +127,6 @@ namespace cnn {
             twords = 0;
             swords = 0;
             s2tmodel.assign_cxt(cg, nutt);
-        }
-
-        void assign_cxt(ComputationGraph& cg, size_t nutt, vector<vector<cnn::real>>& v_cxt_s, vector<vector<cnn::real>>& v_decoder_s)
-        {
-            twords = 0;
-            swords = 0;
-            s2tmodel.assign_cxt(cg, nutt, v_cxt_s, v_decoder_s);
-        }
-
-        void assign_cxt(ComputationGraph& cg, size_t nutt, vector<vector<vector<cnn::real>>>& v_cxt_s)
-        {
-            s2tmodel.assign_cxt(cg, nutt, v_cxt_s);
         }
 
         void serialise_cxt(ComputationGraph& cg)
@@ -446,6 +428,9 @@ namespace cnn {
             assert(twords == s2tmodel.tgt_words);
             assert(swords == s2tmodel.src_words);
             i_errs.push_back(i_err);
+
+            s2tmodel.serialise_context(cg);
+
             return object;
         }
 
@@ -454,6 +439,7 @@ namespace cnn {
         vector<Expression> build_graph(const vector<SentencePair>& prv_sentence, const vector<SentencePair>& cur_sentence, ComputationGraph& cg) override
         {
             vector<Sentence> insent, osent;
+            twords = swords = 0;
 
             for (auto p : cur_sentence)
             {
@@ -466,6 +452,8 @@ namespace cnn {
 
 
             int nutt = cur_sentence.size();
+
+            s2tmodel.assign_cxt(cg, nutt);
 
             vector<Expression> object_prv_t2cur_s = s2tmodel.build_graph(insent, osent, cg);
 
@@ -481,10 +469,13 @@ namespace cnn {
 
             vector<Expression> object_cur_s2cur_t = s2tmodel.build_graph(insent, osent, cg);
 
-            s2txent = s2txent + sum(object_cur_s2cur_t);
+            s2txent = sum(object_cur_s2cur_t);
 
             Expression i_sum_err = sum(object_cur_s2cur_t) + sum(object_prv_t2cur_s);
             i_errs.push_back(i_sum_err);
+
+            s2tmodel.serialise_context(cg);
+
             return object_cur_s2cur_t;
         }
 
@@ -553,6 +544,10 @@ namespace cnn {
 
             s2txent = sum(object);
 
+            s2tmodel.serialise_context(cg);
+
+            cg.incremental_forward();
+
             i_errs.push_back(s2txent);
             return object;
         }
@@ -562,6 +557,7 @@ namespace cnn {
         */
         vector<Expression> build_graph(const vector<SentencePair>& prv_sentence, const vector<SentencePair>& cur_sentence, ComputationGraph& cg) override
         {
+            swords = twords = 0;
             vector<Sentence> insent, osent;
 
             for (auto p : prv_sentence)
@@ -596,12 +592,17 @@ namespace cnn {
 
             int nutt = cur_sentence.size();
 
+            s2tmodel.assign_cxt(cg, nutt);
             vector<Expression> object_cur_s2cur_t = s2tmodel.build_graph(insent, osent, cg);
             Expression i_err = sum(object_cur_s2cur_t);
 
             i_errs.push_back(i_err);
 
-            s2txent = s2txent + i_err;
+            s2txent = i_err;
+
+            s2tmodel.serialise_context(cg);
+
+            cg.incremental_forward();
 
             return object_cur_s2cur_t;
         }
@@ -625,7 +626,8 @@ namespace cnn {
         std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict) override
         {
             s2tmodel.reset();  /// reset network
-            return s2tmodel.decode(source, cg, tdict);
+            vector<int> results = s2tmodel.decode(source, cg, tdict);
+            return results;
         }
 
         std::vector<int> decode(const std::vector<int> &source, const std::vector<int>& cur, ComputationGraph& cg, cnn::Dict  &tdict) override
@@ -646,7 +648,11 @@ namespace cnn {
 
             swords += insent.size() - 1;
 
-            return s2tmodel.decode(insent, cg, tdict);
+            s2tmodel.assign_cxt(cg, 1);
+            vector<int> results = s2tmodel.decode(insent, cg, tdict);
+            s2tmodel.serialise_context(cg);
+
+            return results;
         }
 
         vector<Sentence>batch_decode(const vector<Sentence>& cur_sentence, ComputationGraph& cg, cnn::Dict & tdict)
