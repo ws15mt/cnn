@@ -724,6 +724,7 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDia
         prv_turn = turn;
         turn_id++;
         i_turns++;
+
     }
 
 }
@@ -967,7 +968,10 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
 
                 while (ndutt > 0)
                 {
-                    nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+                    if (segmental_training)
+                        segmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+                    else
+                        nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
 
                     id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, devel_numturn2did);
                     ndutt = id_sel_idx.size();

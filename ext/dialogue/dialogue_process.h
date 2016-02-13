@@ -727,6 +727,9 @@ namespace cnn {
             object = s2tmodel.build_graph(insent, osent, cg);
 
             s2txent = sum(object);
+
+            s2tmodel.serialise_context(cg);
+
             assert(twords == s2tmodel.tgt_words);
             assert(swords == s2tmodel.src_words);
 
@@ -739,6 +742,8 @@ namespace cnn {
         {
             vector<Sentence> insent, osent;
             nbr_turns ++;
+            twords = 0;
+            swords = 0;
 
             for (auto p : cur_sentence)
             {
@@ -749,9 +754,12 @@ namespace cnn {
                 swords += p.first.size() - 1;
             }
 
+            s2tmodel.assign_cxt(cg, insent.size());
             vector<Expression> s2terr = s2tmodel.build_graph(insent, osent, cg);
             Expression i_err = sum(s2terr);
-            s2txent = s2txent + i_err;
+            s2txent = i_err;
+
+            s2tmodel.serialise_context(cg);
 
             assert(twords == s2tmodel.tgt_words);
             assert(swords == s2tmodel.src_words);
@@ -781,7 +789,7 @@ namespace cnn {
             }
 
             s2tmodel.reset();
-            s2tmodel.assign_cxt(cg, intention);
+            s2tmodel.assign_cxt(cg, insent.size());
             vector<Expression> obj = s2tmodel.build_comp_graph(insent, osent, cg);
             if (obj.size() > 0)
             {
@@ -811,7 +819,7 @@ namespace cnn {
                 swords += (p.first.size()> 0) ? (p.first.size() - 1) : 0;
             }
 
-            s2tmodel.assign_cxt(cg, intention);
+            s2tmodel.assign_cxt(cg, insent.size());
             vector<Expression> obj = s2tmodel.build_comp_graph(insent, osent, cg);
             if (obj.size() > 0)
             {
@@ -857,7 +865,7 @@ namespace cnn {
         vector<int> decode(const Sentence& prv_response, const Sentence& cur_source, ComputationGraph& cg, Dict &  td)
 #endif
         {
-//            s2tmodel.assign_tocxt(cg, 1);
+            s2tmodel.assign_cxt(cg, 1);
             vector<int> results
                 = s2tmodel.decode(cur_source, cg, td);
             twords = results.size() - 1;
@@ -907,6 +915,9 @@ namespace cnn {
             object = s2tmodel.build_graph(insent, osent, cg);
 
             s2txent = sum(object);
+
+            s2tmodel.serialise_context(cg);
+
             assert(twords == s2tmodel.tgt_words);
             assert(swords == s2tmodel.src_words);
 
@@ -935,6 +946,8 @@ namespace cnn {
             vector<Expression> s2terr = s2tmodel.build_graph(insent, osent, cg);
             Expression i_err = sum(s2terr);
             s2txent = i_err;
+
+            s2tmodel.serialise_context(cg);
 
             assert(twords == s2tmodel.tgt_words);
             assert(swords == s2tmodel.src_words);
