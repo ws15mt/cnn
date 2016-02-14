@@ -139,6 +139,11 @@ int main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_
         cerr << "Reading test corpus from " << vm["testcorpus"].as<string>() << "...\n";
         testcorpus = read_corpus(vm["testcorpus"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), true);
         test_numturn2did = get_numturn2dialid(testcorpus);
+        if (vm.count("outputfile") == 0)
+        {
+            cerr << "missing --outputfile" << endl;
+            throw std::invalid_argument("missing --outputfile");
+        }
     }
 
     if (vm.count("train-lda") > 0)
