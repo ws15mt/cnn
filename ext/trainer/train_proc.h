@@ -108,8 +108,9 @@ public:
     void train(Model &model, Proc &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs);
     void REINFORCEtrain(Model &model, Proc &am, Proc &am_agent_mirrow, Corpus &training, Corpus &devel, Trainer &sgd, string out_file, Dict & td, int max_epochs, int nparallel, cnn::real& largest_cost, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0);
     void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training, bool do_gradient_check);
-    void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo, const string& score_embedding_fn = "");
+    void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo, bool segmental_training, const string& score_embedding_fn = "");
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & sd);
+    void test_segmental(Model &model, Proc &am, Corpus &devel, string out_file, Dict & sd);
     void test(Model &model, Proc &am, TupleCorpus &devel, string out_file, Dict & sd, Dict & td);
     void dialogue(Model &model, Proc &am, string out_file, Dict & td);
 
@@ -157,7 +158,7 @@ this is fake experiment as the user side is known and supposedly respond correct
 */
 template <class AM_t>
 void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo,
-    const string& score_embedding_fn)
+    bool segmental_training, const string& score_embedding_fn)
 {
     unsigned lines = 0;
     cnn::real dloss = 0;
@@ -194,7 +195,10 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
 
         while (ndutt > 0)
         {
-            nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+            if (segmental_training)
+                segmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+            else
+                nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
 
             id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, test_corpusinfo);
             ndutt = id_sel_idx.size();
@@ -248,7 +252,7 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
     cnn::real dchars_s = 0;
     cnn::real dchars_t = 0;
 
-    BleuMetric bleuScore; 
+    BleuMetric bleuScore;
     bleuScore.Initialize();
 
     ofstream of(out_file);
@@ -316,7 +320,96 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
         }
     }
 
-    string sBleuScore = bleuScore.GetScore(); 
+    string sBleuScore = bleuScore.GetScore();
+    cout << "BLEU (4) score = " << sBleuScore << endl;
+    of << sBleuScore << endl;
+
+    of.close();
+}
+
+/** warning, the test function use the true past response as the context, when measure bleu score
+• So the BLEU score is artificially high
+• However, because the use input is conditioned on the past response. If using the true decoder response as the past context, the user input cannot be from the corpus.
+• Therefore, it is reasonable to use the true past response as context when evaluating the model.
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::test_segmental(Model &model, AM_t &am, Corpus &devel, string out_file, Dict & sd)
+{
+    unsigned lines = 0;
+    cnn::real dloss = 0;
+    cnn::real dchars_s = 0;
+    cnn::real dchars_t = 0;
+
+    BleuMetric bleuScore;
+    bleuScore.Initialize();
+
+    ofstream of(out_file);
+
+    unsigned si = devel.size(); /// number of dialgoues in training
+
+    Timer iteration("completed in");
+    cnn::real ddloss = 0;
+    cnn::real ddchars_s = 0;
+    cnn::real ddchars_t = 0;
+
+
+    for (auto diag : devel){
+
+        SentencePair prv_turn;
+        size_t turn_id = 0;
+
+        /// train on two segments of a dialogue
+        vector<int> res;
+        for (auto spair : diag)
+        {
+            ComputationGraph cg;
+
+            SentencePair turn = spair;
+            vector<string> sref, srec;
+
+            if (turn_id == 0)
+                res = am.decode(turn.first, cg, sd);
+            else
+                res = am.decode(prv_turn.second, turn.first, cg, sd);
+
+            if (turn.first.size() > 0)
+            {
+                cout << "source: ";
+                for (auto p : turn.first){
+                    cout << sd.Convert(p) << " ";
+                }
+                cout << endl;
+            }
+
+            if (turn.second.size() > 0)
+            {
+                cout << "ref response: ";
+                for (auto p : turn.second){
+                    cout << sd.Convert(p) << " ";
+                    sref.push_back(sd.Convert(p));
+                }
+                cout << endl;
+            }
+
+            if (res.size() > 0)
+            {
+                cout << "res response: ";
+                for (auto p : res){
+                    cout << sd.Convert(p) << " ";
+                    srec.push_back(sd.Convert(p));
+                }
+                cout << endl;
+            }
+
+
+            bleuScore.AccumulateScore(sref, srec);
+
+            turn_id++;
+            prv_turn = turn;
+        }
+    }
+
+    string sBleuScore = bleuScore.GetScore();
     cout << "BLEU (4) score = " << sBleuScore << endl;
     of << sBleuScore << endl;
 
