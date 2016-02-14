@@ -626,8 +626,7 @@ namespace cnn {
         std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict) override
         {
             s2tmodel.reset();  /// reset network
-            vector<int> results = s2tmodel.decode(source, cg, tdict);
-            return results;
+            return s2tmodel.decode(source, cg, tdict);
         }
 
         std::vector<int> decode(const std::vector<int> &source, const std::vector<int>& cur, ComputationGraph& cg, cnn::Dict  &tdict) override
