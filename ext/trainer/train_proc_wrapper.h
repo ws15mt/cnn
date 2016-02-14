@@ -302,7 +302,7 @@ int main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_
         {
             throw std::invalid_argument("missing recognition output file");
         }
-        ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, test_numturn2did);
+        ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, test_numturn2did, vm["segmental_training"].as<bool>());
     }
 
     delete sgd;
