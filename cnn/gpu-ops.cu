@@ -266,12 +266,14 @@ void softmax(int row, int col, const float* x0, float* y)
 }
 
 /// see http://research.microsoft.com/pubs/226641/CNTKBook-20160121.pdf
-void softmax_backward(int row, int col, const float *fx, const float *dEdf, float *dEdx, float *tmp_one_row, float * gpu_gradient)
+void softmax_backward(int row, int col, const float *fx, const float *dEdf, float *dEdx, float *tmp_one_row)
 {
-    InnerProduct(row, col, dEdf, row, col, fx, 1, col, tmp_one_row, true);
-    auto tb = SizeToBlockThreadPair(col * row);
-    ScaleAndAdd<float>(-1.0, 1, col, tmp_one_row, row, col, dEdf, row, col, gpu_gradient);
-    accBinaryExprKernel << <tb.first, tb.second >> > (row * col, fx, gpu_gradient, dEdx, FProduct());
+    int n = row * col;
+    auto tb = SizeToBlockThreadPair(n);
+    float ods;
+    ker_dotproduct << <tb.first, tb.second >> >(n, fx, dEdf, tmp_one_row);
+    cudaMemcpy(&ods, tmp_one_row, sizeof(float), cudaMemcpyDeviceToHost);
+    accBinaryExprKernel << <tb.first, tb.second >> >(n, fx, dEdf, dEdx, FSoftmaxBackward(-ods));
 }
 
 // adapted from NVIDIA example
