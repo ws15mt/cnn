@@ -1679,7 +1679,7 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
 
         batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check);
 
-        if (fmod(trial , 50) == 0)
+        if (fmod(trial , 10) == 0)
         {
             ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
             boost::archive::text_oarchive oa(out);
