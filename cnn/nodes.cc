@@ -1079,7 +1079,7 @@ void MaxPooling1D::backward_impl(const vector<const Tensor*>& xs,
 }
 
 size_t Softmax::aux_storage_size() const {
-    return (dim.size() + dim.cols()) * sizeof(cnn::real);
+    return sizeof(cnn::real);
 }
 
 void Softmax::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
@@ -1096,11 +1096,9 @@ void Softmax::backward_impl(const vector<const Tensor*>& xs,
                             const Tensor& dEdf,
                             unsigned i,
                             Tensor& dEdxi) const {
-#if HAVE_CUDA
-    Tensor gradient(fx.d, static_cast<cnn::real*>(aux_mem) + fx.d.cols());
+#if HAVE_CUDA 
     cnn::real *tmp2 = static_cast<cnn::real*>(aux_mem);
-    gpu::softmax_backward(fx.d.rows(), fx.d.cols(), fx.v, dEdf.v, dEdxi.v, tmp2, gradient.v);
-//    gpu::softmax_backward(fx.d.size(), fx.v, dEdf.v, dEdxi.v, scale); 
+    gpu::softmax_backward(fx.d.rows(), fx.d.cols(), fx.v, dEdf.v, dEdxi.v, tmp2);
 
 #else
   cnn::real off_diag_sum = -(*fx).cwiseProduct(*dEdf).sum();

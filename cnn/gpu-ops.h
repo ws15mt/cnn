@@ -51,7 +51,7 @@ void pnlsoftmax_backward(int n, int elem_idx, const float* x0, const float* dEdf
 void logsoftmax(int row, int col, const float* x0, float* y);
 void logsoftmax_backward(int row, int col, const float* fx, const float* dEdf, float* dEdx, float *softmax, float* row_sum_grd);
 void softmax(int row, int col, const float* x0, float* y);
-void softmax_backward(int row, int col, const float *fx, const float *dEdf, float *dEdx, float * tmp_one_row, float * gpu_gradient);
+void softmax_backward(int row, int col, const float *fx, const float *dEdf, float *dEdx, float * tmp_one_row);
 void sgd_update(int n, const float* g, float* x, float scale, float lambda);
 void sgd_momentum_update(int n, const float* g, float* x, float * v, float scale, float lambda, float momentum);
 void rmsprop_momentum_update(int n, const float* g, float* x, float* v, float *r, float scale, float lambda, float momentum, float rho, float epsilon);
