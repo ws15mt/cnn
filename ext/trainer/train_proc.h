@@ -514,7 +514,7 @@ void TrainProcess<AM_t>::dialogue(Model &model, AM_t &am, string out_file, Dict 
             if (shuman.find("exit") == 0)
                 break;
 #endif
-
+            shuman = "<s> " + shuman + "</s>";
             convertHumanQuery(shuman, shuman_input, td);
 
             if (t_idx == 0)
