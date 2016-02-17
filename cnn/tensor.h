@@ -25,7 +25,6 @@ namespace cnn {
 
 #define EIGEN_BACKEND 1
 
-#define USE_DOUBLE
 #ifdef USE_DOUBLE
     typedef Eigen::MatrixXd  EMatrix;
     typedef Eigen::VectorXd EVector;
