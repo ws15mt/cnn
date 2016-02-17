@@ -16,11 +16,12 @@ namespace cnn {
 enum { X2Z, H2Z, BZ, X2R, H2R, BR, X2H, H2H, BH };
 
 GRUBuilder::GRUBuilder(unsigned ilayers,
-                       unsigned input_dim,
-                       unsigned hidden_dim,
+                       const vector<unsigned>& dims,
                        Model* model, cnn::real iscale, 
                        string name) : hidden_dim(hidden_dim) {
-  layers = ilayers; 
+  unsigned input_dim = dims[INPUT_LAYER];
+  unsigned hidden_dim = dims[HIDDEN_LAYER];
+  layers = ilayers;
   string i_name;
   unsigned layer_input_dim = input_dim;
   input_dims = vector<unsigned>(layers, layer_input_dim);

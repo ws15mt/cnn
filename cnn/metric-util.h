@@ -139,6 +139,10 @@ private:
         map<string, int> counts;
 
         int n = order;
+
+        if (tokens.size() < n + 1)
+            return counts; 
+        
         for (int i = 0; i < tokens.size() - n; i++)
         {
             string sb;
@@ -176,3 +180,9 @@ private:
     }
 
 };
+
+namespace cnn {
+    namespace metric {
+        int levenshtein_distance(const std::vector<std::string> &s1, const std::vector<std::string> &s2);
+    }
+}

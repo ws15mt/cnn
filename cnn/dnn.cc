@@ -1,5 +1,5 @@
 #include "cnn/dnn.h"
-
+#include "cnn/macros.h"
 #include <string>
 #include <cassert>
 #include <vector>
@@ -26,13 +26,15 @@ namespace cnn {
     }
 
     DNNBuilder::DNNBuilder(unsigned ilayers,
-        unsigned input_dim,
-        unsigned hidden_dim,
-        unsigned output_dim,
+        const vector<unsigned>& dims,
         Model* model,
         cnn::real iscale,
         string name) 
     {
+        unsigned input_dim = dims[INPUT_LAYER];
+        unsigned hidden_dim = dims[HIDDEN_LAYER];
+        unsigned output_dim = dims[OUTPUT_LAYER];
+
         layers = ilayers;
         unsigned int layer_input_dim = input_dim;
         input_dims = vector<unsigned>(layers, layer_input_dim);

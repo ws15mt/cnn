@@ -10,6 +10,7 @@
 #include "cnn/expr.h"
 #include "cnn/cnn-helper.h"
 #include "cnn/expr-xtra.h"
+#include "cnn/grad-check.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -30,7 +31,6 @@ unsigned int HIDDEN_DIM = 24;  // 1024
 unsigned int VOCAB_SIZE = 0;
 
 int verbose = 0; 
-
 cnn::Dict d;
 int kSOS;
 int kEOS;
@@ -41,7 +41,7 @@ struct RNNLanguageModel {
   Parameters* p_R;
   Parameters* p_bias;
   Builder builder;
-  explicit RNNLanguageModel(Model& model) : builder(LAYERS, INPUT_DIM, HIDDEN_DIM, &model) {
+  explicit RNNLanguageModel(Model& model) : builder(LAYERS, vector<unsigned>{INPUT_DIM, HIDDEN_DIM}, &model) {
       if (verbose)
           cout << "building RNNLanguageModel" << endl;
     p_c = model.add_lookup_parameters(VOCAB_SIZE, {INPUT_DIM}); 
@@ -143,7 +143,7 @@ void train(Model &model, LM_t &lm,
     const vector<vector<int>>& training,
     const vector<vector<int>>& dev,
     Trainer *sgd, const string& fname,
-    bool randomSample)
+    bool randomSample, bool checkgrad)
 {
     cnn::real best = 9e+99;
     unsigned report_every_i = 50;
@@ -185,6 +185,8 @@ void train(Model &model, LM_t &lm,
             lm.BuildLMGraph(sent, cg);
             loss += as_scalar(cg.forward());
             cg.backward();
+            if (checkgrad)
+                CheckGrad(model, cg);
             sgd->update();
             ++lines;
         }
@@ -269,6 +271,7 @@ int main(int argc, char** argv) {
       ("dglstm", "use depth-gated LSTM for recurrent structure; default RNN")
       ("verbose,v", "be extremely chatty")
       ("generate,g", value<bool>()->default_value(false), "generate random samples")
+      ("checkgrad", value<bool>()->default_value(false), "whether check gradient")
       ;
   store(parse_command_line(argc, argv, opts), vm);
 
@@ -373,12 +376,12 @@ int main(int argc, char** argv) {
       if (vm.count("lstm")) {
           cerr << "%% Using LSTM recurrent units" << endl;
           RNNLanguageModel<LSTMBuilder> lm(model);
-          train(model, lm, training, dev, sgd, fname, generateSample);
+          train(model, lm, training, dev, sgd, fname, generateSample, vm["checkgrad"].as<bool>());
       }
       else if (vm.count("dglstm")) {
           cerr << "%% Using DGLSTM recurrent units" << endl;
           RNNLanguageModel<DGLSTMBuilder> lm(model);
-          train(model, lm, training, dev, sgd, fname, generateSample);
+          train(model, lm, training, dev, sgd, fname, generateSample, vm["checkgrad"].as<bool>());
       }
   }
   else

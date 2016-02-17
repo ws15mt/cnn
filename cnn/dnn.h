@@ -18,10 +18,7 @@ namespace cnn {
     class DNNBuilder  {
     public:
         DNNBuilder() { dparallel = 1; }
-        explicit DNNBuilder(unsigned layers,
-            unsigned input_dim,
-            unsigned hidden_dim,
-            unsigned output_dim,
+        explicit DNNBuilder(unsigned layers, const vector<unsigned>& dims, 
             Model* model,
             cnn::real i_scale = 1.0, 
             string name = "");
@@ -99,13 +96,11 @@ namespace cnn {
     public:
         ReluDNNBuilder() { dparallel = 1; }
         explicit ReluDNNBuilder(unsigned layers,
-            unsigned input_dim,
-            unsigned hidden_dim,
-            unsigned output_dim,
+            const vector<unsigned>& dims, 
             Model* model,
             cnn::real i_scale = 1.0,
             string name = "") :
-            DNNBuilder(layers, input_dim, hidden_dim, output_dim, model, i_scale)
+            DNNBuilder(layers, dims, model, i_scale)
         {
         }
 

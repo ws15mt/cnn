@@ -53,7 +53,10 @@ public:
             }
 
             context.new_graph(cg);
-            context.start_new_sequence();
+            if (last_context_exp.size() == 0)
+                context.start_new_sequence();
+            else
+                context.start_new_sequence(last_context_exp);
             context.set_data_in_parallel(nutt);
 
             i_cxt2dec_w = parameter(cg, p_cxt2dec_w);
@@ -96,6 +99,36 @@ public:
         decoder.start_new_sequence(vcxt);  /// get the intention
     };
 
+    void assign_cxt(ComputationGraph &cg, unsigned int nutt)
+    {
+        if (turnid <= 0 || last_cxt_s.size() == 0)
+        {
+            /// no information from previous turns
+            reset();
+            return;
+        }
+
+        last_context_exp.clear();
+        for (const auto &p : last_cxt_s)
+        {
+            Expression iv;
+            if (nutt > 1)
+                iv = input(cg, { (unsigned int)p.size() / nutt, nutt }, &p);
+            else
+                iv = input(cg, { (unsigned int)p.size() }, &p);
+            last_context_exp.push_back(iv);
+        }
+
+        /// prepare for the next run
+        v_encoder_bwd.clear();
+        v_encoder_fwd.clear();
+        v_decoder.clear();
+        i_h0.clear();
+        v_errs.clear();
+        tgt_words = 0;
+        src_words = 0;
+    }
+
     vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
         unsigned int nutt = source.size();
         start_new_instance(source, cg);
@@ -136,6 +169,8 @@ public:
                 }
             }
         }
+
+        save_context(cg);
 
         turnid++;
         for (auto &p : this_errs)
@@ -272,6 +307,17 @@ public:
         decoder.start_new_sequence(to);  /// get the intention
     };
 
+    void save_context(ComputationGraph& cg)
+    {
+        to_cxt.clear();
+    }
+
+    void assign_cxt(ComputationGraph &cg, unsigned int nutt)
+    {
+        /// no information from previous turns
+        reset();
+    }
+
     vector<Expression> build_graph(const std::vector<std::vector<int>> &source, const std::vector<std::vector<int>>& osent, ComputationGraph &cg){
         unsigned int nutt = source.size();
         start_new_instance(source, cg);
@@ -295,16 +341,16 @@ public:
             }
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_R * i_y_t;
+            Expression i_ydist = log_softmax(i_r_t);
+            Expression x_r_t = reshape(i_ydist, { vocab_size * nutt });
 
-            Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
             for (size_t i = 0; i < nutt; i++)
             {
+                int offset = i * vocab_size; 
                 if (t < osent[i].size() - 1)
                 {
                     /// only compute errors on with output labels
-                    Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
-                    Expression i_ydist = log_softmax(r_r_t);
-                    this_errs[i].push_back( -pick(i_ydist, osent[i][t + 1]));
+                    this_errs[i].push_back( -pick(x_r_t, osent[i][t + 1] + offset));
                     tgt_words++;
                 }
             }
@@ -314,6 +360,8 @@ public:
 
         for (auto &p : this_errs)
             errs.push_back(sum(p));
+
+        save_context(cg);
 
         return errs;
     };
@@ -362,6 +410,8 @@ public:
             t += 1;
             target.push_back(w);
         }
+
+        save_context(cg);
 
         turnid++;
 

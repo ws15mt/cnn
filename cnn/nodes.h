@@ -62,7 +62,7 @@ struct TraceOfProduct : public Node {
 
 // y = alpha * x_1
 struct ConstScalarMultiply : public Node {
-  explicit ConstScalarMultiply(const std::initializer_list<VariableIndex>& a, float alpha) : Node(a), alpha(alpha) {}
+  explicit ConstScalarMultiply(const std::initializer_list<VariableIndex>& a, cnn::real alpha) : Node(a), alpha(alpha) {}
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
   void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
@@ -71,7 +71,7 @@ struct ConstScalarMultiply : public Node {
                 const Tensor& dEdf,
                 unsigned i,
                 Tensor& dEdxi) const override;
-  float alpha;
+  cnn::real alpha;
 };
 
 // y = x_1^T . x_2
@@ -592,6 +592,7 @@ struct Average : public Node {
   template <typename T> explicit Average(const T& a) : Node(a) {}
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
+  size_t aux_storage_size() const override;
   void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
   void backward_impl(const std::vector<const Tensor*>& xs,
       const Tensor& fx,
@@ -638,7 +639,7 @@ struct SquaredEuclideanDistance : public Node {
 
 // y = || x_1 - x_2 ||_H(d)
 struct HuberDistance : public Node {
-  explicit HuberDistance(const std::initializer_list<VariableIndex>& a, float d = 1.345f) : Node(a), d(d) {}
+  explicit HuberDistance(const std::initializer_list<VariableIndex>& a, cnn::real d = 1.345f) : Node(a), d(d) {}
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
   void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
@@ -647,7 +648,7 @@ struct HuberDistance : public Node {
                 const Tensor& dEdf,
                 unsigned i,
                 Tensor& dEdxi) const override;
-  float d;
+  cnn::real d;
 };
 
 // y = || x_1 - x_2 ||_1
@@ -695,6 +696,7 @@ struct Softmax : public Node {
   explicit Softmax(const std::initializer_list<VariableIndex>& a) : Node(a) {}
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
+  size_t aux_storage_size() const override;
   void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
   void backward_impl(const std::vector<const Tensor*>& xs,
                     const Tensor& fx,
@@ -709,6 +711,7 @@ struct LogSoftmax : public Node {
   explicit LogSoftmax(const std::initializer_list<VariableIndex>& a) : Node(a) {}
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
+  size_t aux_storage_size() const override;
   void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
   void backward_impl(const std::vector<const Tensor*>& xs,
                     const Tensor& fx,
@@ -742,7 +745,7 @@ struct PickNegLogSoftmax : public Node {
                     const Tensor& dEdf,
                     unsigned i,
                     Tensor& dEdxi) const override;
-  mutable float* logz;
+  mutable cnn::real* logz;
   unsigned val;
   const unsigned* pval;
   std::vector<unsigned> vals;

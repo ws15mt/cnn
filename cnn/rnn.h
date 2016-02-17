@@ -2,6 +2,7 @@
 #define CNN_RNN_H_
 
 #include "cnn/cnn.h"
+#include "cnn/macros.h"
 #include "cnn/rnn-state-machine.h"
 #include "cnn/expr.h"
 #include <string>
@@ -143,8 +144,7 @@ public:
 struct SimpleRNNBuilder : public RNNBuilder {
   SimpleRNNBuilder() = default;
   explicit SimpleRNNBuilder(unsigned layers,
-                            unsigned input_dim,
-                            unsigned hidden_dim,
+                            const vector<unsigned>& dims,
                             Model* model,
                             cnn::real i_scale = 1.0,
                             string name = "",

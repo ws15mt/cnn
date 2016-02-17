@@ -68,6 +68,7 @@ size_t g_train_on_turns = 1;
 
 cnn::Dict sd;
 cnn::Dict td;
+cnn::stId2String<string> id2str;
 
 int kSRC_SOS;
 int kSRC_EOS;
@@ -96,7 +97,8 @@ public:
     void prt_model_info(size_t LAYERS, size_t VOCAB_SIZE_SRC, const vector<unsigned>& dims, size_t nreplicate, size_t decoder_additiona_input_to, size_t mem_slots, cnn::real scale);
 
     void batch_train(Model &model, Proc &am, Corpus &training, Corpus &devel,
-        Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real& largest_cost, bool do_segmental_training, bool update_sgd);
+        Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real& largest_cost, bool do_segmental_training, bool update_sgd, 
+        bool doGradientCheck);
     void supervised_pretrain(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, cnn::real target_ppl, int min_diag_id,
         bool bcharlevel = false, bool nosplitdialogue = false);
@@ -105,9 +107,10 @@ public:
         bool bcharlevel = false, bool nosplitdialogue = false);
     void train(Model &model, Proc &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs);
     void REINFORCEtrain(Model &model, Proc &am, Proc &am_agent_mirrow, Corpus &training, Corpus &devel, Trainer &sgd, string out_file, Dict & td, int max_epochs, int nparallel, cnn::real& largest_cost, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0);
-    void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training);
-    void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo, const string& score_embedding_fn = "");
+    void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training, bool do_gradient_check);
+    void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo, bool segmental_training, const string& score_embedding_fn = "");
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & sd);
+    void test_segmental(Model &model, Proc &am, Corpus &devel, string out_file, Dict & sd);
     void test(Model &model, Proc &am, TupleCorpus &devel, string out_file, Dict & sd, Dict & td);
     void dialogue(Model &model, Proc &am, string out_file, Dict & td);
 
@@ -116,7 +119,7 @@ public:
     void nosegmental_forward_backward(Model &model, Proc &am, PDialogue &v_v_dialogues, int nutt,
         cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr);
     void segmental_forward_backward(Model &model, Proc &am, PDialogue &v_v_dialogues, int nutt,
-        cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr);
+        cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, bool doGradientCheck = false, Trainer* sgd = nullptr);
     void REINFORCE_nosegmental_forward_backward(Model &model, Proc &am, Proc &am_mirrow, PDialogue &v_v_dialogues, int nutt,
         cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, Trainer* sgd, Dict& sd, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0,
         bool update_model = true);
@@ -135,7 +138,15 @@ public:
     /// for ngram
     void ngram_train(variables_map vm, const Corpus& test, Dict& sd);
     void ngram_clustering(variables_map vm, const Corpus& test, Dict& sd);
-    void representative_presentation(variables_map vm, const CorpusWithClassId& test, Dict& sd);
+    void ngram_one_pass_clustering(variables_map vm, const Corpus& test, Dict& sd);
+    void representative_presentation(
+        vector<nGram> pnGram,
+        const Sentences& responses,
+        Dict& sd,
+        vector<int>& i_data_to_cls,
+        vector<string>& i_representative, cnn::real interpolation_wgt);
+    void hierarchical_ngram_clustering(variables_map vm, const CorpusWithClassId& test, Dict& sd);
+    int closest_class_id(vector<nGram>& pnGram, int this_cls, int nclsInEachCluster, const Sentence& obs, cnn::real& score, cnn::real interpolation_wgt);
 
 private:
     vector<cnn::real> ppl_hist;
@@ -147,7 +158,7 @@ this is fake experiment as the user side is known and supposedly respond correct
 */
 template <class AM_t>
 void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo,
-    const string& score_embedding_fn)
+    bool segmental_training, const string& score_embedding_fn)
 {
     unsigned lines = 0;
     cnn::real dloss = 0;
@@ -184,7 +195,10 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
 
         while (ndutt > 0)
         {
-            nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+            if (segmental_training)
+                segmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+            else
+                nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
 
             id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, test_corpusinfo);
             ndutt = id_sel_idx.size();
@@ -238,7 +252,7 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
     cnn::real dchars_s = 0;
     cnn::real dchars_t = 0;
 
-    BleuMetric bleuScore; 
+    BleuMetric bleuScore;
     bleuScore.Initialize();
 
     ofstream of(out_file);
@@ -306,7 +320,96 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
         }
     }
 
-    string sBleuScore = bleuScore.GetScore(); 
+    string sBleuScore = bleuScore.GetScore();
+    cout << "BLEU (4) score = " << sBleuScore << endl;
+    of << sBleuScore << endl;
+
+    of.close();
+}
+
+/** warning, the test function use the true past response as the context, when measure bleu score
+• So the BLEU score is artificially high
+• However, because the use input is conditioned on the past response. If using the true decoder response as the past context, the user input cannot be from the corpus.
+• Therefore, it is reasonable to use the true past response as context when evaluating the model.
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::test_segmental(Model &model, AM_t &am, Corpus &devel, string out_file, Dict & sd)
+{
+    unsigned lines = 0;
+    cnn::real dloss = 0;
+    cnn::real dchars_s = 0;
+    cnn::real dchars_t = 0;
+
+    BleuMetric bleuScore;
+    bleuScore.Initialize();
+
+    ofstream of(out_file);
+
+    unsigned si = devel.size(); /// number of dialgoues in training
+
+    Timer iteration("completed in");
+    cnn::real ddloss = 0;
+    cnn::real ddchars_s = 0;
+    cnn::real ddchars_t = 0;
+
+
+    for (auto diag : devel){
+
+        SentencePair prv_turn;
+        size_t turn_id = 0;
+
+        /// train on two segments of a dialogue
+        vector<int> res;
+        for (auto spair : diag)
+        {
+            ComputationGraph cg;
+
+            SentencePair turn = spair;
+            vector<string> sref, srec;
+
+            if (turn_id == 0)
+                res = am.decode(turn.first, cg, sd);
+            else
+                res = am.decode(prv_turn.second, turn.first, cg, sd);
+
+            if (turn.first.size() > 0)
+            {
+                cout << "source: ";
+                for (auto p : turn.first){
+                    cout << sd.Convert(p) << " ";
+                }
+                cout << endl;
+            }
+
+            if (turn.second.size() > 0)
+            {
+                cout << "ref response: ";
+                for (auto p : turn.second){
+                    cout << sd.Convert(p) << " ";
+                    sref.push_back(sd.Convert(p));
+                }
+                cout << endl;
+            }
+
+            if (res.size() > 0)
+            {
+                cout << "res response: ";
+                for (auto p : res){
+                    cout << sd.Convert(p) << " ";
+                    srec.push_back(sd.Convert(p));
+                }
+                cout << endl;
+            }
+
+
+            bleuScore.AccumulateScore(sref, srec);
+
+            turn_id++;
+            prv_turn = turn;
+        }
+    }
+
+    string sBleuScore = bleuScore.GetScore();
     cout << "BLEU (4) score = " << sBleuScore << endl;
     of << sBleuScore << endl;
 
@@ -411,7 +514,7 @@ void TrainProcess<AM_t>::dialogue(Model &model, AM_t &am, string out_file, Dict 
             if (shuman.find("exit") == 0)
                 break;
 #endif
-
+            shuman = "<s> " + shuman + "</s>";
             convertHumanQuery(shuman, shuman_input, td);
 
             if (t_idx == 0)
@@ -663,9 +766,9 @@ void TrainProcess<AM_t>::nosegmental_forward_backward(Model &model, AM_t &am, PD
 
 template <class AM_t>
 void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDialogue &v_v_dialogues, int nutt,
-    cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr)
+    cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel, bool doGradientCheck, Trainer* sgd)
 {
-    size_t turn_id = init_turn_id;
+    size_t turn_id = 0;
     size_t i_turns = 0;
     PTurn prv_turn;
 
@@ -689,7 +792,9 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDia
             am.build_graph(prv_turn, turn, cg);
         }
 
-        cg.incremental_forward();
+        if (doGradientCheck)
+            CheckGrad(model, cg);
+
         if (sgd != nullptr)
         {
             if (verbose)
@@ -705,13 +810,14 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDia
         dloss += as_scalar(cg.get_value(am.s2txent.i));
         if (verbose)
             cout << "dloss " << dloss << endl;
-
+    
         dchars_s += am.swords;
         dchars_t += am.twords;
 
         prv_turn = turn;
         turn_id++;
         i_turns++;
+
     }
 
 }
@@ -834,7 +940,7 @@ but I comment it out
 template <class AM_t>
 void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
     Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
-    bool sgd_update_epochs)
+    bool sgd_update_epochs, bool do_gradient_check)
 {
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
@@ -872,7 +978,6 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
         PDialogue v_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
 
         for (unsigned iter = 0; iter < report_every_i;) {
-
             if (si == training.size()) {
                 si = 0;
                 if (first) { first = false; }
@@ -911,7 +1016,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             }
 
             if (segmental_training)
-                segmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, false, 0, &sgd);
+                segmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, false, do_gradient_check, &sgd);
             else
                 nosegmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, true, 0, &sgd);
 
@@ -956,7 +1061,10 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
 
                 while (ndutt > 0)
                 {
-                    nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+                    if (segmental_training)
+                        segmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+                    else
+                        nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
 
                     id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, devel_numturn2did);
                     ndutt = id_sel_idx.size();
@@ -1537,7 +1645,8 @@ since the tool loads data into memory and that can cause memory exhaustion, this
 template <class AM_t>
 void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &model, AM_t &am, Corpus &devel, 
     Trainer &sgd, string out_file, 
-    int max_epochs, int nparallel, int epochsize, bool segmental_training)
+    int max_epochs, int nparallel, int epochsize, bool segmental_training,
+    bool do_gradient_check)
 {
     // a mirrow of the agent to generate decoding results so that their results can be evaluated
     // this is not efficient implementation, better way is to share model parameters
@@ -1568,9 +1677,9 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
             sgd.update_epoch();
         }
 
-        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false);
+        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check);
 
-        if (fmod(trial , 50) == 0)
+        if (fmod(trial , 10) == 0)
         {
             ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
             boost::archive::text_oarchive oa(out);
@@ -1661,15 +1770,21 @@ void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, 
     for (auto& p: pnGram)
         p.Initialize(vm);
 
+    cnn::real interpolation_wgt = vm["interpolation_wgt"].as<cnn::real>();
+
     /// flatten corpus
-    Sentences user, response;
-    flatten_corpus(test, user, response);
+    Sentences order_kept_responses, response;
+    flatten_corpus(test, order_kept_responses, response);
+    order_kept_responses = response; ///
+
+    vector<long> ncnt(ncls, 0); /// every class must have at least one sample
+    int icnt = 0;
 
     for (int iter = 0; iter < vm["epochs"].as<int>(); iter++)
     {
-        shuffle(response.begin(), response.end(), std::default_random_engine(iter));
         if (iter == 0)
         {
+            shuffle(response.begin(), response.end(), std::default_random_engine(iter));
             for (int i = 0; i < ncls; i++)
             {
                 pnGram[i].LoadModel(".m" + boost::lexical_cast<string>(i));
@@ -1677,8 +1792,20 @@ void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, 
 
             for (int i = 0; i < response.size(); i++)
             {
-                int cls = rand0n_uniform(ncls - 1);
+                /// every class has at least one sample
+                int cls;
+                if (icnt < ncls)
+                {
+                    if (ncnt[icnt] == 0)
+                        cls = icnt++;
+                    else
+                        cls = rand0n_uniform(ncls - 1);
+                }
+                else
+                    cls = rand0n_uniform(ncls - 1);
+
                 pnGram[cls].UpdateNgramCounts(response[i], 0, sd);
+                ncnt[cls] ++;
             }
 #pragma omp parallel for
             for (int i = 0; i < ncls; i++)
@@ -1686,6 +1813,8 @@ void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, 
                 pnGram[i].ComputeNgramModel();
                 pnGram[i].SaveModel(".m" + boost::lexical_cast<string>(i));
             }
+
+            std::fill(ncnt.begin(), ncnt.end(), 0); 
         }
         else
         {
@@ -1694,31 +1823,36 @@ void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, 
             /// reassign data to closest cluster
             vector<Sentences> current_assignment(ncls);
             double totallk = 0;
-            for (int i = 0; i < response.size() / 2; i++)
+            for (int i = 0; i < order_kept_responses.size(); i++)
             {
-                if (response[i].size() == 0)
+                if (order_kept_responses[i].size() == 0)
                     continue;
 
-                vector<cnn::real> llk(ncls);
-                for (int c = 0; c < ncls; c++)
-                    llk[c] = pnGram[c].GetSentenceLL(response[i]);
-
-                cnn::real largest = llk[0];
-                int iarg = 0;
-                for (int c = 1; c < ncls; c++)
-                {
-                    if (llk[c] > largest)
-                    {
-                        largest = llk[c];
-                        iarg = c;
-                    }
-                }
-                current_assignment[iarg].push_back(response[i]);
-                totallk += largest / response[i].size();
+                cnn::real largest ;
+                int iarg = closest_class_id(pnGram, 0, ncls, order_kept_responses[i], largest, interpolation_wgt);
+                
+                current_assignment[iarg].push_back(order_kept_responses[i]);
+                totallk += largest / order_kept_responses[i].size();
+                ncnt[iarg]++;
             }
-            totallk /= response.size();
+            totallk /= order_kept_responses.size();
 
             cout << "loglikelihood at iteration " << iter << " is " << totallk << endl;
+
+            /// check if all clusters have at least one sample
+            {
+                int icls = 0;
+                for (auto &p : ncnt)
+                {
+                    if (p < MIN_OCC_COUNT)
+                    {
+                        /// randomly pick one sample for this class
+                        current_assignment[icls].push_back(response[rand0n_uniform(order_kept_responses.size()) - 1]);
+                    }
+                    icls++;
+                }
+            }
+            std::fill(ncnt.begin(), ncnt.end(), 0);
 
             ///update cluster
 #pragma omp parallel for
@@ -1743,31 +1877,23 @@ void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, 
         }
     }
 
+    vector<int> i_data_to_cls;
+    vector<string> i_represenative;
+    representative_presentation(pnGram, order_kept_responses, sd, i_data_to_cls, i_represenative, interpolation_wgt);
+
     /// do classification now
     ofstream ofs;
     if (vm.count("outputfile") > 0)
         ofs.open(vm["outputfile"].as<string>());
     long did = 0;
+    long idx = 0;
     for (auto& t : test)
     {
         int tid = 0;
         for (auto& s : t)
         {
-            vector<cnn::real> llk(ncls);
-            for (int i = 0; i < ncls; i++)
-                llk[i] = pnGram[i].GetSentenceLL(s.second);
-
-            cnn::real largest = llk[0];
-            int iarg = 0;
-            for (int i = 1; i < ncls; i++)
-            {
-                if (llk[i] > largest)
-                {
-                    largest = llk[i];
-                    iarg = i;
-                }
-            }
-
+            long iarg = i_data_to_cls[idx++];
+            
             string userstr;
             for (auto& p : s.first)
                 userstr = userstr + " " + sd.Convert(p);
@@ -1776,7 +1902,7 @@ void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, 
                 responsestr = responsestr + " " + sd.Convert(p);
 
             string ostr = boost::lexical_cast<string>(did)+ " ||| " + boost::lexical_cast<string>(tid)+ " ||| " + userstr + " ||| " + responsestr;
-            ostr = ostr + " ||| " + boost::lexical_cast<string>(iarg);
+            ostr = ostr + " ||| " + boost::lexical_cast<string>(iarg)+" ||| " + i_represenative[iarg];
             if (ofs.is_open())
             {
                 ofs << ostr << endl;
@@ -1794,17 +1920,242 @@ void TrainProcess<AM_t>::ngram_clustering(variables_map vm, const Corpus& test, 
 }
 
 /**
+keep turn id
+each turn has its own clusters
+ngram counts are not reliable. so use edit distance
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::ngram_one_pass_clustering(variables_map vm, const Corpus& test, Dict& sd)
+{
+#define MAXTURNS 100
+    Corpus empty;
+    int ncls = vm["ngram-num-clusters"].as<int>();
+    vector<int> data2cls;
+    vector<cnn::real> cls2score; /// the highest score in this class
+    vector<Sentence> cls2data;  /// class to its closest response
+
+    vector<int> cls_cnt; 
+    vector<nGram> pnGram; 
+
+    cnn::real threshold = vm["llkthreshold"].as<cnn::real>();
+
+    cnn::real interpolation_wgt = vm["interpolation_wgt"].as<cnn::real>();
+
+    vector<long> ncnt(MAXTURNS, 0); /// every class must have at least one sample
+
+    long sid = 0; 
+    for (auto& d : test)
+    {
+        for (auto &t : d)
+        {
+            Sentence rep = remove_first_and_last(t.second);
+
+            cnn::real largest = LZERO;
+            int iarg;
+
+            if (pnGram.size() > 0)
+                iarg = closest_class_id(pnGram, 0, pnGram.size(), rep, largest, interpolation_wgt);
+
+            if (largest < threshold && pnGram.size() < ncls)
+            {
+                pnGram.push_back(nGram());
+                pnGram.back().Initialize(vm);
+                pnGram.back().UpdateNgramCounts(rep, 0, sd);
+                pnGram.back().UpdateNgramCounts(rep, 1, sd);
+                iarg = pnGram.size() - 1; 
+            }
+            else{
+                pnGram[iarg].UpdateNgramCounts(rep, 0, sd);
+                pnGram[iarg].UpdateNgramCounts(rep, 1, sd);
+            }
+
+            /// update centroid periodically
+            if ((pnGram.size() < ncls) || ((pnGram.size() > ncls - 1) && sid % 1000 == 0))
+            {
+                for (auto &p : pnGram){
+                    p.ComputeNgramModel();
+                }
+            }
+            
+            sid++;
+        }
+    }
+
+    /// do classification now
+    vector<Sentence> typical_response(pnGram.size()); 
+    vector<cnn::real> best_score(pnGram.size(), LZERO);
+
+    ofstream ofs;
+    if (vm.count("outputfile") > 0)
+        ofs.open(vm["outputfile"].as<string>());
+    long did = 0;
+    long idx = 0;
+    for (auto& t : test)
+    {
+        int tid = 0;
+        for (auto& s : t)
+        {
+            cnn::real largest;
+            Sentence rep = remove_first_and_last(s.second);
+            long iarg = closest_class_id(pnGram, 0, pnGram.size(), rep, largest, interpolation_wgt);
+
+            if (best_score[iarg] < largest)
+            {
+                best_score[iarg] = largest;
+                typical_response[iarg] = s.second;
+            }
+            data2cls.push_back(iarg);
+        }
+    }
+
+    vector<string> i_representative;
+    for (auto& p : typical_response)
+    {
+        string sl = "";
+        for (auto w : p)
+            sl = sl + sd.Convert(w) + " ";
+        i_representative.push_back(sl);
+    }
+
+    long dataid = 0; 
+    did = 0; 
+    for (auto& t : test)
+    {
+        int tid = 0;
+        for (auto& s : t)
+        {
+            string userstr;
+            for (auto& p : s.first)
+                userstr = userstr + " " + sd.Convert(p);
+            string responsestr;
+            for (auto& p : s.second)
+                responsestr = responsestr + " " + sd.Convert(p);
+
+            int iarg = data2cls[dataid];
+            string ostr = boost::lexical_cast<string>(did)+" ||| " + boost::lexical_cast<string>(tid)+" ||| " + userstr + " ||| " + responsestr;
+            ostr = ostr + " ||| " + boost::lexical_cast<string>(iarg)+" ||| " + i_representative[iarg];
+            if (ofs.is_open())
+            {
+                ofs << ostr << endl;
+            }
+            else
+                cout << ostr << endl;
+
+            tid++;
+            dataid++;
+        }
+        did++;
+    }
+
+    if (ofs.is_open())
+        ofs.close();
+}
+
+/**
+obtain the closet class id. the class has been orgnaized linearly
+for example, the following is a vector of two large cluster, and there are three subclasses within each cluster
+[cls_01 cls_02 cls_03 cls_11 cls_12 cls_13]
+return the index, base 0, of the position of the class that has the largest likelihood. 
+The index is an absolution position, with offset of the base class position.
+*/
+template<class AM_t>
+int TrainProcess<AM_t>::closest_class_id(vector<nGram>& pnGram, int this_cls, int nclsInEachCluster , const Sentence& obs,
+    cnn::real& score, cnn::real interpolation_wgt)
+{
+    vector<cnn::real> llk(nclsInEachCluster);
+    for (int c = 0; c < nclsInEachCluster; c++)
+        llk[c] = pnGram[c + this_cls * nclsInEachCluster].GetSentenceLL(obs, interpolation_wgt);
+
+    cnn::real largest = llk[0];
+    int iarg = 0;
+    for (int c = 1; c < nclsInEachCluster; c++)
+    {
+        if (llk[c] > largest)
+        {
+            largest = llk[c];
+            iarg = c;
+        }
+    }
+    score = largest;
+    return iarg + this_cls; 
+}
+/**
 Find the top representative in each class and assign a representative, together with its index, to the original input
 */
 template <class AM_t>
-void TrainProcess<AM_t>::representative_presentation(variables_map vm, const CorpusWithClassId& test, Dict& sd)
+void TrainProcess<AM_t>::representative_presentation(
+    vector<nGram> pnGram, 
+    const Sentences& responses, 
+    Dict& sd, 
+    vector<int>& i_data_to_cls, 
+    vector<string>& i_representative,
+    cnn::real interpolation_wgt)
+{
+
+    long did = 0;
+    int ncls = pnGram.size();
+    vector<cnn::real> i_so_far_largest_score(ncls, -10000.0);/// the vector saving the largest score of a cluster from any observations so far
+    vector<int> i_the_closet_input(ncls, -1); /// the index to the input that has the closest distance to centroid of each class
+    i_representative.resize(ncls, "");
+
+    for (auto& t : responses)
+    {
+        cnn::real largest;
+        int iarg = closest_class_id(pnGram, 0, ncls, t, largest, interpolation_wgt);
+        i_data_to_cls.push_back(iarg);
+
+        long icls = 0;
+        for (auto& p : pnGram)
+        {
+            cnn::real lk = p.GetSentenceLL(t, interpolation_wgt);
+            if (i_so_far_largest_score[icls] < lk)
+            {
+                i_so_far_largest_score[icls] = lk;
+                i_the_closet_input[icls] = i_data_to_cls.size() - 1;
+            }
+            icls++;
+        }
+    }
+
+    /// represent the cluster with closest observation
+    int i_representations = 0;
+    for (int i = 0; i < ncls; i++)
+    {
+        i_representative[i] = "";
+        if (i_the_closet_input[i] >= 0)
+        {
+            for (auto& p : responses[i_the_closet_input[i]])
+                i_representative[i] = i_representative[i] + " " + sd.Convert(p);
+            i_representations++;
+        }
+        else{
+            cout << "cluster" << i << " is empty" << endl;
+            throw("cluster is empty");
+        }
+    }
+
+    cout << "total " << i_representations << " representations " << endl;
+}
+
+/**
+Given trained model, do hierarchical ngram clustering
+*/
+template <class AM_t>
+void TrainProcess<AM_t>::hierarchical_ngram_clustering(variables_map vm, const CorpusWithClassId& test, Dict& sd)
 {
     Corpus empty;
     int ncls = vm["ngram-num-clusters"].as<int>();
     int nclsInEachCluster = vm["ncls-in-each-cluster"].as<int>();
     vector<nGram> pnGram(ncls*nclsInEachCluster);
+    long i = 0;
     for (auto& p : pnGram)
+    {
         p.Initialize(vm);
+        p.LoadModel(".m" + boost::lexical_cast<string>(i));
+        i++;
+    }
+
+    cnn::real interpolation_wgt = vm["interpolation_wgt"].as<cnn::real>();
 
     /// flatten corpus
     Sentences user_inputs;
@@ -1813,84 +2164,6 @@ void TrainProcess<AM_t>::representative_presentation(variables_map vm, const Cor
     not_randomly_shuffled_response = response; /// backup of response that is not randomly shuffled
     user_inputs.clear();
 
-    for (int iter = 0; iter < vm["epochs"].as<int>(); iter++)
-    {
-        shuffle(response.begin(), response.end(), std::default_random_engine(iter));
-        if (iter == 0)
-        {
-            for (int i = 0; i < response.size(); i++)
-            {
-                int this_cls = response[i].second;
-                int cls = rand0n_uniform(nclsInEachCluster - 1);
-                cls += nclsInEachCluster * this_cls;
-                pnGram[cls].UpdateNgramCounts(response[i].first, 0, sd);
-            }
-#pragma omp parallel for
-            for (int i = 0; i < ncls * nclsInEachCluster; i++)
-            {
-                pnGram[i].ComputeNgramModel();
-//                pnGram[i].SaveModel(".m" + boost::lexical_cast<string>(i));
-            }
-        }
-        else
-        {
-            /// use half the data to update centroids
-
-            /// reassign data to closest cluster
-            vector<Sentences> current_assignment(ncls * nclsInEachCluster);
-            double totallk = 0;
-
-            for (int i = 0; i < response.size() / 2; i++)
-            {
-                if (response[i].first.size() == 0)
-                    continue;
-
-                int this_cls = response[i].second;
-                vector<cnn::real> llk(nclsInEachCluster);
-                for (int c = 0; c < nclsInEachCluster; c++)
-                    llk[c] = pnGram[c + this_cls * nclsInEachCluster].GetSentenceLL(response[i].first);
-
-                cnn::real largest = llk[0];
-                int iarg = 0;
-                for (int c = 1; c < nclsInEachCluster; c++)
-                {
-                    if (llk[c] > largest)
-                    {
-                        largest = llk[c];
-                        iarg = c;
-                    }
-                }
-                iarg += nclsInEachCluster * this_cls;
-                current_assignment[iarg].push_back(response[i].first);
-                totallk += largest / response[i].first.size();
-            }
-            totallk /= response.size();
-
-            cout << "loglikelihood at iteration " << iter << " is " << totallk << endl;
-
-            ///update cluster
-#pragma omp parallel for
-            for (int i = 0; i < ncls * nclsInEachCluster; i++)
-                pnGram[i].Clear();
-
-            for (int i = 0; i < current_assignment.size(); i++)
-            {
-                for (auto & p : current_assignment[i])
-                {
-                    pnGram[i].UpdateNgramCounts(p, 0, sd);
-                    pnGram[i].UpdateNgramCounts(p, 1, sd);
-                }
-            }
-
-#pragma omp parallel for
-            for (int i = 0; i < ncls * nclsInEachCluster; i++)
-            {
-                pnGram[i].ComputeNgramModel();
-                pnGram[i].SaveModel(".m" + boost::lexical_cast<string>(i));
-            }
-        }
-    }
-
     /// do classification now
     ofstream ofs;
     if (vm.count("outputfile") > 0)
@@ -1898,7 +2171,7 @@ void TrainProcess<AM_t>::representative_presentation(variables_map vm, const Cor
     long did = 0;
     vector<cnn::real> i_so_far_largest_score(ncls * nclsInEachCluster, -10000.0);/// the vector saving the largest score of a cluster from any observations so far
     vector<int> i_the_closet_input(ncls * nclsInEachCluster, -1); /// the index to the input that has the closest distance to centroid of each class
-    vector<int> i_data_to_cls; 
+    vector<int> i_data_to_cls;
     for (auto& t : test)
     {
         for (auto& s : t)
@@ -1907,7 +2180,7 @@ void TrainProcess<AM_t>::representative_presentation(variables_map vm, const Cor
             int cls_offset = this_cls * nclsInEachCluster;
             vector<cnn::real> llk(nclsInEachCluster);
             for (int i = 0; i < nclsInEachCluster; i++)
-                llk[i] = pnGram[i + cls_offset].GetSentenceLL(s.second.first);
+                llk[i] = pnGram[i + cls_offset].GetSentenceLL(s.second.first, interpolation_wgt);
 
             cnn::real largest = llk[0];
             int iarg = 0;
@@ -1937,8 +2210,8 @@ void TrainProcess<AM_t>::representative_presentation(variables_map vm, const Cor
     {
         i_representative[i] = "";
         if (i_the_closet_input[i] >= 0)
-            for (auto& p : not_randomly_shuffled_response[i_the_closet_input[i]].first)
-                i_representative[i] = i_representative[i] + " " + sd.Convert(p);
+        for (auto& p : not_randomly_shuffled_response[i_the_closet_input[i]].first)
+            i_representative[i] = i_representative[i] + " " + sd.Convert(p);
     }
 
     long idx = 0;
@@ -1973,6 +2246,247 @@ void TrainProcess<AM_t>::representative_presentation(variables_map vm, const Cor
 
     if (ofs.is_open())
         ofs.close();
+}
+
+template <class Proc>
+class ClassificationTrainProcess : public TrainProcess<Proc>{
+public:
+    ClassificationTrainProcess(){
+    }
+
+    void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training, bool do_gradient_check);
+    
+    void batch_train(Model &model, Proc &am, Corpus &training, Corpus &devel,
+        Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
+        bool sgd_update_epochs, bool do_gradient_check);
+
+};
+
+
+/**
+since the tool loads data into memory and that can cause memory exhaustion, this function do sampling of data for each epoch.
+*/
+template <class AM_t>
+void ClassificationTrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &model, AM_t &am, Corpus &devel,
+    Trainer &sgd, string out_file,
+    int max_epochs, int nparallel, int epochsize, bool segmental_training, bool do_gradient_check)
+{
+    // a mirrow of the agent to generate decoding results so that their results can be evaluated
+    // this is not efficient implementation, better way is to share model parameters
+    cnn::real largest_cost = 9e+99;
+
+    ifstream ifs(train_filename);
+    int trial = 0;
+    while (sgd.epoch < max_epochs)
+    {
+        cerr << "Reading training data from " << train_filename << "...\n";
+        Corpus training = read_corpus(ifs, sd, kSRC_SOS, kSRC_EOS, epochsize, make_pair<int,int>(2,4), make_pair<bool, bool>(true, false),
+            id2str.phyId2logicId);
+        training_numturn2did = get_numturn2dialid(training);
+
+        if (ifs.eof() || training.size() == 0)
+        {
+            ifs.close();
+            ifs.open(train_filename);
+
+            if (training.size() == 0)
+            {
+                continue;
+            }
+            ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
+
+            sgd.update_epoch();
+        }
+
+        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check);
+
+        if (fmod(trial, 50) == 0)
+        {
+            ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
+        }
+        trial++;
+    }
+    ifs.close();
+}
+
+/* the following does mutiple sentences per minibatch
+but I comment it out
+*/
+template <class AM_t>
+void ClassificationTrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
+    Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
+    bool sgd_update_epochs, bool doGradientCheck)
+{
+    unsigned report_every_i = 50;
+    unsigned dev_every_i_reports = 1000;
+    unsigned si = training.size(); /// number of dialgoues in training
+    vector<unsigned> order(training.size());
+    for (unsigned i = 0; i < order.size(); ++i) order[i] = i;
+
+    bool first = true;
+    int report = 0;
+    unsigned lines = 0;
+    int epoch = 0;
+
+    reset_smoothed_ppl();
+
+    int prv_epoch = -1;
+    vector<bool> v_selected(training.size(), false);  /// track if a dialgoue is used
+    size_t i_stt_diag_id = 0;
+
+    /// if no update of sgd in this function, need to train with all data in one pass and then return
+    if (sgd_update_epochs == false)
+    {
+        report_every_i = training.size();
+        si = 0;
+    }
+
+    while ((sgd_update_epochs && sgd.epoch < max_epochs) ||  /// run multiple passes of data
+        (!sgd_update_epochs && si < training.size()))  /// run one pass of the data
+    {
+        Timer iteration("completed in");
+        cnn::real dloss = 0;
+        cnn::real dchars_s = 0;
+        cnn::real dchars_t = 0;
+        cnn::real dchars_tt = 0;
+
+        PDialogue v_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
+
+        for (unsigned iter = 0; iter < report_every_i;) {
+
+            if (si == training.size()) {
+                si = 0;
+                if (first) { first = false; }
+                else if (sgd_update_epochs){
+                    sgd.update_epoch();
+                    lines -= training.size();
+                }
+            }
+
+            if (si % order.size() == 0) {
+                cerr << "**SHUFFLE\n";
+                /// shuffle number of turns
+                shuffle(training_numturn2did.vNumTurns.begin(), training_numturn2did.vNumTurns.end(), *rndeng);
+                i_stt_diag_id = 0;
+                v_selected = vector<bool>(training.size(), false);
+                for (auto p : training_numturn2did.mapNumTurn2DialogId){
+                    /// shuffle dailogues with the same number of turns
+                    random_shuffle(p.second.begin(), p.second.end());
+                }
+                v_selected.assign(training.size(), false);
+            }
+
+            Dialogue prv_turn;
+            size_t turn_id = 0;
+            vector<int> i_sel_idx = get_same_length_dialogues(training, nparallel, i_stt_diag_id, v_selected, v_dialogues, training_numturn2did);
+            size_t nutt = i_sel_idx.size();
+            if (nutt == 0)
+                break;
+
+            if (verbose)
+            {
+                cerr << "selected " << nutt << " :  ";
+                for (auto p : i_sel_idx)
+                    cerr << p << " ";
+                cerr << endl;
+            }
+
+            if (segmental_training)
+                segmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, false, doGradientCheck, &sgd);
+            else
+                nosegmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, true, 0, &sgd);
+
+            si += nutt;
+            lines += nutt;
+            iter += nutt;
+        }
+
+        sgd.status();
+        iteration.WordsPerSecond(dchars_t + dchars_s);
+        cerr << "\n***Train " << (lines / (cnn::real)training.size()) * 100 << " %100 of epoch[" << sgd.epoch << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
+
+
+        vector<SentencePair> vs;
+        for (auto&p : v_dialogues)
+            vs.push_back(p[0]);
+        vector<SentencePair> vres;
+        am.respond(vs, vres, sd, id2str);
+
+        // show score on dev data?
+        report++;
+
+        if (devel.size() > 0 && (floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0 || fmod(lines, (cnn::real)training.size()) == 0.0)) {
+            cnn::real ddloss = 0;
+            cnn::real ddchars_s = 0;
+            cnn::real ddchars_t = 0;
+
+            {
+                vector<bool> vd_selected(devel.size(), false);  /// track if a dialgoue is used
+                size_t id_stt_diag_id = 0;
+                PDialogue vd_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
+                vector<int> id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, devel_numturn2did);
+                size_t ndutt = id_sel_idx.size();
+
+                if (verbose)
+                {
+                    cerr << "selected " << ndutt << " :  ";
+                    for (auto p : id_sel_idx)
+                        cerr << p << " ";
+                    cerr << endl;
+                }
+
+                while (ndutt > 0)
+                {
+                    nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+
+                    id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, devel_numturn2did);
+                    ndutt = id_sel_idx.size();
+
+                    if (verbose)
+                    {
+                        cerr << "selected " << ndutt << " :  ";
+                        for (auto p : id_sel_idx)
+                            cerr << p << " ";
+                        cerr << endl;
+                    }
+                }
+            }
+            ddloss = smoothed_ppl(ddloss);
+            if (ddloss < best) {
+                best = ddloss;
+                ofstream out(out_file, ofstream::out);
+                boost::archive::text_oarchive oa(out);
+                oa << model;
+                out.close();
+            }
+            else{
+                sgd.eta0 *= 0.5; /// reduce learning rate
+                sgd.eta *= 0.5; /// reduce learning rate
+            }
+            cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (ddloss / ddchars_t) << " ppl=" << exp(ddloss / ddchars_t) << ' ';
+        }
+
+        prv_epoch = floor(sgd.epoch);
+
+        if (sgd_update_epochs == false)
+        {
+            /// because there is no update on sgd epoch, this loop can run forever. 
+            /// so just run one iteration and quit
+            break;
+        }
+        else{
+            ofstream out(out_file + "e" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
+        }
+    }
 }
 
 

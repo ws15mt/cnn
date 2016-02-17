@@ -15,12 +15,13 @@ namespace cnn {
 enum { X2I, H2I, C2I, BI, X2O, H2O, C2O, BO, X2C, H2C, BC };
 
 LSTMBuilder::LSTMBuilder(unsigned ilayers,
-                         unsigned input_dim,
-                         unsigned hidden_dim,
+                         const vector<unsigned>& dims,
                          Model* model,
                          cnn::real iscale,
                          string name)
 {
+  unsigned input_dim = dims[INPUT_LAYER];
+  unsigned hidden_dim = dims[HIDDEN_LAYER];
   layers = ilayers;
   string i_name;
   unsigned layer_input_dim = input_dim;

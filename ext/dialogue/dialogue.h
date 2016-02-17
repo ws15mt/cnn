@@ -21,11 +21,6 @@ namespace cnn {
 
 class Model;
 
-#define ENCODER_LAYER 0
-#define INTENTION_LAYER 1
-#define DECODER_LAYER 2  
-#define ALIGN_LAYER 3
-
 // interface for constructing an a dialogue 
 template<class Builder, class Decoder>
 class DialogueBuilder{
@@ -95,11 +90,11 @@ public:
     DialogueBuilder() {};
     DialogueBuilder(cnn::Model& model, unsigned int vocab_size_src, unsigned int vocab_size_tgt, const vector<unsigned int>& layers, const vector<unsigned int>& hidden_dims, int hidden_replicates, int decoder_use_additional_input = 0, int mem_slots = 0, cnn::real iscale = 1.0) :
         layers(layers),
-        decoder(layers[DECODER_LAYER], hidden_dims[DECODER_LAYER] + decoder_use_additional_input * hidden_dims[ENCODER_LAYER], hidden_dims[DECODER_LAYER], &model, iscale),
-        encoder_fwd(layers[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
-        encoder_bwd(layers[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], &model, iscale),
+        decoder(layers[DECODER_LAYER], vector<unsigned>{hidden_dims[DECODER_LAYER] + decoder_use_additional_input * hidden_dims[ENCODER_LAYER], hidden_dims[DECODER_LAYER], hidden_dims[DECODER_LAYER] }, &model, iscale),
+        encoder_fwd(layers[ENCODER_LAYER], vector<unsigned>{hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER]}, &model, iscale),
+        encoder_bwd(layers[ENCODER_LAYER], vector<unsigned>{hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER], hidden_dims[ENCODER_LAYER]}, &model, iscale),
         decoder_use_additional_input(decoder_use_additional_input),
-        context(layers[INTENTION_LAYER], layers[ENCODER_LAYER] * hidden_replicates * hidden_dims[ENCODER_LAYER], hidden_dims[INTENTION_LAYER], &model, iscale),
+        context(layers[INTENTION_LAYER], vector<unsigned>{layers[ENCODER_LAYER] * hidden_replicates * hidden_dims[ENCODER_LAYER], hidden_dims[INTENTION_LAYER], hidden_dims[INTENTION_LAYER]}, &model, iscale),
         vocab_size(vocab_size_src), vocab_size_tgt(vocab_size_tgt),
         rep_hidden(hidden_replicates)
     {
@@ -158,6 +153,20 @@ public:
         p_cs->copy(vWordEmbedding);
     }
 
+    void dump_word_embedding(const map<int, vector<cnn::real>>& vWordEmbedding, Dict& td, string ofn)
+    {
+        ofstream ofs(ofn.c_str());
+        for (auto & p : vWordEmbedding)
+        {
+            string wrd = td.Convert(p.first);
+            ofs << wrd << " "; 
+            for (auto & v : p.second)
+                ofs << v << " ";
+            ofs << endl; 
+        }
+        ofs.close();
+    }
+
     Expression sentence_embedding(const Sentence& sent, ComputationGraph& cg)
     {
         vector<Expression> vm;
@@ -186,6 +195,9 @@ public:
         }
         last_cxt_s = vm;
         v_last_cxt_s = last_cxt_s;
+
+        if (v_decoder_context.size() == 0)
+            return;
 
         vector<vector<cnn::real>> v_last_d;
         unsigned int nutt = v_decoder_context.size();
@@ -234,6 +246,9 @@ public:
             vm.push_back(get_value(p, cg));
         }
         last_cxt_s = vm;
+
+        if (v_decoder_context.size() == 0)
+            return;
 
         vector<vector<cnn::real>> v_last_d;
         unsigned int nutt = v_decoder_context.size();

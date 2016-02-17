@@ -4,15 +4,12 @@
 #include <numeric>
 #include <random>
 #include <vector>
-#include "cnn/math-util.h"
+#include "cnn/metric-util.h"
 #include <initializer_list>
 #include <Eigen/LU>
 
-#include "cnn/nodes.h"
-#include "cnn/conv.h"
-
 using namespace std;
-namespace cnn { namespace math {
+namespace cnn { namespace metric {
 
     int levenshtein_distance(const vector<std::string> &s1, const vector<std::string> &s2)
     {

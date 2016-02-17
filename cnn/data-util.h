@@ -11,6 +11,7 @@
 #include "cnn/dglstm.h"
 #include "cnn/dict.h"
 #include "cnn/expr.h"
+#include "cnn/dict.h"
 #include <boost/program_options/variables_map.hpp>
 
 using namespace cnn;
@@ -115,6 +116,11 @@ int MultiTurnsReadSentencePair(const std::wstring& line, std::vector<int>* s, WD
 Corpus read_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS, int maxSentLength = 10000, bool appendBSandES = false, bool bcharacter = false);
 Corpus read_corpus(ifstream&, Dict& sd, int kSRC_SOS, int kSRC_EOS, long part_size);
 CorpusWithClassId read_corpus_with_classid(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS);
+Corpus read_corpus(const string &filename, Dict& sd, int kSRC_SOS, int kSRC_EOS, bool backofftounk, const pair<int, int>& columnids);
+Corpus read_corpus(ifstream & in, Dict& sd, int kSRC_SOS, int kSRC_EOS, long part_size, const pair<int, int>& columids, const pair<bool, bool>& ues_dict, unordered_map<int, int>& ph2logic);
+
+/** get id and its string */
+void get_string_and_its_id(const string &filename, const pair<int, int>& columids, const string& save_to_filename);
 
 /**
 read sentence pair in one line, with seperaotr |||
@@ -126,6 +132,17 @@ string MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, 
 read sentences pair with class id at the end
 */
 string MultiTurnsReadSentencePairWithClassId(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, std::vector<int>* cls, int kSRC_SOS, int kSRC_EOS);
+
+/**
+read sentences from corpus. assume that the separator of content is "|||". 
+which columns to be selected are decided in columnids;
+whether to apply a dictionary lookup is decided in use_dict. 
+*/
+string MultiTurnsReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, std::vector<int>* t, Dict* td, bool backofftounk, int kSRC_SOS, int kSRC_EOS, const pair<int, int>& columnids, const pair<bool, bool>& use_dict);
+
+/// read string and its id. their positions are decided in columnids
+/// columnids is a pair saving <string position, id position>
+string ReadStringWithItsId(const std::string& line, std::vector<int>& s, stId2String<string>& sd, const pair<int, int>& columnids);
 
 /**
 read corpus with triplet
@@ -168,3 +185,5 @@ return flavour of a builder in string
 */
 std::string builder_flavour(variables_map vm);
 
+/// remove the firest and the last element
+vector<int> remove_first_and_last(const vector<int>& rep);
