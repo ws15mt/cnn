@@ -7,6 +7,10 @@ You need the [development version of the Eigen library](https://bitbucket.org/ei
 
     Assertion failed: (false && "heap allocation is forbidden (EIGEN_NO_MALLOC is defined)"), function check_that_malloc_is_allowed, file /Users/cdyer/software/eigen-eigen-10219c95fe65/Eigen/src/Core/util/Memory.h, line 188.
 
+To get the development version, simply download its most recent code from the following link
+
+	https://bitbucket.org/eigen/eigen/downloads
+
 #### Building
 
 First clone cnn 
@@ -55,11 +59,12 @@ both `Eigen` and `cnn`.
 #### Building on Windows
 
 For windows, you need to have prebuild Boost library downloaded from 
-http://boost.teeks99.com/
+
+	http://boost.teeks99.com/
 
 Pick the one that matches your Visual Studio version. For example, the following is a link to Visual Studio 2013 Win64
 
-https://sourceforge.net/projects/boost/files/boost-binaries/1.59.0/boost_1_59_0-msvc-12.0-64.exe/download
+	https://sourceforge.net/projects/boost/files/boost-binaries/1.59.0/boost_1_59_0-msvc-12.0-64.exe/download
 
 Once Boost is installed, make two directories under cnn. One directory is for building CPU build and the other directory is for GPU build.
  
@@ -67,11 +72,11 @@ Once Boost is installed, make two directories under cnn. One directory is for bu
    
 First make a build directory:
 
-mkdir msbuild 
+	mkdir msbuild 
 
 Then, cd to this directory
 
-cd msbuild
+	cd msbuild
 
 Then make a project using the following command. The following command is for building with Visual Studio 2013. Visual Studio 2013 is recommended. Visual Studio 2012 will not be able to build. Visual Studio 2015 is too slow. It may have an improved version for Visual Studio 2015. 
 
@@ -87,7 +92,13 @@ On windows need to first create a symbolic link to CUDA, e.g.,
 
     mklink /D d:\tools\cuda "c:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.5"
     
-Make sure that CMakeLists.txt have the right cuda directories -DCUDAROOT=/path/to/cuda, and in this case is d:\tools\cuda
+Then make a directory
+
+	mkdir msbuildcuda
+
+	cd msbuildcuda
+
+When building, make sure that CMakeLists.txt have the right cuda directories -DCUDAROOT=/path/to/cuda, and in this case is d:\tools\cuda
 
 Build using
 
@@ -98,6 +109,10 @@ e.g.,
     cmake .. -G"Visual Studio 12 Win64" -DCUDAROOT=d:\tools\cuda -DEIGEN3_INCLUDE_DIR=d:\tools\eigen\eigen-eigen-a64c945a8fb7 -DBACKEND=cuda
 
 Only release mode is supported for CUDA. Other modes such as Debug and RelWithDebug have compilation errors. 
+
+#### What to do after cmake
+
+The cmake makes project file. In msbuild and msbuildcuda, you can find Visual Studio project file cnn.prj. Open the project file in Visual Studio. You should try rnnlm2 project, as that is the one currently well-supported. Other projects may have compilation errors but they are easy to fix. Contact me if you see any build problems.  
 
 #### Training Models
 
@@ -151,5 +166,9 @@ Note that this very simple example that doesn't cover things like memory initial
 ### Examples
 
 Examples are under examples directory. A well-tested example is rnnlm2. Its experiment is at exp/lm/rnnlm2.bat.
+
+### Contacts:
+
+kaisheny@microsoft.com
 
 
