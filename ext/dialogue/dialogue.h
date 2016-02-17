@@ -196,6 +196,9 @@ public:
         last_cxt_s = vm;
         v_last_cxt_s = last_cxt_s;
 
+        if (v_decoder_context.size() == 0)
+            return;
+
         vector<vector<cnn::real>> v_last_d;
         unsigned int nutt = v_decoder_context.size();
         size_t ndim = v_decoder_context[0].size();
@@ -243,6 +246,9 @@ public:
             vm.push_back(get_value(p, cg));
         }
         last_cxt_s = vm;
+
+        if (v_decoder_context.size() == 0)
+            return;
 
         vector<vector<cnn::real>> v_last_d;
         unsigned int nutt = v_decoder_context.size();

@@ -25,13 +25,13 @@ ParametersBase::~ParametersBase() {}
 
 Parameters::Parameters(const Dim& d, cnn::real scale , std::string nodename) : dim(d), name(nodename) {
   values.d = g.d = d;
-  values.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
+  values.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
   if (scale == 1.0)
 	  /// fix scale to sqrt(6) / sqrt(d.d.sum_dims())
 	  TensorTools::Randomize(values);
   else 
 	  TensorTools::Randomize(values, scale);
-  g.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
+  g.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
 
   TensorTools::Zero(g);
 }
@@ -75,7 +75,10 @@ void Parameters::copy(const Parameters & param) {
 
 void Parameters::accumulate_grad(const Tensor& d) {
 #if HAVE_CUDA
-  CUBLAS_CHECK(cublasSaxpy(cublas_handle, g.d.size(), kSCALAR_ONE, d.v, 1, g.v, 1));
+    if (sizeof(cnn::real) == sizeof(float))
+        CUBLAS_CHECK(cublasSaxpy(cublas_handle, g.d.size(), reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(d.v), 1, reinterpret_cast<float*>(g.v), 1));
+    else if (sizeof(cnn::real) == sizeof(double))
+        CUBLAS_CHECK(cublasDaxpy(cublas_handle, g.d.size(), reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(d.v), 1, reinterpret_cast<double*>(g.v), 1));
 #else
   *g += *d;
 #endif
@@ -99,7 +102,7 @@ LookupParameters::LookupParameters(unsigned n, const Dim& d, cnn::real scale, st
   for (unsigned i = 0; i < n; ++i) {
     auto& v = values[i];
     v.d = d;
-    v.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
+    v.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
 	if (scale == 1.0)
 		/// fix scale to sqrt(6) / sqrt(d.d.sum_dims())
 		TensorTools::Randomize(v);
@@ -108,7 +111,7 @@ LookupParameters::LookupParameters(unsigned n, const Dim& d, cnn::real scale, st
 
     auto& g = grads[i];
     g.d = d;
-    g.v = (float*)cnn_mm_malloc(d.size() * sizeof(float), CNN_ALIGN);
+    g.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
     TensorTools::Zero(g);
   }
 }
@@ -182,7 +185,10 @@ void LookupParameters::copy(const std::map<int, std::vector<cnn::real>> & param)
 void LookupParameters::accumulate_grad(unsigned index, const Tensor& d) {
   non_zero_grads.insert(index);
 #if HAVE_CUDA
-  CUBLAS_CHECK(cublasSaxpy(cublas_handle, d.d.size(), kSCALAR_ONE, d.v, 1, grads[index].v, 1));
+  if (sizeof(cnn::real) == sizeof(float))
+      CUBLAS_CHECK(cublasSaxpy(cublas_handle, d.d.size(), reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(d.v), 1, reinterpret_cast<float*>(grads[index].v), 1));
+  else if (sizeof(cnn::real) == sizeof(double))
+      CUBLAS_CHECK(cublasDaxpy(cublas_handle, d.d.size(), reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(d.v), 1, reinterpret_cast<double*>(grads[index].v), 1));
 #else
   *grads[index] += *d;
 #endif

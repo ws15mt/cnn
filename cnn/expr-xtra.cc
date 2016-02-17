@@ -9,9 +9,10 @@
 #include "cnn/expr.h"
 #include "cnn/expr-xtra.h"
 
-extern int verbose;
 using namespace cnn;
 using namespace std;
+
+extern int verbose; 
 
 // Chris -- this should be a library function
 Expression arange(ComputationGraph &cg, unsigned begin, unsigned end, bool log_transform, std::vector<cnn::real> *aux_mem) 

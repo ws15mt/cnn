@@ -40,7 +40,7 @@ Trainer* select_trainer(variables_map vm, Model* model)
         sgd = new RmsPropTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
     if (vm["trainer"].as<string>() == "rmspropwithmomentum")
         sgd = new RmsPropWithMomentumTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
-    sgd->clip_threshold = vm["clip"].as<float>();
+    sgd->clip_threshold = vm["clip"].as<cnn::real>();
     sgd->eta_decay = vm["eta_decay"].as<cnn::real>();
 
     return sgd;
@@ -139,6 +139,11 @@ int main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_
         cerr << "Reading test corpus from " << vm["testcorpus"].as<string>() << "...\n";
         testcorpus = read_corpus(vm["testcorpus"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), true);
         test_numturn2did = get_numturn2dialid(testcorpus);
+        if (vm.count("outputfile") == 0)
+        {
+            cerr << "missing --outputfile" << endl;
+            throw std::invalid_argument("missing --outputfile");
+        }
     }
 
     if (vm.count("train-lda") > 0)
@@ -302,7 +307,7 @@ int main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_
         {
             throw std::invalid_argument("missing recognition output file");
         }
-        ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, test_numturn2did);
+        ptrTrainer->test(model, hred, testcorpus, vm["outputfile"].as<string>(), sd, test_numturn2did, vm["segmental_training"].as<bool>());
     }
 
     delete sgd;

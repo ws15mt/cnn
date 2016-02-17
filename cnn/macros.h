@@ -2,6 +2,13 @@
 
 namespace cnn {
 
+//    #define USE_DOUBLE
+#ifdef USE_DOUBLE
+typedef double real;
+#else
+typedef float real;
+#endif
+
 #define ENCODER_LAYER 0
 #define INTENTION_LAYER 1
 #define DECODER_LAYER 2  
@@ -20,5 +27,9 @@ namespace cnn {
 
 /// for GPU
 #define MAX_THREADS_PER_BLOCK 512
+
+///for gradient checking
+#define GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL 5
+#define GRADIENT_CHECK_PARAM_DELTA 1e-5
 
 };

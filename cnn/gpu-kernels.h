@@ -13,7 +13,7 @@ namespace cnn {
     return;
 
 template<typename Func>
-__global__ void unaryExprKernel(int n, const float* x, float* y, Func func) {
+__global__ void unaryExprKernel(int n, const cnn::real* x, cnn::real* y, Func func) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   while (i < n) {
     y[i] = func(x[i]);
@@ -22,7 +22,7 @@ __global__ void unaryExprKernel(int n, const float* x, float* y, Func func) {
 }
 
 template<typename Func>
-__global__ void accUnaryExprKernel(int n, const float* x, float* y, Func func) {
+__global__ void accUnaryExprKernel(int n, const cnn::real* x, cnn::real* y, Func func) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   while (i < n) {
     y[i] += func(x[i]);
@@ -31,7 +31,7 @@ __global__ void accUnaryExprKernel(int n, const float* x, float* y, Func func) {
 }
 
 template<typename Func>
-__global__ void binaryExprKernel(int n, const float* x0, const float* x1, float* y, Func func) {
+__global__ void binaryExprKernel(int n, const cnn::real* x0, const cnn::real* x1, cnn::real* y, Func func) {
   int i = threadIdx.x + blockIdx.x * blockDim.x;
   while (i < n) {
     y[i] = func(x0[i], x1[i]);
@@ -40,7 +40,7 @@ __global__ void binaryExprKernel(int n, const float* x0, const float* x1, float*
 }
 
 template<typename Func>
-__global__ void accBinaryExprKernel(int n, const float* x0, const float* x1, float* y, Func func) {
+__global__ void accBinaryExprKernel(int n, const cnn::real* x0, const cnn::real* x1, cnn::real* y, Func func) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     while (i < n) {
         y[i] += func(x0[i], x1[i]);
@@ -49,7 +49,7 @@ __global__ void accBinaryExprKernel(int n, const float* x0, const float* x1, flo
 }
 
 template<typename Func>
-__global__ void accTripletExprKernel(int n, const float* x0, const float* x1, float *x2, float* y, Func func) {
+__global__ void accTripletExprKernel(int n, const cnn::real* x0, const cnn::real* x1, cnn::real *x2, cnn::real* y, Func func) {
     int i = threadIdx.x + blockIdx.x * blockDim.x;
     while (i < n) {
         y[i] += func(x0[i], x1[i], x2[i]);
@@ -58,8 +58,8 @@ __global__ void accTripletExprKernel(int n, const float* x0, const float* x1, fl
 }
 
 template<typename Func>
-__global__ void slowReduceKernel(int n, const float* x0, const float* x1, float* y, Func func) {
-  float ty = 0;
+__global__ void slowReduceKernel(int n, const cnn::real* x0, const cnn::real* x1, cnn::real* y, Func func) {
+  cnn::real ty = 0;
   // THIS IS BAD - FIX THIS TO MAKE IT FAST
   for (int i = 0; i < n; ++i)
     ty += func(x0[i], x1[i]);
@@ -178,12 +178,12 @@ __global__ void _matrixVectorRowWiseAddWithThreadPerElem(
 }
 
 // adapted from NVIDIA example
-__global__ void ker_l2_norm_reducer(int n, const float *x0, float* res, bool sq, bool acc) {
-    __shared__ float buf[256];
+__global__ void ker_l2_norm_reducer(int n, const cnn::real *x0, cnn::real* res, bool sq, bool acc) {
+    __shared__ cnn::real buf[256];
     for (int i = threadIdx.x; i < 256; i += blockDim.x) {
-        float sum = 0;
+        cnn::real sum = 0;
         for (int pos = i; pos < n; pos += 256) {
-            const float d = x0[pos];
+            const cnn::real d = x0[pos];
             sum += sq ? d * d : d;
         }
         buf[i] = sum;
@@ -200,10 +200,10 @@ __global__ void ker_l2_norm_reducer(int n, const float *x0, float* res, bool sq,
 }
 
 // A kernel to calculate the dot product between two arrays
-__global__ void ker_dotproduct(int n, const float* x, const float* y, float* z) {
-    __shared__ float buf[256];
+__global__ void ker_dotproduct(int n, const cnn::real* x, const cnn::real* y, cnn::real* z) {
+    __shared__ cnn::real buf[256];
     for (int i = threadIdx.x; i < 256; i += blockDim.x) {
-        float sum = 0;
+        cnn::real sum = 0;
         for (int pos = i; pos < n; pos += 256)
             sum += x[pos] * y[pos];
         buf[i] = sum;
@@ -219,12 +219,12 @@ __global__ void ker_dotproduct(int n, const float* x, const float* y, float* z) 
 }
 
 // adapted from NVIDIA example
-__global__ void ker_sqeucdist(int n, const float *x0, const float *x1, float* res) {
-    __shared__ float buf[256];
+__global__ void ker_sqeucdist(int n, const cnn::real *x0, const cnn::real *x1, cnn::real* res) {
+    __shared__ cnn::real buf[256];
     for (int i = threadIdx.x; i < 256; i += blockDim.x) {
-        float sum = 0;
+        cnn::real sum = 0;
         for (int pos = i; pos < n; pos += 256) {
-            const float d = x0[pos] - x1[pos];
+            const cnn::real d = x0[pos] - x1[pos];
             sum += d * d;
         }
         buf[i] = sum;
