@@ -1,5 +1,20 @@
-# cnn
+# CNN
 C++ neural network library
+
+## Introduction
+
+This toolkit is folked from Chis Dyer's CNN toolkit. It has however been extensively developed since then. The following features and improvements are made. 
+
+### Features
+
+Data parallel : Support loading multiple sentences so that training can be efficiently run. 
+
+GPU : Many CPU function calls have been extended to run on GPUs. 
+
+#### Supported Modeling Techniques
+
+It is very easy to develop advanced models using this toolkit. I have been experimented with Theano and CNTK and some other tools. Compared to other tools, the main advantage of this tool is its ease of developing new models. We have used this tool for attentional neural machine translation, conversation modeling, and speech processing. The second advangtage is its ease of deployment; it is easy to expose functions as a DLL so that those functions can be called from Python or C#. This is a big advantage over other tools since you are able to deploy your models for production easily. 
+
 
 #### Getting started
 
@@ -116,7 +131,7 @@ Only release mode is supported for CUDA. Other modes such as Debug and RelWithDe
 
 #### What to do after cmake
 
-The cmake makes project file. In msbuild and msbuildcuda, you can find Visual Studio project file cnn.prj. Open the project file in Visual Studio. You should try rnnlm2 project, as that is the one currently well-supported. Other projects may have compilation errors but they are easy to fix. Contact me if you see any build problems.  
+The cmake makes project file. In msbuild and msbuildcuda, you can find Visual Studio project file cnn.sln. Open the project file in Visual Studio. You should try rnnlm2 project, as that is the one currently well supported. Other projects may have compilation errors but they are easy to fix. Contact me if you see any build problems.  
 
 #### Training Models
 
