@@ -40,7 +40,7 @@ Trainer* select_trainer(variables_map vm, Model* model)
         sgd = new RmsPropTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
     if (vm["trainer"].as<string>() == "rmspropwithmomentum")
         sgd = new RmsPropWithMomentumTrainer(model, 1e-6, vm["eta"].as<cnn::real>());
-    sgd->clip_threshold = vm["clip"].as<float>();
+    sgd->clip_threshold = vm["clip"].as<cnn::real>();
     sgd->eta_decay = vm["eta_decay"].as<cnn::real>();
 
     return sgd;

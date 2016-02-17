@@ -7,6 +7,7 @@
 #include "cnn/dim.h"
 #include "cnn/random.h"
 #include "cnn/aligned-mem-pool.h"
+#include "cnn/macros.h"
 
 #if HAVE_CUDA
 #include <cuda.h>
@@ -24,74 +25,67 @@ namespace cnn {
 
 #define EIGEN_BACKEND 1
 
-//#define USE_DOUBLE
+#define USE_DOUBLE
 #ifdef USE_DOUBLE
-    /// for gradient check, need to use double
-    typedef double real;
+    typedef Eigen::MatrixXd  EMatrix;
+    typedef Eigen::VectorXd EVector;
 #else
-    /// for fast evaluation, use cnn::real
-    typedef float real;
+    /// for fast evaluation, use float
+    typedef Eigen::MatrixXf  EMatrix;
+    typedef Eigen::VectorXf EVector;
 #endif
 
 struct Tensor {
   Tensor() = default;
   Tensor(const Dim& d, cnn::real* v) : d(d), v(v) {}
-#ifdef USE_DOUBLE
-  const Eigen::Map<Eigen::MatrixXd> operator*() const {
-    return Eigen::Map<Eigen::MatrixXd>(v, d.rows(), d.cols());
-  }
-  Eigen::Map<Eigen::MatrixXd, Eigen::Aligned> operator*() {
-    return Eigen::Map<Eigen::MatrixXd, Eigen::Aligned>(v, d.rows(), d.cols());
-  }
-#else
-  const Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned> operator*() const {
+  const Eigen::Map<EMatrix, Eigen::Unaligned> operator*() const {
     assert(d.batch_elems() == 1);
-    return Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned>(v, d.rows(), d.cols());
+    return Eigen::Map<EMatrix, Eigen::Unaligned>(v, d.rows(), d.cols());
   }
-  Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned> operator*() {
+  Eigen::Map<EMatrix, Eigen::Unaligned> operator*() {
     assert(d.batch_elems() == 1);
-    return Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned>(v, d.rows(), d.cols());
+    return Eigen::Map<EMatrix, Eigen::Unaligned>(v, d.rows(), d.cols());
   }
   // Get the data as a vector
-  const Eigen::Map<Eigen::VectorXf, Eigen::Unaligned> vec() const {
-    return Eigen::Map<Eigen::VectorXf, Eigen::Unaligned>(v, d.size());
+  const Eigen::Map<EVector, Eigen::Unaligned> vec() const {
+    return Eigen::Map<EVector, Eigen::Unaligned>(v, d.size());
   }
-  Eigen::Map<Eigen::VectorXf, Eigen::Unaligned> vec() {
-    return Eigen::Map<Eigen::VectorXf, Eigen::Unaligned>(v, d.size());
+  Eigen::Map<EVector, Eigen::Unaligned> vec() {
+    return Eigen::Map<EVector, Eigen::Unaligned>(v, d.size());
   }
   // Get the pointer for a particular batch, automatically broadcasting if the size is zero
-  const float* batch_ptr(unsigned bid) const {
+  const cnn::real* batch_ptr(unsigned bid) const {
     assert(d.bd == 1 || bid < d.bd);
     return v + (bid%d.bd)*d.batch_size();
   }
-  float* batch_ptr(unsigned bid) {
+  cnn::real* batch_ptr(unsigned bid) {
     assert(d.bd == 1 || bid < d.bd);
     return v + (bid%d.bd)*d.batch_size();
   }
   // Get the matrix for a particular batch, automatically broadcasting if the size is zero
-  const Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned> batch_matrix(unsigned bid) const {
-    return Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned>(v + (bid%d.bd)*d.batch_size(), d.rows(), d.cols());
+  const Eigen::Map<EMatrix, Eigen::Unaligned> batch_matrix(unsigned bid) const {
+    return Eigen::Map<EMatrix, Eigen::Unaligned>(v + (bid%d.bd)*d.batch_size(), d.rows(), d.cols());
   }
-  Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned> batch_matrix(unsigned bid) {
-    return Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned>(v + (bid%d.bd)*d.batch_size(), d.rows(), d.cols());
+  Eigen::Map<EMatrix, Eigen::Unaligned> batch_matrix(unsigned bid) {
+    return Eigen::Map<EMatrix, Eigen::Unaligned>(v + (bid%d.bd)*d.batch_size(), d.rows(), d.cols());
   }
   // Get the data as a matrix, where each "row" is the concatenation of rows and columns,
   // and each "column" is batches
-  const Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned> rowcol_matrix() const {
-    return Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned>(v, d.rows()*d.cols(), d.batch_elems());
+  const Eigen::Map<EMatrix, Eigen::Unaligned> rowcol_matrix() const {
+    return Eigen::Map<EMatrix, Eigen::Unaligned>(v, d.rows()*d.cols(), d.batch_elems());
   }
-  Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned> rowcol_matrix() {
-    return Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned>(v, d.rows()*d.cols(), d.batch_elems());
+  Eigen::Map<EMatrix, Eigen::Unaligned> rowcol_matrix() {
+    return Eigen::Map<EMatrix, Eigen::Unaligned>(v, d.rows()*d.cols(), d.batch_elems());
   }
   // Get the data as a matrix, where each "row" is the concatenation of rows,
   // and each "column" is the concatenation of columns and batches
-  const Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned> colbatch_matrix() const {
-    return Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned>(v, d.rows(), d.cols()*d.batch_elems());
+  const Eigen::Map<EMatrix, Eigen::Unaligned> colbatch_matrix() const {
+    return Eigen::Map<EMatrix, Eigen::Unaligned>(v, d.rows(), d.cols()*d.batch_elems());
   }
-  Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned> colbatch_matrix() {
-    return Eigen::Map<Eigen::MatrixXf, Eigen::Unaligned>(v, d.rows(), d.cols()*d.batch_elems());
+  Eigen::Map<EMatrix, Eigen::Unaligned> colbatch_matrix() {
+    return Eigen::Map<EMatrix, Eigen::Unaligned>(v, d.rows(), d.cols()*d.batch_elems());
   }
-#endif
+
   // this is very slow: use sparingly
   inline bool is_valid() const {
 #if HAVE_CUDA
@@ -138,7 +132,7 @@ struct Tensor {
   }
 
   Dim d;
-  float* v;
+  cnn::real* v;
   std::vector<Tensor> bs;
 
  private:
@@ -147,7 +141,7 @@ struct Tensor {
   void save(Archive& ar, const unsigned int) const {
     ar & d;
 #if HAVE_CUDA
-    cnn::real* vc = (cnn::real*)malloc(d.size() * sizeof(cnn::real));
+    cnn::real * vc = (cnn::real*)malloc(d.size() * sizeof(cnn::real));
     CUDA_CHECK(cudaMemcpy(vc, v, d.size() * sizeof(cnn::real), cudaMemcpyDeviceToHost));
     ar & boost::serialization::make_array(vc, d.size());
     free(vc);
@@ -172,28 +166,28 @@ struct Tensor {
 };
 
 std::ostream& operator<<(std::ostream& os, const Tensor& t);
-real as_scalar(const Tensor& t);
-std::vector<real> as_vector(const Tensor& v);
+cnn::real as_scalar(const Tensor& t);
+std::vector<cnn::real> as_vector(const Tensor& v);
 
 struct TensorTools {
   static void Constant(Tensor& d, cnn::real c);
   static void Zero(Tensor& d);
-  static void Randomize(Tensor& val, real scale);
+  static void Randomize(Tensor& val, cnn::real scale);
   static void Randomize(Tensor& d);
   // sample some bernoulli random variables and scale them by scale
-  static void RandomBernoulli(Tensor& val, real p, real scale = 1.0);
-  static void RandomizeNormal(real mean, real stddev, Tensor& val);
+  static void RandomBernoulli(Tensor& val, cnn::real p, cnn::real scale = 1.0);
+  static void RandomizeNormal(cnn::real mean, cnn::real stddev, Tensor& val);
   // AccessElement and SetElement are very, very slow (potentially) - use appropriately
-  static float AccessElement(const Tensor& v, int index);
-  static float AccessElement(const Tensor& v, const Dim& index);
-  static void SetElement(const Tensor& v, int index, float value);
+  static cnn::real AccessElement(const Tensor& v, int index);
+  static cnn::real AccessElement(const Tensor& v, const Dim& index);
+  static void SetElement(const Tensor& v, int index, cnn::real value);
 
-  static void SetElements(const Tensor& v, const std::vector<float>& vec);
+  static void SetElements(const Tensor& v, const std::vector<cnn::real>& vec);
   static void CopyElements(const Tensor& v, const Tensor& v_src);
 };
-real rand01();
+cnn::real rand01();
 int rand0n(int n);
-real rand_normal();
+cnn::real rand_normal();
 int rand0n_uniform(int n);
 
 #define LZERO -57.00
