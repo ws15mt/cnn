@@ -7,13 +7,15 @@ REM
 set WORKDIR=.
 set DATADIR=c:\data\ptbdata
 set BINDIR=C:\dev\cnn\msbuildcuda\examples\Release
-REM set BINDIR=C:\dev\cnn\msbuild\examples\Release
+set BINDIR=C:\dev\cnn\msbuild\examples\Release
 
 mkdir %WORKDIR%\logs
 mkdir %WORKDIR%\models
 
 
 call %BINDIR%\rnnlm2.exe --lstm --layers 2 --seed 127 --parameters %WORKDIR%\models\lstm.l2.h200.mdl --hidden 200 -t %DATADIR%\ptb.trn -d %DATADIR%\ptb.dev  > %WORKDIR%\logs\train.lstm.l2.hd200.log 2>&1
+REM call %BINDIR%\rnnlm2.exe --checkgrad true --lstm --layers 2 --seed 127 --parameters %WORKDIR%\models\lstm.l2.h200.mdl --hidden 200 -t %DATADIR%\ptb.trn -d %DATADIR%\ptb.dev  > %WORKDIR%\logs\train.lstm.l2.hd200.log 2>&1
+
 
 call %BINDIR%\rnnlm2.exe --lstm --layers 2 --seed 127 --initialise %WORKDIR%\models\lstm.l2.h200.mdl --hidden 200 -t %DATADIR%\ptb.trn --test %DATADIR%\ptb.tst  > %WORKDIR%\logs\tst.lstm.l2.hd200.log 2>&1
 
