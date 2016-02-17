@@ -1,6 +1,7 @@
 #include "cnn/exec.h"
 
 #include "cnn/param-nodes.h"
+#include "cnn/expr-xtra.h"
 
 using namespace std;
 
@@ -160,8 +161,8 @@ void SimpleExecutionEngine::backward(VariableIndex from_where, cnn::real * kScal
     }
     ai = 0;
     for (VariableIndex arg : node->args) {
-      if (needs_derivative[arg]) {
-        node->backward(xs, nfxs[i], ndEdfs[i], ai, ndEdfs[arg]);
+        if (needs_derivative[arg]) {
+            node->backward(xs, nfxs[i], ndEdfs[i], ai, ndEdfs[arg]);
       }
       ++ai;
     }
