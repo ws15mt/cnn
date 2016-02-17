@@ -3,13 +3,15 @@ C++ neural network library
 
 ## Introduction
 
-This toolkit is folked from Chis Dyer's CNN toolkit. It has however been extensively developed since then. The following features and improvements are made. 
+This toolkit is folked from Chris Dyer's CNN toolkit. It has however been extensively developed since then. The following features and improvements are made. 
 
 ### Features
 
 Data parallel : Support loading multiple sentences so that training can be efficiently run. 
 
-GPU : Many CPU function calls have been extended to run on GPUs. 
+GPU : Many CPU function calls have been extended to run on GPUs.
+
+Double precision: The code can be built with double precision. 
 
 #### Supported Modeling Techniques
 
