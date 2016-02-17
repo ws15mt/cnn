@@ -57,21 +57,35 @@ both `Eigen` and `cnn`.
 For windows, you need to have prebuild Boost library downloaded from 
 http://boost.teeks99.com/
 
-##### Using Eigen as the backend
+Pick the one that matches your Visual Studio version. For example, the following is a link to Visual Studio 2013 Win64
+
+https://sourceforge.net/projects/boost/files/boost-binaries/1.59.0/boost_1_59_0-msvc-12.0-64.exe/download
+
+Once Boost is installed, make two directories under cnn. One directory is for building CPU build and the other directory is for GPU build.
+ 
+##### CPU-build : Using Eigen as the backend
    
-This would be the same procedure as above, except that we build a x64 system. The following builds a x64 system for Visual Studio 2013. 
+First make a build directory:
+
+mkdir msbuild 
+
+Then, cd to this directory
+
+cd msbuild
+
+Then make a project using the following command. The following command is for building with Visual Studio 2013. Visual Studio 2013 is recommended. Visual Studio 2012 will not be able to build. Visual Studio 2015 is too slow. It may have an improved version for Visual Studio 2015. 
+
+The following builds a Win64 bit. 
 
     cmake .. -G"Visual Studio 12 Win64" -DEIGEN3_INCLUDE_DIR=/path/to/eigen
 
-For other versions of Visual Studio, substitute 12 with corresponding version number, such as 11 for Visual Studio 2012. 
-
 To build a win32 system, no need to include -G"Visual Studio 12 Win64". 
 
-##### CUDA-enabled backend on Windows
+##### GPU-build : CUDA-enabled backend on Windows
 
 On windows need to first create a symbolic link to CUDA, e.g., 
 
-    mklink /D d:\tools\cuda "c:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.0"
+    mklink /D d:\tools\cuda "c:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.5"
     
 Make sure that CMakeLists.txt have the right cuda directories -DCUDAROOT=/path/to/cuda, and in this case is d:\tools\cuda
 
@@ -84,12 +98,6 @@ e.g.,
     cmake .. -G"Visual Studio 12 Win64" -DCUDAROOT=d:\tools\cuda -DEIGEN3_INCLUDE_DIR=d:\tools\eigen\eigen-eigen-a64c945a8fb7 -DBACKEND=cuda
 
 Only release mode is supported for CUDA. Other modes such as Debug and RelWithDebug have compilation errors. 
-
-#### Debugging
-
-If you want to see the compile commands that are used, you can run
-
-    make VERBOSE=1
 
 #### Training Models
 
@@ -140,9 +148,8 @@ sgd.update(1.0);
 
 Note that this very simple example that doesn't cover things like memory initialization, reading/writing models, recurrent/LSTM networks, or adding biases to functions. The best way to get an idea of how to use cnn for real is to look in the `example` directory, particularly starting with the simplest `xor` example.
 
-#### Others
+### Examples
 
-Kaisheng Yao is mainly working on Windows machine. So this setup on this homepage should work on Windows. If you have any questions, please send email to 
+Examples are under examples directory. A well-tested example is rnnlm2. Its experiment is at exp/lm/rnnlm2.bat.
 
-kaisheny@microsoft.com
 
