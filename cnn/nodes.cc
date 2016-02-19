@@ -12,7 +12,8 @@
 #include "cnn/cuda.h"
 #include "cnn/gpu-ops.h"
 #pragma comment(lib,"cublas.lib")
-/// need to include library C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.0\lib\x64 that has cublas.lib to project
+#pragma comment(lib,"cudart_static.lib")
+/// need to include library C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.5\lib\x64 that has cublas.lib to project
 using namespace cnn::gpu;
 #endif
 
@@ -1374,36 +1375,74 @@ void PickElement::backward_impl(const vector<const Tensor*>& xs,
 // y = (x_1)[start:end]
 // slice of vector from index start (inclusive) to index end (exclusive)
 void PickRange::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
-  assert(xs.size() == 1);
-  auto x = **xs[0];
-  assert(x.cols() == 1);
-  assert(start >= 0);
-  assert(end <= x.rows());
-  assert(start < end);
-  assert(int(fx.d.rows()) == int(end-start));
+    assert(xs.size() == 1);
+    auto x = **xs[0];
+    assert(x.cols() == 1);
+    assert(start >= 0);
+    assert(end <= x.rows());
+    assert(start < end);
+    assert(int(fx.d.rows()) == int(end - start));
 #if HAVE_CUDA
-  CUDA_CHECK(cudaMemcpyAsync(&fx.v[0], &xs[0]->v[start], sizeof(cnn::real) * (end-start), cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpyAsync(&fx.v[0], &xs[0]->v[start], sizeof(cnn::real) * (end-start), cudaMemcpyDeviceToDevice));
 #else
-  (*fx) = x.block(start, 0, end-start, 1);
+    (*fx) = x.block(start, 0, end - start, 1);
 #endif
 }
 
 // derivative is 0 in all dimensions except the slice range
 void PickRange::backward_impl(const vector<const Tensor*>& xs,
-                    const Tensor& fx,
-                    const Tensor& dEdf,
-                    unsigned i,
-                    Tensor& dEdxi) const {
-  assert(i == 0);
-  assert(int(dEdf.d.rows()) == int(end-start));
-  assert(dEdf.d.cols() == 1);
+    const Tensor& fx,
+    const Tensor& dEdf,
+    unsigned i,
+    Tensor& dEdxi) const {
+    assert(i == 0);
+    assert(int(dEdf.d.rows()) == int(end - start));
+    assert(dEdf.d.cols() == 1);
 #if HAVE_CUDA
-  if (sizeof(cnn::real) == sizeof(float))
-      CUBLAS_CHECK(cublasSaxpy(cublas_handle, end - start, reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(dEdf.v), 1, reinterpret_cast<float*>(&dEdxi.v[start]), 1));
-  else if (sizeof(cnn::real) == sizeof(double))
-      CUBLAS_CHECK(cublasDaxpy(cublas_handle, end - start, reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(dEdf.v), 1, reinterpret_cast<double*>(&dEdxi.v[start]), 1));
+    if (sizeof(cnn::real) == sizeof(float))
+        CUBLAS_CHECK(cublasSaxpy(cublas_handle, end - start, reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(dEdf.v), 1, reinterpret_cast<float*>(&dEdxi.v[start]), 1));
+    else if (sizeof(cnn::real) == sizeof(double))
+        CUBLAS_CHECK(cublasDaxpy(cublas_handle, end - start, reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(dEdf.v), 1, reinterpret_cast<double*>(&dEdxi.v[start]), 1));
 #else
-  (*dEdxi).block(start, 0, end-start, 1) += (*dEdf);
+    (*dEdxi).block(start, 0, end - start, 1) += (*dEdf);
+#endif
+}
+
+// x_1 is a matrix
+// y = x_1[start_column: start_column + rows * (end_column - start_column)]
+// (start_column inclusive, end_column exclusive)
+void ColumnSlices::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    assert(xs.size() == 1);
+    auto x = **xs[0];
+    assert(x.cols() >= 1);
+    assert(start_column >= 0);
+    assert(rows <= x.rows());
+    assert(start_column < end_column);
+    assert(int(fx.d.rows()) == int(rows));
+#if HAVE_CUDA
+    fx.v == &xs[0]->v[start_column*rows];
+//    CUDA_CHECK(cudaMemcpyAsync(&fx.v[0], &xs[0]->v[start], sizeof(cnn::real) * (end-start), cudaMemcpyDeviceToDevice));
+#else
+    (*fx) = x.block(0, start_column, rows, end_column - start_column);
+#endif
+}
+
+// derivative is 0 in all dimensions except the slice range
+void ColumnSlices::backward_impl(const vector<const Tensor*>& xs,
+    const Tensor& fx,
+    const Tensor& dEdf,
+    unsigned i,
+    Tensor& dEdxi) const {
+    assert(i == 0);
+    assert(int(dEdf.d.rows()) == int(rows));
+    assert(dEdf.d.cols() == end_column - start_column);
+#if HAVE_CUDA
+    if (sizeof(cnn::real) == sizeof(float))
+        CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows * (end_column - start_column), reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(dEdf.v), 1, reinterpret_cast<float*>(&dEdxi.v[rows * start_column]), 1));
+    else if (sizeof(cnn::real) == sizeof(double))
+        CUBLAS_CHECK(cublasDaxpy(cublas_handle, rows * (end_column - start_column), reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(dEdf.v), 1, reinterpret_cast<double*>(&dEdxi.v[rows * start_column]), 1));
+#else
+    (*dEdxi).block(0, start_column, rows, end_column -start_column) += (*dEdf);
 #endif
 }
 
