@@ -108,10 +108,20 @@ public:
     void train(Model &model, Proc &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs);
     void REINFORCEtrain(Model &model, Proc &am, Proc &am_agent_mirrow, Corpus &training, Corpus &devel, Trainer &sgd, string out_file, Dict & td, int max_epochs, int nparallel, cnn::real& largest_cost, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0);
     void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training, bool do_gradient_check);
+    
+    /** report perplexity 
+
+    @param words_s the word count in the source side
+    @param words_t the word count in the target side
+
+    @return entrpy loss
+    */
+    cnn::real testPPL(Model &model, Proc &am, Corpus &devel, NumTurn2DialogId& info, string out_file, bool segmental_training, cnn::real& words_s, cnn::real& words_t);
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & td, NumTurn2DialogId& test_corpusinfo, bool segmental_training, const string& score_embedding_fn = "");
     void test(Model &model, Proc &am, Corpus &devel, string out_file, Dict & sd);
     void test_segmental(Model &model, Proc &am, Corpus &devel, string out_file, Dict & sd);
     void test(Model &model, Proc &am, TupleCorpus &devel, string out_file, Dict & sd, Dict & td);
+    
     void dialogue(Model &model, Proc &am, string out_file, Dict & td);
 
     void collect_sample_responses(Proc& am, Corpus &training);
@@ -196,7 +206,7 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
         while (ndutt > 0)
         {
             if (segmental_training)
-                segmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+                segmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, false);
             else
                 nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
 
@@ -237,6 +247,50 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
     }
 
     of.close();
+}
+
+/**
+Test perplexity on the corpus
+*/
+template <class AM_t>
+cnn::real TrainProcess<AM_t>::testPPL(Model &model, AM_t &am, Corpus &devel, NumTurn2DialogId&  test_corpusinfo, string out_file, bool segmental_training, cnn::real & ddchars_s, cnn::real& ddchars_t)
+{
+    unsigned lines = 0;
+
+    ofstream of(out_file, ios::app);
+
+    unsigned si = devel.size(); /// number of dialgoues in training
+
+    Timer iteration("completed in");
+
+    cnn::real ddloss = 0;
+    ddchars_s = 0;
+    ddchars_t = 0;
+
+    vector<bool> vd_selected(devel.size(), false);  /// track if a dialgoue is used
+    size_t id_stt_diag_id = 0;
+    PDialogue vd_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
+    vector<int> id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, test_corpusinfo);
+
+    size_t ndutt = id_sel_idx.size();
+
+    while (ndutt > 0)
+    {
+        if (segmental_training)
+            segmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, false);
+        else
+            nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+
+        id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, test_corpusinfo);
+        ndutt = id_sel_idx.size();
+
+    }
+
+    cerr << "\n***Test [lines =" << lines << " out of total " << devel.size() << " lines ] E = " << (ddloss / ddchars_t) << " ppl=" << exp(ddloss / ddchars_t) << ' ';
+
+    of.close();
+
+    return ddloss;
 }
 
 /** warning, the test function use the true past response as the context, when measure bleu score
@@ -1039,48 +1093,16 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
         // show score on dev data?
         report++;
 
-        if (devel.size() > 0 && (floor(sgd.epoch) != prv_epoch
-                                 || (b_inside_logic && (report % dev_every_i_reports == 0
-                                                        || fmod(lines, (cnn::real)training.size()) == 0.0)))) 
+        if (b_inside_logic && devel.size() > 0 && (floor(sgd.epoch) != prv_epoch
+                                 || (report % dev_every_i_reports == 0
+                                                        || fmod(lines, (cnn::real)training.size()) == 0.0))) 
         {
             cnn::real ddloss = 0;
             cnn::real ddchars_s = 0;
             cnn::real ddchars_t = 0;
 
-            {
-                vector<bool> vd_selected(devel.size(), false);  /// track if a dialgoue is used
-                size_t id_stt_diag_id = 0;
-                PDialogue vd_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
-                vector<int> id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, devel_numturn2did);
-                size_t ndutt = id_sel_idx.size();
+            ddloss = testPPL(model, am, devel, devel_numturn2did, out_file + ".dev.log", segmental_training, ddchars_s, ddchars_t);
 
-                if (verbose)
-                {
-                    cerr << "selected " << ndutt << " :  ";
-                    for (auto p : id_sel_idx)
-                        cerr << p << " ";
-                    cerr << endl;
-                }
-
-                while (ndutt > 0)
-                {
-                    if (segmental_training)
-                        segmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, false);
-                    else
-                        nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
-
-                    id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, devel_numturn2did);
-                    ndutt = id_sel_idx.size();
-
-                    if (verbose)
-                    {
-                        cerr << "selected " << ndutt << " :  ";
-                        for (auto p : id_sel_idx)
-                            cerr << p << " ";
-                        cerr << endl;
-                    }
-                }
-            }
             ddloss = smoothed_ppl(ddloss);
             if (ddloss < best) {
                 best = ddloss;
@@ -1651,9 +1673,8 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
     int max_epochs, int nparallel, int epochsize, bool segmental_training,
     bool do_gradient_check)
 {
-    // a mirrow of the agent to generate decoding results so that their results can be evaluated
-    // this is not efficient implementation, better way is to share model parameters
     cnn::real largest_cost = 9e+99;
+    cnn::real largest_dev_cost = 9e+99;
 
     ifstream ifs(train_filename);
     int trial = 0;
@@ -1678,6 +1699,24 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
             out.close();
 
             sgd.update_epoch();
+
+            cnn::real ddloss, ddchars_s, ddchars_t;
+            ddloss = testPPL(model, am, devel, devel_numturn2did, out_file + ".dev.log", segmental_training, ddchars_s, ddchars_t);
+
+            ddloss = smoothed_ppl(ddloss);
+            if (ddloss < largest_dev_cost) {
+                /// save the model with the best performance on the dev set
+                largest_dev_cost = ddloss;
+
+                ofstream out(out_file, ofstream::out);
+                boost::archive::text_oarchive oa(out);
+                oa << model;
+                out.close();
+            }
+            else{
+                sgd.eta0 *= 0.5; /// reduce learning rate
+                sgd.eta *= 0.5; /// reduce learning rate
+            }
         }
 
         batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check, false);
@@ -2424,9 +2463,9 @@ void ClassificationTrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpu
         // show score on dev data?
         report++;
 
-        if (devel.size() > 0 && (floor(sgd.epoch) != prv_epoch
-                                 || (b_inside_logic && (report % dev_every_i_reports == 0 
-                                                     || fmod(lines, (cnn::real)training.size()) == 0.0)))) {
+        if (b_inside_logic && devel.size() > 0 && (floor(sgd.epoch) != prv_epoch
+                                 || (report % dev_every_i_reports == 0 
+                                                     || fmod(lines, (cnn::real)training.size()) == 0.0))) {
             cnn::real ddloss = 0;
             cnn::real ddchars_s = 0;
             cnn::real ddchars_t = 0;
