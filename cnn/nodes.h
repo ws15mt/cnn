@@ -804,6 +804,26 @@ struct PickRange : public Node {
   unsigned end;
 };
 
+// this doesn't copy memory but point to so should be faster than pick range
+// also this works on matrices instead of vectors in pickrange
+// x_1 is a matrix
+// y = x_1[start_column: start_column + rows * (end_column - start_column)]
+// (start_column inclusive, end_column exclusive)
+struct ColumnSlices : public Node {
+    explicit ColumnSlices(const std::initializer_list<VariableIndex>& a, unsigned rows, unsigned start_column, unsigned end_column) : Node(a), start_column(start_column), rows(rows), end_column(end_column) {}
+    std::string as_string(const std::vector<std::string>& arg_names) const override;
+    Dim dim_forward(const std::vector<Dim>& xs) const override;
+    void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
+    void backward_impl(const std::vector<const Tensor*>& xs,
+        const Tensor& fx,
+        const Tensor& dEdf,
+        unsigned i,
+        Tensor& dEdxi) const override;
+    unsigned start_column;
+    unsigned rows;
+    unsigned end_column;
+};
+
 // represents a simple vector of 0s
 struct Zeroes : public Node {
   explicit Zeroes(const Dim& d) : dim(d) {}

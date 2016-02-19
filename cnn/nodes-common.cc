@@ -601,13 +601,32 @@ string PickRange::as_string(const vector<string>& arg_names) const {
 }
 
 Dim PickRange::dim_forward(const vector<Dim>& xs) const {
-  assert(xs.size() == 1);
-  if (!LooksLikeVector(xs[0])) {
-    ostringstream s; s << "Bad input dimensions in PickElement: " << xs;
-    throw std::invalid_argument(s.str());
-  }
-  assert(end <= xs[0][0]);
-  return Dim({end - start}, xs[0].bd);
+    assert(xs.size() == 1);
+    if (!LooksLikeVector(xs[0])) {
+        ostringstream s; s << "Bad input dimensions in PickRange: " << xs;
+        throw std::invalid_argument(s.str());
+    }
+    assert(end <= xs[0][0]);
+    return Dim({ end - start }, xs[0].bd);
+}
+
+string ColumnSlices::as_string(const vector<string>& arg_names) const {
+    ostringstream s;
+    s << "rows (" << rows << ") columnslice(" << arg_names[0] << ',' << start_column << ':' << end_column << ')';
+    return s.str();
+}
+
+Dim ColumnSlices::dim_forward(const vector<Dim>& xs) const {
+    assert(xs.size() == 1);
+    if (!LooksLikeMatrix(xs[0])) {
+        ostringstream s; s << "Bad input dimensions in PointColumns: " << xs;
+        throw std::invalid_argument(s.str());
+    }
+    assert(rows == xs[0][0]);
+    assert(end_column <= xs[0][1]);
+    assert(end_column > start_column);
+    unsigned ncolumns = (unsigned)((int)end_column - (int)start_column);
+    return Dim({ rows, ncolumns}, xs[0].bd);
 }
 
 string MatrixMultiply::as_string(const vector<string>& arg_names) const {
