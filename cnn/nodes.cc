@@ -12,6 +12,7 @@
 #include "cnn/cuda.h"
 #include "cnn/gpu-ops.h"
 #pragma comment(lib,"cublas.lib")
+#pragma comment(lib,"cudart_static.lib")
 /// need to include library C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.5\lib\x64 that has cublas.lib to project
 using namespace cnn::gpu;
 #endif
