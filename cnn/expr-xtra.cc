@@ -98,6 +98,30 @@ vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source,
     return source_embeddings;
 }
 
+/// organise data in the following format
+/// [<first sentence> <second sentence> ...]
+/// for example with two sentences with length N1 for the first sentence and length N2 for the second sentence
+/// [v_spk1_time0 v_spk1_time1 ... v_spk1_timeN1 | v_spk2_time0 v_spk2_time1 ... v_spk2_timeN2]
+vector<Expression> embedding_spkfirst(const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, unsigned feat_dim)
+{
+    size_t nutt = source.size();
+
+    std::vector<Expression> source_embeddings;
+
+    Expression i_x_t;
+
+    for (size_t k = 0; k < nutt; k++)
+    {
+        vector<Expression> vm;
+        for (int t = 0; t < source[k].size(); ++t) {
+            vm.push_back(lookup(cg, p_cs, source[k][t]));
+        }
+        source_embeddings.push_back(concatenate_cols(vm));
+    }
+
+    return source_embeddings;
+}
+
 /// return an expression for the time embedding weight
 Expression time_embedding_weight(size_t t, unsigned feat_dim, unsigned slen, ComputationGraph& cg, map<size_t, map<size_t, tExpression>> & m_time_embedding_weight)
 {
@@ -177,6 +201,35 @@ vector<Expression> average_embedding(unsigned & slen, const vector<vector<int>>&
     return source_embeddings;
 }
 
+/// simple average of word embeddings
+/// vsrc is a vector of expression. 
+/// assumes that each expression is a matrix for one sentence. 
+/// then the average operation is on each sentence
+vector<Expression> average_embedding(const vector<unsigned>& slen, int featdim, const vector<Expression>& vsrc)
+{
+    size_t nutt = slen.size();
+
+    std::vector<Expression> source_embeddings;
+
+    Expression i_x_t;
+
+    for (int k = 0; k < nutt; k++)
+    {
+        vector<Expression> vm;
+        Expression this_src = reshape(vsrc[k], { slen[k] * featdim });
+        int t = 0;
+        while (t < slen[k] * featdim )
+        {
+            Expression xij = pickrange(this_src, t, t + featdim); 
+            vm.push_back(xij);
+            t+=featdim;
+        }
+        i_x_t = average(vm);
+        source_embeddings.push_back(i_x_t);
+    }
+    return source_embeddings;
+}
+
 vector<unsigned> each_sentence_length(const vector<vector<int>>& source)
 {
     /// get each sentence length
@@ -201,11 +254,13 @@ bool similar_length(const vector<vector<int>>& source)
     return (fabs((cnn::real)(imax - imin)) < 3.0);
 }
 
-/// src is without reduntent info
-/// v_src is without reduntent info
+/// compute attention weights
 vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<unsigned>& v_slen,
-    Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, cnn::real fscale )
+    Expression& i_va, // to get attention weight
+    Expression& i_Wa, // for target side transformation to alignment space
+    Expression& i_h_tm1, 
+    Expression& src, 
+    unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, cnn::real fscale )
 {
     Expression i_c_t;
     Expression i_e_t;
@@ -216,33 +271,29 @@ vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<
         slen += p;
 
     Expression i_wah = i_Wa * i_h_tm1;  /// [d nutt]
-    Expression i_wah_reshaped = reshape(i_wah, { nutt * a_dim });
+    int stt = 0; 
     for (size_t k = 0; k < nutt; k++)
     {
-        Expression i_wah_each = pickrange(i_wah_reshaped, k * a_dim, (k + 1)*a_dim);  /// [d]
-        /// need to do subsampling
-        i_wah_rep.push_back(concatenate_cols(std::vector<Expression>(v_slen[k], i_wah_each)));  /// [d v_slen[k]]
+        Expression i_wah_each = columnslices(i_wah, a_dim, stt, stt + 1); 
+        i_wah_rep.push_back(concatenate_cols(vector<Expression>(v_slen[k], i_wah_each)));   /// [d v_slen[k]]
+        stt ++;
     }
-    Expression i_wah_m = concatenate_cols(i_wah_rep);  // [d \sum_k v_slen[k]]
-
-    i_e_t = transpose(tanh(i_wah_m + src)) * i_va;  // [\sum_k v_slen[k] 1]
-
-    Expression i_alpha_t;
 
     vector<Expression> v_input;
     int istt = 0;
     for (size_t k = 0; k < nutt; k++)
     {
+        Expression i_this_src = columnslices(src, a_dim, istt, istt + v_slen[k]);
+        Expression i_e_t = transpose(tanh(i_wah_rep[k] + i_this_src)) * i_va;
         Expression i_input;
-        int istp = istt + v_slen[k];
 
-        Expression wgt = softmax(fscale * pickrange(i_e_t, istt, istp));
+        Expression wgt = softmax(fscale * i_e_t);
         v_wgt.push_back(wgt);
 
         i_input = v_src[k] * wgt;  // [D v_slen[k]] x[v_slen[k] 1] = [D 1]
         v_input.push_back(i_input);
 
-        istt = istp;
+        istt += v_slen[k];
     }
 
     return v_input;
