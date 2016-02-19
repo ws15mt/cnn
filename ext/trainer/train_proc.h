@@ -98,7 +98,7 @@ public:
 
     void batch_train(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real& largest_cost, bool do_segmental_training, bool update_sgd, 
-        bool doGradientCheck);
+        bool doGradientCheck, bool b_inside_logic);
     void supervised_pretrain(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, cnn::real target_ppl, int min_diag_id,
         bool bcharlevel = false, bool nosplitdialogue = false);
@@ -935,12 +935,12 @@ void TrainProcess<AM_t>::REINFORCEtrain(Model &model, AM_t &am, AM_t &am_agent_m
 
 
 /* the following does mutiple sentences per minibatch
-but I comment it out 
+@ b_inside_logic : use logic inside of batch to do evaluation on the dev set. if it is false, do dev set evaluation only if sgd.epoch changes
 */
 template <class AM_t>
 void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
     Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
-    bool sgd_update_epochs, bool do_gradient_check)
+    bool sgd_update_epochs, bool do_gradient_check, bool b_inside_logic)
 {
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
@@ -1039,7 +1039,10 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
         // show score on dev data?
         report++;
 
-        if (devel.size() > 0 && (floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0 || fmod(lines, (cnn::real)training.size()) == 0.0)) {
+        if (devel.size() > 0 && (floor(sgd.epoch) != prv_epoch
+                                 || (b_inside_logic && (report % dev_every_i_reports == 0
+                                                        || fmod(lines, (cnn::real)training.size()) == 0.0)))) 
+        {
             cnn::real ddloss = 0;
             cnn::real ddchars_s = 0;
             cnn::real ddchars_t = 0;
@@ -1062,7 +1065,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
                 while (ndutt > 0)
                 {
                     if (segmental_training)
-                        segmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+                        segmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, false);
                     else
                         nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
 
@@ -1677,7 +1680,7 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
             sgd.update_epoch();
         }
 
-        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check);
+        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check, false);
 
         if (fmod(trial , 10) == 0)
         {
@@ -2258,7 +2261,7 @@ public:
     
     void batch_train(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
-        bool sgd_update_epochs, bool do_gradient_check);
+        bool sgd_update_epochs, bool do_gradient_check, bool b_inside_logic);
 
 };
 
@@ -2301,7 +2304,7 @@ void ClassificationTrainProcess<AM_t>::split_data_batch_train(string train_filen
             sgd.update_epoch();
         }
 
-        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check);
+        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check, false);
 
         if (fmod(trial, 50) == 0)
         {
@@ -2315,13 +2318,13 @@ void ClassificationTrainProcess<AM_t>::split_data_batch_train(string train_filen
     ifs.close();
 }
 
-/* the following does mutiple sentences per minibatch
-but I comment it out
+/* 
+@ b_inside_logic : use logic inside of batch to do evaluation on the dev set. if it is false, do dev set evaluation only if sgd.epoch changes
 */
 template <class AM_t>
 void ClassificationTrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
     Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
-    bool sgd_update_epochs, bool doGradientCheck)
+    bool sgd_update_epochs, bool doGradientCheck, bool b_inside_logic)
 {
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
@@ -2421,7 +2424,9 @@ void ClassificationTrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpu
         // show score on dev data?
         report++;
 
-        if (devel.size() > 0 && (floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0 || fmod(lines, (cnn::real)training.size()) == 0.0)) {
+        if (devel.size() > 0 && (floor(sgd.epoch) != prv_epoch
+                                 || (b_inside_logic && (report % dev_every_i_reports == 0 
+                                                     || fmod(lines, (cnn::real)training.size()) == 0.0)))) {
             cnn::real ddloss = 0;
             cnn::real ddchars_s = 0;
             cnn::real ddchars_t = 0;
@@ -2443,7 +2448,10 @@ void ClassificationTrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpu
 
                 while (ndutt > 0)
                 {
-                    nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+                    if (segmental_training)
+                        segmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, false);
+                    else
+                        nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
 
                     id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, devel_numturn2did);
                     ndutt = id_sel_idx.size();
