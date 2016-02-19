@@ -78,15 +78,15 @@ endif()
 
 
 if(WITH_CUDA_BACKEND)
-  if(CUDAROOT)
-  message("CUDA root : ${CUDAROOT}")
+  if(CUDA_ROOT)
+  message("CUDA root : ${CUDA_ROOT}")
   else()
-  message("Need to define CUDA root by runing -DCUDAROOT")
+  message("Need to define CUDA root by runing -DCUDA_ROOT")
   endif()
 
+  find_package(CUDA REQUIRED)
   set(CUDA_INCLUDE_DIRS ${CUDA_ROOT}/include)
   set(CUDA_LIBRARIES ${CUDA_ROOT}/lib/x64)
-  find_package(CUDA REQUIRED)
 
   set(CUDA_TOOLKIT_ROOT_DIR ${CUDA_ROOT})
   include_directories(SYSTEM ${CUDA_INCLUDE_DIRS})
