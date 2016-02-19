@@ -103,6 +103,7 @@ Expression sum_batches(const Expression& x);
 Expression pick(const Expression& x, unsigned v);
 Expression pick(const Expression& x, unsigned* pv);
 Expression pickrange(const Expression& x, unsigned v, unsigned u);
+Expression columnslices(const Expression& x, unsigned row, unsigned start_column, unsigned exclusive_end_column);
 //Expression pickneglogsoftmax(const Expression& x, unsigned v);
 //Expression pickneglogsoftmax(const Expression& x, const std::vector<unsigned> & v);
 

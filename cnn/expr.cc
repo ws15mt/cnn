@@ -82,7 +82,8 @@ Expression fold_rows(const Expression& x, unsigned nrows) { return Expression(x.
 
 Expression pick(const Expression& x, unsigned v) { return Expression(x.pg, x.pg->add_function<PickElement>({x.i}, v)); }
 Expression pick(const Expression& x, unsigned* pv) { return Expression(x.pg, x.pg->add_function<PickElement>({x.i}, pv)); }
-Expression pickrange(const Expression& x, unsigned v, unsigned u) { return Expression(x.pg, x.pg->add_function<PickRange>({x.i}, v, u)); }
+Expression pickrange(const Expression& x, unsigned v, unsigned u) { return Expression(x.pg, x.pg->add_function<PickRange>({ x.i }, v, u)); }
+Expression columnslices(const Expression& x, unsigned row, unsigned start_column, unsigned exclusive_end_column) { return Expression(x.pg, x.pg->add_function<ColumnSlices>({ x.i }, row, start_column, exclusive_end_column)); }
 
 //Expression pickneglogsoftmax(const Expression& x, unsigned v) { return Expression(x.pg, x.pg->add_function<PickNegLogSoftmax>({x.i}, v)); }
 //Expression pickneglogsoftmax(const Expression& x, const std::vector<unsigned> & v) { return Expression(x.pg, x.pg->add_function<PickNegLogSoftmax>({x.i}, v)); }

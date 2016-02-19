@@ -43,6 +43,10 @@ Expression bidirectional(int slen, const vector<int>& source, ComputationGraph& 
 /// [v_spk1_time0 v_spk2_time0 | v_spk1_time1 v_spk2_tim1 ]
 vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, vector<cnn::real>& zero, unsigned feat_dim);
 
+/// organise data in the following format
+/// [v_spk1_time0 v_spk1_time1 ... v_spk1_timeN1 | v_spk2_time0 v_spk2_time1 ... v_spk2_timeN2]
+vector<Expression> embedding_spkfirst(const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, unsigned feat_dim);
+
 /// return an expression for the time embedding weight
 typedef std::map<size_t, Expression> tExpression;
 Expression time_embedding_weight(size_t t, unsigned feat_dim, unsigned slen, ComputationGraph & cg, map<size_t, map<size_t, tExpression>> & m_time_embedding_weight);
@@ -53,6 +57,12 @@ vector<Expression> time_embedding(unsigned & slen, const vector<vector<int>>& so
 
 /// simple average of word embeddings
 vector<Expression> average_embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs);
+
+/// simple average of word embeddings
+/// vsrc is a vector of expression. 
+/// assumes that each expression is a matrix for one sentence. 
+/// then the average operation is on each sentence
+vector<Expression> average_embedding(const vector<unsigned>& slen, int featdim, const vector<Expression>& vsrc);
 
 vector<unsigned> each_sentence_length(const vector<vector<int>>& source);
 
@@ -246,8 +256,11 @@ Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, Com
 vector<Expression> convert_to_vector(Expression & in, unsigned dim, unsigned nutt);
 
 vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<unsigned>& v_slen,
-    Expression i_U, Expression src, Expression i_va, Expression i_Wa,
-    Expression i_h_tm1, unsigned a_dim, unsigned nutt, vector<Expression>& wgt, cnn::real fscale = 1.0);
+    Expression& i_va, // to get attention weight
+    Expression& i_Wa, // for target side transformation to alignment space
+    Expression& i_h_tm1, 
+    Expression & src, 
+    unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, cnn::real fscale);
 vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, const vector<unsigned>& v_slen,
     Expression i_va, Expression i_Wa,
     Expression i_h_tm1, unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, cnn::real fscale = 1.0);
