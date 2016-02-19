@@ -115,15 +115,17 @@ Then make a directory
 
 	cd msbuildcuda
 
-When building, make sure that CMakeLists.txt have the right cuda directories -DCUDAROOT=/path/to/cuda, and in this case is d:\tools\cuda
+When building, make sure that CMakeLists.txt have the right cuda directories -DCUDA_ROOT=/path/to/cuda, and in this case is d:\tools\cuda
 
 Build using
 
-    cmake .. -G"Visual Studio 12 Win64" -DBACKEND=cuda -DEIGEN3_INCLUDE_DIR=/path/to/eigen -DCUDAROOT=/path/to/cuda
+    cmake .. -G "Visual Studio 12 Win64" -DBACKEND=cuda -DEIGEN3_INCLUDE_DIR=/path/to/eigen -DCUDA_ROOT=/path/to/cuda
 
 e.g., 
 
-    cmake .. -G"Visual Studio 12 Win64" -DCUDAROOT=d:\tools\cuda -DEIGEN3_INCLUDE_DIR=d:\tools\eigen\eigen-eigen-a64c945a8fb7 -DBACKEND=cuda
+    cmake .. -G "Visual Studio 12 Win64" -DCUDA_ROOT=d:/tools/cuda -DEIGEN3_INCLUDE_DIR=d:\tools\eigen\eigen-eigen-a64c945a8fb7 -DBACKEND=cuda
+
+Notice that the path to cuda needs to use '/' instead of '\'. 
 
 Only release mode is supported for CUDA. Other modes such as Debug and RelWithDebug have compilation errors. 
 
