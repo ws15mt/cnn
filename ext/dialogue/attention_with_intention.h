@@ -189,7 +189,7 @@ Expression AttentionWithIntention<Builder, Decoder>::decoder_step(vector<int> tr
     concatenate_cols(v_x_t);
 
     vector<Expression> alpha;
-    vector<Expression> v_obs = attention_to_source(v_src, src_len, i_U, src, i_va, i_Wa, i_h_tm1, hidden_dim[ALIGN_LAYER], nutt, alpha);
+    vector<Expression> v_obs = attention_to_source(v_src, src_len, i_va, i_Wa, i_h_tm1, src, hidden_dim[ALIGN_LAYER], nutt, alpha, 1.0);
 
     vector<Expression> v_input;
     for (size_t k = 0; k < nutt; k++)
@@ -675,7 +675,7 @@ protected:
         concatenate_cols(v_x_t);
 
         vector<Expression> alpha;
-        vector<Expression> v_obs = attention_to_source(v_src, src_len, i_U, src, i_va, i_Wa, i_h_tm1, hidden_dim[ALIGN_LAYER], nutt, alpha);
+        vector<Expression> v_obs = attention_to_source(v_src, src_len, i_va, i_Wa, i_h_tm1, src, hidden_dim[ALIGN_DIM], nutt, alpha, 1.0);
         if (verbose)
             display_value(concatenate_cols(v_obs), cg, "v_obs");
         if (verbose)
@@ -4232,6 +4232,449 @@ public:
             Expression i_y_t = decoder_single_instance_step(target.back(), cg);
             Expression i_r_t = i_R * i_y_t;
             Expression ydist = softmax(i_r_t);
+
+            // find the argmax next word (greedy)
+            unsigned w = 0;
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
+            auto pr_w = dist[w];
+            for (unsigned x = 1; x < dist.size(); ++x) {
+                if (dist[x] > pr_w) {
+                    w = x;
+                    pr_w = dist[x];
+                }
+            }
+
+            // break potential infinite loop
+            if (t > 100) {
+                w = eos_sym;
+                pr_w = dist[w];
+            }
+
+            //        std::cerr << " " << tdict.Convert(w) << " [p=" << pr_w << "]";
+            t += 1;
+            target.push_back(w);
+        }
+
+        v_decoder_context.push_back(decoder.final_s());
+        save_context(cg);
+        serialise_context(cg);
+
+        turnid++;
+        return target;
+    }
+};
+
+/**
+Use max-entropy features or direct features
+*/
+template <class Builder, class Decoder>
+class AttMultiSource_LinearEncoder_WithMaxEntropyFeature : public AttMultiSource_LinearEncoder <Builder, Decoder>{
+protected:
+    cnn::real r_interpolate_between_response_and_direct_feature; /// scale to 
+    cnn::real r_softmax_scale; /// for attention softmax exponential scale
+public:
+    AttMultiSource_LinearEncoder_WithMaxEntropyFeature(Model& model,
+        unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
+        const vector<unsigned>& hidden_dims, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0) :AttMultiSource_LinearEncoder(model, vocab_size_src, vocab_size_tgt, layers, hidden_dims, hidden_replicates, additional_input, mem_slots, iscale)
+    {
+        if (verbose)
+            cout << "start AttMultiSource_LinearEncoder_WithMaxEntropyFeature" << endl;
+
+        r_interpolate_between_response_and_direct_feature = 0.7;
+        r_softmax_scale = 1.0;
+
+        unsigned int align_dim = hidden_dim[ALIGN_LAYER];
+        p_Wa = model.add_parameters({ align_dim, hidden_dim[DECODER_LAYER] }, iscale, "p_Wa");
+        p_va = model.add_parameters({ align_dim }, iscale, "p_va");
+        p_U  = model.add_parameters({ hidden_dim[ALIGN_LAYER], hidden_dim[ENCODER_LAYER] }, iscale, "p_U");
+    }
+
+    void start_new_single_instance(const std::vector<int> &prv_response, const std::vector<int> &src, ComputationGraph &cg)
+    {
+        std::vector<std::vector<int>> source(1, src);
+        std::vector<std::vector<int>> prv_resp;
+        if (prv_response.size() > 0)
+            prv_resp.resize(1, prv_response);
+        start_new_instance(prv_resp, source, cg);
+    }
+
+    void start_new_instance(const std::vector<std::vector<int>> &prv_response,
+        const std::vector<std::vector<int>> &source,
+        ComputationGraph &cg)
+    {
+        nutt = source.size();
+        std::vector<Expression> v_tgt2enc;
+
+        if (verbose)
+            cout << "start_new_instance" << endl;
+
+        if (i_h0.size() == 0)
+        {
+            i_h0.resize(p_h0.size());
+
+            for (int k = 0; k < p_h0.size(); k++)
+            {
+                i_h0[k] = concatenate_cols(vector<Expression>(nutt, parameter(cg, p_h0[k])));
+            }
+
+            combiner.new_graph(cg);
+
+            if (last_context_exp.size() == 0)
+                combiner.start_new_sequence();
+            else
+                combiner.start_new_sequence(last_context_exp);
+            combiner.set_data_in_parallel(nutt);
+
+            i_R = parameter(cg, p_R); // hidden -> word rep parameter
+            i_bias = parameter(cg, p_bias);
+
+            i_U = parameter(cg, p_U);
+
+            i_cxt_to_decoder = parameter(cg, p_cxt_to_decoder);
+            i_enc_to_intention = parameter(cg, p_enc_to_intention);
+
+            i_zero = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
+
+            attention_output_for_this_turn.clear();
+
+            i_Wa = parameter(cg, p_Wa);
+            i_va = parameter(cg, p_va);
+
+            attention_layer.new_graph(cg);
+            attention_layer.set_data_in_parallel(nutt);
+        }
+
+        std::vector<Expression> source_embeddings;
+        std::vector<Expression> v_last_decoder_state;
+
+        /// take the previous response as input
+        encoder_fwd.new_graph(cg);
+        encoder_fwd.set_data_in_parallel(nutt);
+        encoder_fwd.start_new_sequence(i_h0);
+        if (prv_response.size() > 0)
+        {
+            /// get the raw encodeing from source
+            unsigned int prvslen = 0;
+            Expression prv_response_enc = concatenate_cols(average_embedding(prvslen, prv_response, cg, p_cs));
+            encoder_fwd.add_input(prv_response_enc);
+        }
+
+        /// encode the source side input, with intial state from the previous response
+        /// this is a way to combine the previous response and the current input
+        /// notice that for just one run of the RNN, 
+        /// the state is changed to tanh(W_prev prev_response + W_input current_input) for each layer
+        encoder_bwd.new_graph(cg);
+        encoder_bwd.set_data_in_parallel(nutt);
+        encoder_bwd.start_new_sequence(encoder_fwd.final_s());
+
+        /// the source sentence has to be approximately the same length
+        src_len = each_sentence_length(source);
+        for (auto p : src_len)
+        {
+            src_words += (p - 1);
+        }
+
+        /// get the representation of inputs
+        v_src = embedding_spkfirst(source, cg, p_cs, hidden_dim[ENCODER_LAYER]); 
+        src = i_U * concatenate_cols(v_src);
+
+        /// get the raw encodeing from source
+        src_fwd = concatenate_cols(average_embedding(src_len, hidden_dim[ENCODER_LAYER], v_src));
+
+        /// combine the previous response and the current input by adding the current input to the 
+        /// encoder that is initialized from the state of the encoder for the previous response
+        encoder_bwd.add_input(src_fwd);
+
+        /// update intention, with inputs for each each layer for combination
+        /// the context hidden state is tanh(W_h previous_hidden + encoder_bwd.final_s at each layer)
+        vector<Expression> v_to_intention;
+        for (auto p : encoder_bwd.final_s())
+            v_to_intention.push_back(i_enc_to_intention* p);
+        combiner.add_input(v_to_intention);
+
+        /// decoder start with a context from intention 
+        decoder.new_graph(cg);
+        decoder.set_data_in_parallel(nutt);
+        vector<Expression> v_to_dec;
+        for (auto p : combiner.final_s())
+            v_to_dec.push_back(i_cxt_to_decoder * p);
+        decoder.start_new_sequence(v_to_dec);  /// get the intention
+
+    }
+
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
+    {
+        Expression i_c_t;
+        unsigned int nutt = trg_tok.size();
+        Expression i_h_t;  /// the decoder output before attention
+        Expression i_h_attention_t; /// the attention state
+        vector<Expression> v_x_t;
+
+        if (verbose)
+            cout << "AttMultiSource_LinearEncoder::decoder_step" << endl;
+        for (auto p : trg_tok)
+        {
+            Expression i_x_x;
+            if (p >= 0)
+                i_x_x = lookup(cg, p_cs, p);
+            else
+                i_x_x = i_zero;
+            if (verbose)
+                display_value(i_x_x, cg, "i_x_x");
+            v_x_t.push_back(i_x_x);
+        }
+
+        Expression i_obs = concatenate_cols(v_x_t);
+        Expression i_input;
+        if (attention_output_for_this_turn.size() <= turnid)
+        {
+            i_input = concatenate({ i_obs, concatenate_cols(vector<Expression>(nutt, i_zero)) });
+        }
+        else
+        {
+            i_input = concatenate({ i_obs, attention_output_for_this_turn.back() });
+        }
+
+        i_h_t = decoder.add_input(i_input);
+
+        /// return the source side representation at output position after attention
+        vector<Expression> alpha;
+        vector<Expression> v_context_to_source = attention_to_source(v_src, src_len, i_va, i_Wa, i_h_t, src, hidden_dim[ALIGN_LAYER], nutt, alpha, r_softmax_scale);
+
+        /// compute response
+        Expression concatenated_src = concatenate_cols(v_context_to_source);
+        Expression i_combined_input_to_attention = concatenate({ i_h_t, concatenated_src});
+        i_h_attention_t = attention_layer.add_input(i_combined_input_to_attention);
+
+        if (attention_output_for_this_turn.size() <= turnid)
+            attention_output_for_this_turn.push_back(i_h_attention_t);
+        else
+            /// refresh the attention output for this turn
+            attention_output_for_this_turn[turnid] = i_h_attention_t;
+
+        Expression i_output = i_R * (r_interpolate_between_response_and_direct_feature * i_h_attention_t + (1 - r_interpolate_between_response_and_direct_feature)* concatenated_src);
+
+        return i_output;
+    }
+
+    vector<Expression> build_graph(const std::vector<std::vector<int>> &current_user_input,
+        const std::vector<std::vector<int>>& target_response,
+        ComputationGraph &cg)
+    {
+        if (verbose)
+            cout << "AttMultiSource_LinearEncoder::build_graph" << endl;
+        unsigned int nutt = current_user_input.size();
+        start_new_instance(std::vector<std::vector<int>>(), current_user_input, cg);
+
+        vector<vector<Expression>> this_errs(nutt);
+        vector<Expression> errs;
+
+        Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
+        Expression i_bias = parameter(cg, p_bias);  // word bias
+
+        int oslen = 0;
+        for (auto p : target_response)
+            oslen = (oslen < p.size()) ? p.size() : oslen;
+
+        v_decoder_context.clear();
+        v_decoder_context.resize(nutt);
+        for (int t = 0; t < oslen; ++t) {
+            vector<int> vobs;
+            for (auto p : target_response)
+            {
+                if (t < p.size())
+                    vobs.push_back(p[t]);
+                else
+                    vobs.push_back(-1);
+            }
+            Expression i_y_t = decoder_step(vobs, cg);
+
+            Expression i_ydist = log_softmax(i_y_t);
+
+            Expression x_r_t = reshape(i_ydist, { vocab_size * nutt });
+
+            for (int i = 0; i < nutt; i++)
+            {
+                long offset = i * vocab_size;
+                if (t < target_response[i].size() - 1)
+                {
+                    /// only compute errors on with output labels
+                    this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
+                    tgt_words++;
+                }
+                else if (t == target_response[i].size() - 1)
+                {
+                    /// get the last hidden state to decode the i-th utterance
+                    vector<Expression> v_t;
+                    for (auto p : decoder.final_s())
+                    {
+                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
+                        int stt = i * hidden_dim[DECODER_LAYER];
+                        int stp = stt + hidden_dim[DECODER_LAYER];
+                        Expression i_t = pickrange(i_tt, stt, stp);
+                        v_t.push_back(i_t);
+                    }
+                    v_decoder_context[i] = v_t;
+                }
+            }
+        }
+
+        save_context(cg);
+
+        for (auto &p : this_errs)
+            errs.push_back(sum(p));
+        Expression i_nerr = sum(errs);
+
+        v_errs.push_back(i_nerr);
+        turnid++;
+        return errs;
+    };
+
+    vector<Expression> build_graph(const std::vector<std::vector<int>> &prv_response,
+        const std::vector<std::vector<int>> &current_user_input,
+        const std::vector<std::vector<int>>& target_response,
+        ComputationGraph &cg)
+    {
+        if (verbose)
+            cout << "AttMultiSource_LinearEncoder::build_graph" << endl;
+        unsigned int nutt = current_user_input.size();
+        start_new_instance(prv_response, current_user_input, cg);
+
+        vector<vector<Expression>> this_errs(nutt);
+        vector<Expression> errs;
+
+        Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
+        Expression i_bias = parameter(cg, p_bias);  // word bias
+
+        int oslen = 0;
+        for (auto p : target_response)
+            oslen = (oslen < p.size()) ? p.size() : oslen;
+
+        v_decoder_context.clear();
+        v_decoder_context.resize(nutt);
+        for (int t = 0; t < oslen; ++t) {
+            vector<int> vobs;
+            for (auto p : target_response)
+            {
+                if (t < p.size())
+                    vobs.push_back(p[t]);
+                else
+                    vobs.push_back(-1);
+            }
+            Expression i_y_t = decoder_step(vobs, cg);
+            Expression i_ydist = log_softmax(i_y_t);
+
+            Expression x_r_t = reshape(i_ydist, { vocab_size * nutt });
+
+            for (int i = 0; i < nutt; i++)
+            {
+                int offset = i * vocab_size;
+                if (t < target_response[i].size() - 1)
+                {
+                    /// only compute errors on with output labels
+                    this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
+                    tgt_words++;
+                }
+                else if (t == target_response[i].size() - 1)
+                {
+                    /// get the last hidden state to decode the i-th utterance
+                    vector<Expression> v_t;
+                    for (auto p : decoder.final_s())
+                    {
+                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
+                        int stt = i * hidden_dim[DECODER_LAYER];
+                        int stp = stt + hidden_dim[DECODER_LAYER];
+                        Expression i_t = pickrange(i_tt, stt, stp);
+                        v_t.push_back(i_t);
+                    }
+                    v_decoder_context[i] = v_t;
+                }
+            }
+        }
+
+        save_context(cg);
+
+        for (auto &p : this_errs)
+            errs.push_back(sum(p));
+        Expression i_nerr = sum(errs);
+
+        v_errs.push_back(i_nerr);
+        turnid++;
+        return errs;
+    };
+
+    std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict)
+    {
+        const int sos_sym = tdict.Convert("<s>");
+        const int eos_sym = tdict.Convert("</s>");
+
+        std::vector<int> target;
+        target.push_back(sos_sym);
+        int t = 0;
+        Sentence prv_response;
+
+        start_new_single_instance(prv_response, source, cg);
+
+        Expression i_bias = parameter(cg, p_bias);
+        Expression i_R = parameter(cg, p_R);
+
+        v_decoder_context.clear();
+
+        while (target.back() != eos_sym)
+        {
+            Expression i_y_t = decoder_single_instance_step(target.back(), cg);
+            Expression ydist = softmax(i_y_t);
+
+            // find the argmax next word (greedy)
+            unsigned w = 0;
+            auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
+            auto pr_w = dist[w];
+            for (unsigned x = 1; x < dist.size(); ++x) {
+                if (dist[x] > pr_w) {
+                    w = x;
+                    pr_w = dist[x];
+                }
+            }
+
+            // break potential infinite loop
+            if (t > 100) {
+                w = eos_sym;
+                pr_w = dist[w];
+            }
+
+            //        std::cerr << " " << tdict.Convert(w) << " [p=" << pr_w << "]";
+            t += 1;
+            target.push_back(w);
+        }
+
+        v_decoder_context.push_back(decoder.final_s());
+        save_context(cg);
+        serialise_context(cg);
+
+        turnid++;
+        return target;
+    }
+
+    std::vector<int> decode(const std::vector<int> &prv_response, const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict)
+    {
+        const int sos_sym = tdict.Convert("<s>");
+        const int eos_sym = tdict.Convert("</s>");
+
+        std::vector<int> target;
+        target.push_back(sos_sym);
+        int t = 0;
+
+        start_new_single_instance(prv_response, source, cg);
+
+        Expression i_bias = parameter(cg, p_bias);
+        Expression i_R = parameter(cg, p_R);
+
+        v_decoder_context.clear();
+
+        while (target.back() != eos_sym)
+        {
+            Expression i_y_t = decoder_single_instance_step(target.back(), cg);
+            Expression ydist = softmax(i_y_t);
 
             // find the argmax next word (greedy)
             unsigned w = 0;
