@@ -631,7 +631,7 @@ public:
          start_new_instance(source, cg);
 
          vector<vector<Expression>> this_errs;
-         vector<Expression> errs;
+         vector<Expression> errs(nutt);
 
          Expression i_R = parameter(cg, p_R); // hidden -> word rep parameter
          Expression i_bias = parameter(cg, p_bias);  // word bias
@@ -657,16 +657,16 @@ public:
              }
              Expression i_y_t = decoder_step(vobs, cg);
              Expression i_r_t = i_bias_mb + i_R * i_y_t;
+             Expression i_ydist = log_softmax(i_r_t);
+             Expression r_r_t = reshape(i_ydist, {vocab_size * nutt});
 
-             Expression x_r_t = reshape(i_r_t, { vocab_size * nutt });
              for (size_t i = 0; i < nutt; i++)
              {
+                 int offset = i * vocab_size;
                  if (t < osent[i].size() - 1)
                  {
                      /// only compute errors on with output labels
-                     Expression r_r_t = pickrange(x_r_t, i * vocab_size, (i + 1)*vocab_size);
-                     Expression i_ydist = log_softmax(r_r_t);
-                     this_errs[i].push_back( - pick(i_ydist, osent[i][t + 1]));
+                     this_errs[i].push_back( - pick(r_r_t, offset + osent[i][t + 1]));
                  }
                  else if (t == osent[i].size() - 1)
                  {
