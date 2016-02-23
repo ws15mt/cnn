@@ -47,7 +47,7 @@ vector<real> as_vector(const Tensor& v) {
 cnn::real TensorTools::AccessElement(const Tensor& v, int index) {
 #if HAVE_CUDA
   cnn::real ret;
-  cudaMemcpyAsync(&ret, &v.v[index], sizeof(real), cudaMemcpyDeviceToHost);
+  cudaMemcpy(&ret, &v.v[index], sizeof(real), cudaMemcpyDeviceToHost);
   return ret;
 #else
   return v.v[index];
