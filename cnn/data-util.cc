@@ -129,6 +129,36 @@ vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, unsigned mbsiz
     return ret;
 }
 
+PDialogue padding_with_eos(const PDialogue& v_diag, int padding_symbol)
+{
+    PDialogue res;
+
+    for (auto& t : v_diag)
+    {
+        int max_src = -1;
+        int max_tgt = -1;
+        for (auto &sp : t)
+        {
+            max_src = std::max<int>(sp.first.size(), max_src);
+            max_tgt = std::max<int>(sp.second.size(), max_tgt);
+        }
+
+        PTurn i_turn;
+        for (int p = 0; p < t.size(); p++)
+        {
+            Sentence src(max_src, padding_symbol);
+            Sentence tgt(max_tgt, padding_symbol);
+            std::copy_n(t[p].first.begin(), t[p].first.size(), src.begin());
+            std::copy_n(t[p].second.begin(), t[p].second.size(), tgt.begin());
+
+            i_turn.push_back(make_pair(src, tgt));
+        }
+        res.push_back(i_turn);
+    }
+
+    return res;
+}
+
 /** 
 extract from a dialogue corpus, a set of dialogues with the same number of turns
 @corp : dialogue corpus
