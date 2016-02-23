@@ -255,12 +255,30 @@ Expression bidirectional(unsigned & slen, const vector<vector<int>>& source, Com
 
 vector<Expression> convert_to_vector(Expression & in, unsigned dim, unsigned nutt);
 
+/** attention 
+*/
 vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<unsigned>& v_slen,
     Expression& i_va, // to get attention weight
     Expression& i_Wa, // for target side transformation to alignment space
     Expression& i_h_tm1, 
     Expression & src, 
     unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, cnn::real fscale);
+
+/**
+compute attention weights
+assume that all source sentences have the same length
+@parameter v_src: vector of expression. each expression is a source input
+@parameter v_slen: vector of int, each element is the length of a source input
+@parameter src: a concatenated expression. each element has been transformed to alignement space.
+@return vector of expression, each element is an output of a source after attention
+*/
+vector<Expression> attention_to_source_batch(vector<Expression> & v_src, const vector<unsigned>& v_slen,
+    Expression& i_va, // to get attention weight
+    Expression& i_Wa, // for target side transformation to alignment space
+    Expression& i_h_tm1,
+    Expression& src,
+    unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, cnn::real fscale);
+
 vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, const vector<unsigned>& v_slen,
     Expression i_va, Expression i_Wa,
     Expression i_h_tm1, unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, cnn::real fscale = 1.0);
