@@ -501,8 +501,8 @@ string Softmax::as_string(const vector<string>& arg_names) const {
 
 Dim Softmax::dim_forward(const vector<Dim>& xs) const {
   assert(xs.size() == 1);
-  if (!LooksLikeVector(xs[0])) {
-    ostringstream s; s << "Bad input dimensions in Softmax: supports only one column." << xs;
+  if (!LooksLikeVector(xs[0]) && !LooksLikeMatrix(xs[0])) {
+      ostringstream s; s << "Bad input dimensions in Softmax: supports only vector and matrix." << xs;
     throw std::invalid_argument(s.str());
   }
   return xs[0];
