@@ -11,9 +11,6 @@
 #include <thrust/device_vector.h>
 #include "cnn/cuda.h"
 #include "cnn/gpu-ops.h"
-#pragma comment(lib,"cublas.lib")
-#pragma comment(lib,"cudart_static.lib")
-/// need to include library C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.5\lib\x64 that has cublas.lib to project
 using namespace cnn::gpu;
 #endif
 
@@ -216,19 +213,21 @@ void DotProduct::backward_impl(const vector<const Tensor*>& xs,
 
 void Transpose::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   if (dim.rows() == 1 || dim.cols() == 1) {
-    fx.v = xs[0]->v;
-  } else {
 #if HAVE_CUDA
-      for (unsigned b = 0; b < xs[0]->d.bd; ++b)
-      {
-#ifdef USE_DOUBLE
-          CUBLAS_CHECK(cublasDgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, fx.d.rows(), fx.d.cols(),
-              kSCALAR_ONE, xs[0]->batch_ptr(b), xs[0]->d.rows(), kSCALAR_ZERO, NULL, fx.d.cols(), fx.batch_ptr(b), fx.d.rows()));
+      CUDA_CHECK(cudaMemcpy(fx.v, xs[0]->v, sizeof(cnn::real) * dim.size(), cudaMemcpyDeviceToDevice));
 #else
-          CUBLAS_CHECK(cublasSgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, fx.d.rows(), fx.d.cols(),
-              kSCALAR_ONE, xs[0]->batch_ptr(b), xs[0]->d.rows(), kSCALAR_ZERO, NULL, fx.d.cols(), fx.batch_ptr(b), fx.d.rows()));
+      fx.v = xs[0]->v;
 #endif
-      }
+  }
+  else {
+#ifdef HAVE_CUDA
+#ifdef USE_DOUBLE
+      CUBLAS_CHECK(cublasDgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_T, fx.d.rows(), fx.d.cols(),
+          kSCALAR_ONE, xs[0]->v, xs[0]->d.rows(), kSCALAR_ZERO, xs[0]->v, xs[0]->d.rows(), fx.v, fx.d.rows()));
+#else
+      CUBLAS_CHECK(cublasSgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_T, fx.d.rows(), fx.d.cols(), 
+              kSCALAR_ONE, xs[0]->v, xs[0]->d.rows(), kSCALAR_ZERO, xs[0]->v, xs[0]->d.rows(), fx.v, fx.d.rows()));
+#endif
 #else
     for(unsigned b = 0; b < xs[0]->d.bd; ++b)
       fx.batch_matrix(b).noalias() = xs[0]->batch_matrix(b).transpose();
@@ -244,16 +243,13 @@ void Transpose::backward_impl(const vector<const Tensor*>& xs,
 #if HAVE_CUDA
   /// for usage of of cublassegeam see 
   /// http://scikit-cuda.readthedocs.org/en/latest/generated/skcuda.cublas.cublasSgeam.html
-    for (unsigned b = 0; b < xs[0]->d.bd; ++b)
-    {
 #ifdef USE_DOUBLE
-        CUBLAS_CHECK(cublasDgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, dEdxi.d.rows(), dEdxi.d.cols(),
-            kSCALAR_ONE, dEdf.batch_ptr(b), dEdf.d.rows(), kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows(), dEdxi.batch_ptr(b), dEdxi.d.rows()));
+    CUBLAS_CHECK(cublasDgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, dEdxi.d.rows(), dEdxi.d.cols(),
+            kSCALAR_ONE, dEdf.v, dEdf.d.rows(), kSCALAR_ONE, dEdxi.v, dEdxi.d.rows(), dEdxi.v, dEdxi.d.rows()));
 #else
-            CUBLAS_CHECK(cublasSgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, dEdxi.d.rows(), dEdxi.d.cols(),
-            kSCALAR_ONE, dEdf.batch_ptr(b), dEdf.d.rows(), kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows(), dEdxi.batch_ptr(b), dEdxi.d.rows()));
+    CUBLAS_CHECK(cublasSgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, dEdxi.d.rows(), dEdxi.d.cols(),
+            kSCALAR_ONE, dEdf.v, dEdf.d.rows(), kSCALAR_ONE, dEdxi.v, dEdxi.d.rows(), dEdxi.v, dEdxi.d.rows()));
 #endif
-    }
 #else
   for(unsigned b = 0; b < xs[0]->d.bd; ++b)
     dEdxi.batch_matrix(b) += dEdf.batch_matrix(b).transpose();
@@ -261,9 +257,12 @@ void Transpose::backward_impl(const vector<const Tensor*>& xs,
 }
 
 void Reshape::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
-  // just point to the input memory and change dimensions
-  // dimensions are handled by forward_dim
+  // BUG will be created if just point to the input memory and change dimensions
+#if HAVE_CUDA
+  CUDA_CHECK(cudaMemcpy(fx.v, xs[0]->v, sizeof(cnn::real) * dim.size(), cudaMemcpyDeviceToDevice));
+#else
   fx.v = xs[0]->v;
+#endif
 }
 
 void Reshape::backward_impl(const vector<const Tensor*>& xs,
@@ -551,7 +550,11 @@ void LogSumExp::backward_impl(const vector<const Tensor*>& xs,
 void Sum::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
     const unsigned num_args = xs.size();
     if (num_args == 1) {
+#if HAVE_CUDA
+        CUDA_CHECK(cudaMemcpy(fx.v, xs[0]->v, sizeof(cnn::real) * dim.size(), cudaMemcpyDeviceToDevice));
+#else
         fx.v = xs[0]->v;
+#endif
         return;
     }
 #if HAVE_CUDA
@@ -644,7 +647,6 @@ void SumBatches::backward_impl(const vector<const Tensor*>& xs,
 }
 
 size_t Average::aux_storage_size() const {
-    /// save space for softmax and a vector of nutt 
     int sz = 1;
     return sz* sizeof(cnn::real);
 }
@@ -1131,16 +1133,12 @@ void MaxPooling1D::backward_impl(const vector<const Tensor*>& xs,
 #endif
 }
 
-size_t Softmax::aux_storage_size() const {
-    return sizeof(cnn::real);
-}
-
 void Softmax::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
     assert(xs.size() == 1);
 #if HAVE_CUDA
-  gpu::softmax(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v);
+    gpu::softmax(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v);
 #else
-  softmax<cnn::real>(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v, true);
+    softmax<cnn::real>(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v, true);
 #endif
 }
 
@@ -1150,12 +1148,26 @@ void Softmax::backward_impl(const vector<const Tensor*>& xs,
                             unsigned i,
                             Tensor& dEdxi) const {
 #if HAVE_CUDA 
-    cnn::real *tmp2 = static_cast<cnn::real*>(aux_mem);
-    gpu::softmax_backward(fx.d.rows(), fx.d.cols(), fx.v, dEdf.v, dEdxi.v, tmp2);
-
+    gpu::softmax_backward(fx.d.rows(), fx.d.cols(), fx.v, dEdf.v, dEdxi.v);
 #else
-  cnn::real off_diag_sum = -(*fx).cwiseProduct(*dEdf).sum();
-  *dEdxi += (*fx).binaryExpr(*dEdf, FSoftmaxBackward(off_diag_sum));
+    vector<cnn::real> off_diag_sum(fx.d.cols());
+    int rows = fx.d.rows();
+
+#pragma omp parallel for
+    for (int k = 0; k < fx.d.cols(); k++)
+    {
+        off_diag_sum[k] = 0;
+        for (unsigned r = 0; r < rows; r++)
+            off_diag_sum[k] += fx.v[IDX2C(r, k, rows)] * dEdf.v[IDX2C(r, k, rows)];
+
+        /// row-element-wise multiplication
+        for (unsigned r = 0; r < rows; r++)
+        {
+            cnn::real d = dEdf.v[IDX2C(r, k, rows)]; 
+            cnn::real t = fx.v[IDX2C(r, k, rows)];
+            dEdxi.v[IDX2C(r, k, rows)] += (d - off_diag_sum[k]) * t;
+        }
+    }
 #endif
 }
 
@@ -1420,8 +1432,8 @@ void ColumnSlices::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) con
     assert(start_column < end_column);
     assert(int(fx.d.rows()) == int(rows));
 #if HAVE_CUDA
-    fx.v == &xs[0]->v[start_column*rows];
-//    CUDA_CHECK(cudaMemcpyAsync(&fx.v[0], &xs[0]->v[start], sizeof(cnn::real) * (end-start), cudaMemcpyDeviceToDevice));
+    int start = start_column*rows;
+    CUDA_CHECK(cudaMemcpyAsync(&fx.v[0], &xs[0]->v[start], sizeof(cnn::real) * rows * (end_column - start_column), cudaMemcpyDeviceToDevice));
 #else
     (*fx) = x.block(0, start_column, rows, end_column - start_column);
 #endif

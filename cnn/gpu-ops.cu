@@ -229,6 +229,7 @@ void logsoftmax(int row, int col, const cnn::real* x0, cnn::real* y)
     int M = row;
     cudaEvent_t done = nullptr;
     cudaEventCreate(&done);
+    /// TO-DO: The N is the number of columns and is also the number of blocks. For small N, it is fine. For very large N, it may slow down computation. 
     _assignColumnwiseLogSoftmaxOf<cnn::real> << <N, 512, 0, t_stream >> >(x0, y, N, M);
     
     cudaEventRecord(done);
@@ -248,6 +249,42 @@ void logsoftmax_backward(int row, int col, const cnn::real *fx, const cnn::real 
     accBinaryExprKernel << <tb.first, tb.second >> >(col * row, dEdf, gpu_softmax, dEdx, FSubtract());
 }
 
+/** 
+softmax opreations using cudnn
+notice that cuNN uses rwo-major. 
+so the N here is col. 
+*/
+void softmax(int row, int col, const cnn::real* x0, cnn::real* y)
+{
+    cudnnTensorDescriptor_t pInputDesc;
+    int n = col; int c = 1; int h = 1; int w = row;
+
+    cnn::real one = 1.0, zero = 0.0;
+    CHECK_CUDNN(cudnnCreateTensorDescriptor(&pInputDesc));
+    CHECK_CUDNN(cudnnSetTensor4dDescriptor(pInputDesc, CUDNN_TENSOR_NCHW, cudnnDataType, n, c, h, w));
+    CHECK_CUDNN(cudnnSoftmaxForward(cudnn_handle, CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_INSTANCE,
+        &one, pInputDesc, x0,
+        &zero, pInputDesc, y));
+
+    CHECK_CUDNN(cudnnDestroyTensorDescriptor(pInputDesc));
+}
+
+void softmax_backward(int row, int col, const cnn::real *fx, const cnn::real *dEdf, cnn::real *dEdx)
+{
+    cudnnTensorDescriptor_t pInputDesc;
+    int n = col; int c = 1; int h = 1; int w = row; 
+    cnn::real one = 1.0;
+
+    CHECK_CUDNN(cudnnCreateTensorDescriptor(&pInputDesc));
+    CHECK_CUDNN(cudnnSetTensor4dDescriptor(pInputDesc, CUDNN_TENSOR_NCHW, cudnnDataType, n, c, h, w));
+    CHECK_CUDNN(cudnnSoftmaxBackward(cudnn_handle, CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_INSTANCE,
+        &one, pInputDesc, fx, pInputDesc, dEdf,
+        &one, pInputDesc, dEdx));
+    CHECK_CUDNN(cudnnDestroyTensorDescriptor(pInputDesc));
+}
+
+/*
+old implementation
 void softmax(int row, int col, const cnn::real* x0, cnn::real* y)
 {
     cudaStream_t t_stream = cudaStreamDefault;
@@ -259,22 +296,27 @@ void softmax(int row, int col, const cnn::real* x0, cnn::real* y)
     _assignColumnwiseSoftmaxOf<cnn::real> << <N, MAX_THREADS_PER_BLOCK, 0, t_stream >> >(x0, y, N, M);
 
     cudaEventRecord(done);
-
     cudaEventSynchronize(done);
-
     cudaEventDestroy(done);
 }
 
-/// see http://research.microsoft.com/pubs/226641/CNTKBook-20160121.pdf
-void softmax_backward(int row, int col, const cnn::real *fx, const cnn::real *dEdf, cnn::real *dEdx, cnn::real *tmp_one_row)
+///
+/// see http://research.microsoft.com/pubs/226641/CNTKBook-20160217..pdf
+/// input gradient += (\frac{\partial J}{\partial v_{ij}} - \sum_r \frac{\partial J}{\partial v_{rj} v_{rj}) v_{ij}
+
+void softmax_backward(int row, int col, const cnn::real *fx, const cnn::real *dEdf, cnn::real *dEdx)
 {
-    int n = row * col;
-    auto tb = SizeToBlockThreadPair(n);
-    cnn::real ods;
-    ker_dotproduct << <tb.first, tb.second >> >(n, fx, dEdf, tmp_one_row);
-    cudaMemcpy(&ods, tmp_one_row, sizeof(cnn::real), cudaMemcpyDeviceToHost);
-    accBinaryExprKernel << <tb.first, tb.second >> >(n, fx, dEdf, dEdx, FSoftmaxBackward(-ods));
+    cudaStream_t t_stream = cudaStreamDefault;
+    cudaEvent_t done = nullptr;
+    cudaEventCreate(&done);
+
+    _assignColumnwiseSoftmaxOfBackward<cnn::real> << <col, MAX_THREADS_PER_BLOCK, 0, t_stream >> >(fx, dEdf, dEdx, col, row);
+
+    cudaEventRecord(done);
+    cudaEventSynchronize(done);
+    cudaEventDestroy(done);
 }
+*/
 
 // adapted from NVIDIA example
 __global__ void ker_pnlsoftmax(int n, int elem_idx, const cnn::real *x0, cnn::real* res, cnn::real* logz) {

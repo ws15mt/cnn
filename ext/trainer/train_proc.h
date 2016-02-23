@@ -98,7 +98,9 @@ public:
 
     void batch_train(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real& largest_cost, bool do_segmental_training, bool update_sgd, 
-        bool doGradientCheck, bool b_inside_logic);
+        bool doGradientCheck, bool b_inside_logic, 
+        bool do_padding, int kEOS  /// do padding. if so, use kEOS as the padding symbol
+        );
     void supervised_pretrain(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, cnn::real target_ppl, int min_diag_id,
         bool bcharlevel = false, bool nosplitdialogue = false);
@@ -107,7 +109,7 @@ public:
         bool bcharlevel = false, bool nosplitdialogue = false);
     void train(Model &model, Proc &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs);
     void REINFORCEtrain(Model &model, Proc &am, Proc &am_agent_mirrow, Corpus &training, Corpus &devel, Trainer &sgd, string out_file, Dict & td, int max_epochs, int nparallel, cnn::real& largest_cost, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0);
-    void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training, bool do_gradient_check);
+    void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training, bool do_gradient_check, bool do_padding);
     
     /** report perplexity 
 
@@ -994,7 +996,9 @@ void TrainProcess<AM_t>::REINFORCEtrain(Model &model, AM_t &am, AM_t &am_agent_m
 template <class AM_t>
 void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
     Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
-    bool sgd_update_epochs, bool do_gradient_check, bool b_inside_logic)
+    bool sgd_update_epochs, bool do_gradient_check, bool b_inside_logic, 
+    bool b_do_padding, int kEOS /// for padding if so use kEOS as the padding symbol
+    )
 {
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
@@ -1060,6 +1064,13 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             size_t nutt = i_sel_idx.size();
             if (nutt == 0)
                 break;
+
+            if (b_do_padding)
+            {
+                /// padding all input and output in each turn into same length with </s> symbol
+                PDialogue pd = padding_with_eos(v_dialogues, kEOS);
+                v_dialogues = pd;
+            }
 
             if (verbose)
             {
@@ -1671,7 +1682,7 @@ template <class AM_t>
 void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &model, AM_t &am, Corpus &devel, 
     Trainer &sgd, string out_file, 
     int max_epochs, int nparallel, int epochsize, bool segmental_training,
-    bool do_gradient_check)
+    bool do_gradient_check, bool do_padding)
 {
     cnn::real largest_cost = 9e+99;
     cnn::real largest_dev_cost = 9e+99;
@@ -1719,7 +1730,7 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
             }
         }
 
-        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check, false);
+        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check, false, do_padding, kSRC_EOS);
 
         if (fmod(trial , 10) == 0)
         {

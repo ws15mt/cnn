@@ -299,6 +299,71 @@ vector<Expression> attention_to_source(vector<Expression> & v_src, const vector<
     return v_input;
 }
 
+/**
+compute attention weights using local attention. 
+local attention predicts position and does softmax on a [p-D, p+D] window. 
+this provides a nice way to trucate variable length input to a fixed-dimension representation and then do softmax. 
+use this trick to speed-up training. 
+
+assume that all source sentences have the same length
+@parameter v_src: vector of expression. each expression is a source input
+@parameter v_slen: vector of int, each element is the length of a source input
+@parameter src: a concatenated expression. each element has been transformed to alignement space. 
+*/
+vector<Expression> attention_to_source_batch(vector<Expression> & v_src, const vector<unsigned>& v_slen,
+    Expression& i_va, // to get attention weight
+    Expression& i_Wa, // for target side transformation to alignment space
+    Expression& i_h_tm1,
+    Expression& src,
+    unsigned a_dim, unsigned nutt, vector<Expression>& v_wgt, cnn::real fscale)
+{
+    Expression i_c_t;
+    int slen = 0;
+    unsigned ilen = v_slen[0];
+    vector<Expression> i_wah_rep;
+
+    for (auto p : v_slen)
+    {
+        slen += p;
+        if (ilen != p)
+            runtime_error("attention_to_source_batch: all source sentences need to have the same length");
+    }
+
+    vector<Expression> v_attention_to;
+
+    Expression i_wah = i_Wa * i_h_tm1;  /// [d nutt]
+    int stt = 0;
+    int istt = 0;
+    vector<Expression> v_et;
+
+    for (size_t k = 0; k < nutt; k++)
+    {
+        Expression i_wah_each = columnslices(i_wah, a_dim, k, k + 1);
+        Expression i_wah_this = concatenate_cols(vector<Expression>(v_slen[k], i_wah_each)); /// [d v_slen[k]]
+
+        Expression i_this_src = columnslices(src, a_dim, istt, istt + v_slen[k]);
+        Expression i_e_t = i_this_src + i_wah_this;
+        v_et.push_back(i_e_t);
+        istt += v_slen[k];
+    }
+
+    Expression i_th_t = tanh(concatenate_cols(v_et));
+    Expression i_e_t = transpose(i_th_t) * i_va;  /// [sum v_slen[k] , 1]
+    Expression i_e_t_matrix = reshape(i_e_t, {ilen, nutt });
+    Expression wgt = softmax(fscale * i_e_t_matrix);  /// [ilen, nutt]
+
+    vector<Expression> v_input;
+    for (size_t k = 0; k < nutt; k++)
+    {
+        Expression i_wgt = columnslices(wgt, v_slen[k], k, k + 1); 
+        v_wgt.push_back(i_wgt);
+
+        v_input.push_back(v_src[k] * i_wgt); // [D v_slen[k]] x[v_slen[k] 1] = [D 1]
+    }
+
+    return v_input;
+}
+
 /// use bilinear model for attention
 vector<Expression> attention_to_source_bilinear(vector<Expression> & v_src, const vector<unsigned>& v_slen,
     Expression i_va, Expression i_Wa,
@@ -396,7 +461,7 @@ vector<Expression> attention_using_bilinear_with_local_attention(vector<Expressi
         slen += p;
         vector<Expression> pweight;
         for (int k = 0; k < p; k++)
-            pweight.push_back(-(k - position[l]) * (k-position[l]) / (25));  /// D = 10, 2*sigma^2 = 2*100/4 = 25
+            pweight.push_back(-(k - position[l]) * (k-position[l]) / (50));  /// D = 10, 2*(sigma/2)^2 = 2*100/4 = 50
         l++;
         v_position_weight.push_back(exp(concatenate(pweight)));
     }

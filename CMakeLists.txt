@@ -31,6 +31,35 @@ enable_testing()
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}
                     ${PROJECT_SOURCE_DIR}/external/easyloggingpp/src)
 
+function(find_cudnn)
+  set(CUDNN_ROOT "" CACHE PATH "CUDNN root path")
+  set(CUDNN_INCLUDE_DIRS ${CUDNN_ROOT}/include)
+  set(CUDNN_LIBRARIES ${CUDNN_ROOT}/lib)
+  find_path(CUDNN_INCLUDE_DIRS cudnn.h
+    PATHS ${CUDNN_ROOT}
+          ${CUDNN_ROOT}/include
+    DOC "CUDNN include path")
+  if(WIN64)
+    find_library(CUDNN_LIBRARIES NAMES cudnn.lib
+        PATHS ${CUDNN_ROOT}
+          ${CUDNN_ROOT}/lib/x64
+        DOC "CUDNN library path")
+  else()
+    find_library(CUDNN_LIBRARIES NAMES libcudnn.so
+        PATHS ${CUDNN_ROOT}
+          ${CUDNN_ROOT}/lib
+          ${CUDNN_ROOT}/lib64
+        DOC "CUDNN library path")
+  endif()
+  if(CUDNN_INCLUDE_DIRS AND CUDNN_LIBRARIES)
+    set(CUDNN_FOUND TRUE PARENT_SCOPE)
+    message(STATUS "Found CUDNN (include: ${CUDNN_INCLUDE_DIRS}, library: ${CUDNN_LIBRARIES})")
+    mark_as_advanced(CUDNN_INCLUDE_DIRS CUDNN_LIBRARIES)
+  else()
+    MESSAGE(FATAL_ERROR "Failed to find CUDNN in path: ${CUDNN_ROOT} (Did you set CUDNN_ROOT properly?)")
+  endif()
+endfunction()
+
 # look for Boost
 if(DEFINED ENV{BOOST_ROOT})
   set(Boost_NO_SYSTEM_PATHS ON)
@@ -93,6 +122,9 @@ if(WITH_CUDA_BACKEND)
   add_definitions(-DHAVE_CUDA)
   set(LIBS ${LIBS} ${CUDA_LIBRARIES})
   link_directories(${CUDA_LIBRARIES})
+
+  find_cudnn()
+
 endif()
 
 # look for Eigen

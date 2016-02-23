@@ -3,11 +3,39 @@
 #include "cnn/cnn.h"
 #include "cnn/cuda.h"
 
+#pragma comment(lib,"cublas.lib")
+#pragma comment(lib,"cudart_static.lib")
+/// need to include library C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.5\lib\x64 that has cublas.lib to project
+#pragma comment(lib, "cudnn.lib")
+
 using namespace std;
 
 namespace cnn {
 
 cublasHandle_t cublas_handle;
+cudnnHandle_t cudnn_handle;
+cudnnDataType_t cudnnDataType;
+
+void Initialize_CUDNN()
+{
+    cudnn_handle = nullptr;
+    if (sizeof(cnn::real) == sizeof(float) )
+        cudnnDataType = CUDNN_DATA_FLOAT; 
+    else if (sizeof(cnn::real) == sizeof(double))
+        cudnnDataType = CUDNN_DATA_DOUBLE;
+    else
+        throw std::exception("not supported data type");
+
+    CHECK_CUDNN(cudnnCreate(&cudnn_handle));
+}
+
+void Free_GPU()
+{
+#ifdef HAVE_CUDA
+    CHECK_CUDNN(cudnnDestroy(cudnn_handle));
+    CUBLAS_CHECK(cublasDestroy(cublas_handle));
+#endif
+}
 
 void Initialize_GPU(int& argc, char**& argv) {
   int nDevices;
@@ -48,6 +76,8 @@ void Initialize_GPU(int& argc, char**& argv) {
   CUDA_CHECK(cudaMemcpyAsync(kSCALAR_ONE, &one, sizeof(float), cudaMemcpyHostToDevice));
   float zero = 0;
   CUDA_CHECK(cudaMemcpyAsync(kSCALAR_ZERO, &zero, sizeof(float), cudaMemcpyHostToDevice));
+
+  Initialize_CUDNN();
 }
 
 } // namespace cnn

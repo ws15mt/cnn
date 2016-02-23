@@ -8,7 +8,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
-
+#include <cudnn.h>
 #include "cnn/except.h"
 
 #define CUDA_CHECK(stmt) do {                              \
@@ -49,9 +49,14 @@ the following commented out for windows. need to figure out support for both win
   return std::make_pair(blocks, threads);
 }
 
+void Free_GPU();
 void Initialize_GPU(int& argc, char**& argv);
-extern cublasHandle_t cublas_handle;
 
+#define CHECK_CUDNN(status) if (status != CUDNN_STATUS_SUCCESS) { cuda_exception("status = " + status); }
+
+extern cudnnDataType_t cudnnDataType;
+extern cublasHandle_t cublas_handle;
+extern cudnnHandle_t cudnn_handle;
 } // namespace cnn
 
 #endif

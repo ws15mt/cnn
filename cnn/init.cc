@@ -100,6 +100,10 @@ namespace cnn {
         delete (rndeng); 
         delete (fxs);
         delete (dEdfs);
+
+#ifdef HAVE_CUDA
+        Free_GPU();
+#endif
         cerr << "Done.\n";
   }
 
