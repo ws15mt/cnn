@@ -5,7 +5,7 @@ foreach(TARGET  rnnlm2_cls_based attentional poisson-regression tag-bilstm embed
   target_link_libraries(${TARGET} cnn ${LIBS})
   if (WITH_CUDA_BACKEND)
     add_dependencies(${TARGET} cnncuda)
-    target_link_libraries(${TARGET} cnncuda)
+    target_link_libraries(${TARGET} cnncuda ${CUDNN_LIB})
     CUDA_ADD_CUBLAS_TO_TARGET(${TARGET})
   endif (WITH_CUDA_BACKEND)
 endforeach()
