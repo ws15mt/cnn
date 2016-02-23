@@ -7,11 +7,13 @@ This toolkit is folked from Chris Dyer's CNN toolkit. It has however been extens
 
 ### Features
 
-Data parallel : Support loading multiple sentences so that training can be efficiently run. 
+Data parallel : Support loading multiple sentences so that training can be efficiently run. One way is to use these sentences without padding. The other way is padding shorter sentences with </s> symbols.  
 
 GPU : Many CPU function calls have been extended to run on GPUs.
 
 Double precision: The code can be built with double precision. 
+
+Support CUDNN : some function calls use cuDNN implementations. These include softmax. 
 
 #### Supported Modeling Techniques
 
@@ -105,9 +107,11 @@ To build a win32 system, no need to include -G"Visual Studio 12 Win64".
 
 ##### GPU-build : CUDA-enabled backend on Windows
 
-On windows need to first create a symbolic link to CUDA, e.g., 
+You need to first install CUDA. CUDA is usually installed to a directory such as "c:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.5", which we will refer it as <your CUDA dir>.
 
-    mklink /D d:\tools\cuda "c:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.5"
+Then, you need to create a symbolic link to CUDA, with command mklink /D <your symbolic CUDA dir> <your CUDA dir>; e.g., 
+
+        mklink /D d:\tools\cuda "c:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.5"
     
 Then make a directory
 
@@ -115,19 +119,22 @@ Then make a directory
 
 	cd msbuildcuda
 
-When building, make sure that CMakeLists.txt have the right cuda directories -DCUDA_ROOT=/path/to/cuda, and in this case is d:\tools\cuda
+Then download cuDNN (v.4) or later version from NVDIA webpage. Copy cudnn.h to <your cuda dir>/include and cudnn.lib to <your CUDA dir>/lib/x64. 
+ 
+
+When building, make sure that CMakeLists.txt have the right cuda directories -DCUDA_ROOT=/path/to/cuda, and in this case is d:/tools/cuda
 
 Build using
 
-    cmake .. -G "Visual Studio 12 Win64" -DBACKEND=cuda -DEIGEN3_INCLUDE_DIR=/path/to/eigen -DCUDA_ROOT=/path/to/cuda
+    cmake .. -G "Visual Studio 12 Win64" -DBACKEND=cuda -DEIGEN3_INCLUDE_DIR=/path/to/eigen -DCUDA_ROOT=/path/to/cuda -DCUDNN_ROOT=/path/to/cudnn
 
 e.g., 
 
-    cmake .. -G "Visual Studio 12 Win64" -DCUDA_ROOT=d:/tools/cuda -DEIGEN3_INCLUDE_DIR=d:\tools\eigen\eigen-eigen-a64c945a8fb7 -DBACKEND=cuda
+    cmake .. -G "Visual Studio 12 Win64" -DCUDA_ROOT=d:/tools/cuda -DEIGEN3_INCLUDE_DIR=d:\tools\eigen\eigen-eigen-a64c945a8fb7 -DBACKEND=cuda -DCUDNN_ROOT=d:/tools/cuda
 
 Notice that the path to cuda needs to use '/' instead of '\'. 
 
-Only release mode is supported for CUDA. Other modes such as Debug and RelWithDebug have compilation errors. 
+Only release mode is supported for CUDA. Other modes such as Debug and RelWithDebug have compilation errors, because nvcc doesn't support some c++11 features which are in Eigen3 library.  
 
 #### What to do after cmake
 
