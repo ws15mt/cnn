@@ -13,6 +13,8 @@
 #include "cnn/expr.h"
 #include "cnn/dict.h"
 #include <boost/program_options/variables_map.hpp>
+#include <boost/thread.hpp>
+#include <fstream>
 
 using namespace cnn;
 using namespace std;
@@ -194,3 +196,44 @@ std::string builder_flavour(variables_map vm);
 
 /// remove the firest and the last element
 vector<int> remove_first_and_last(const vector<int>& rep);
+
+/**
+using own thread to read data into a host memory
+*/
+class DataReader{
+private : 
+    boost::thread m_Thread; 
+    std::ifstream m_ifs;
+    string        m_Filename; /// the file name
+    Corpus        m_Corpus;   /// the corpsu;
+
+    void read_corpus(Dict& sd, int kSRC_SOS, int kSRC_EOS, long part_size);
+
+public:
+    DataReader(const string& train_filename)
+    {
+        m_Filename = train_filename; 
+        m_ifs.open(train_filename);
+    }
+
+    ~DataReader() { m_ifs.close();  }
+
+    void restart()
+    {
+        m_ifs.close();
+        m_ifs.open(m_Filename);
+    }
+
+    void start(Dict& sd, int kSRC_SOS, int kSRC_EOS, long part_size)
+    {
+        m_Thread = boost::thread(&DataReader::read_corpus, this, sd, kSRC_SOS, kSRC_EOS, part_size);
+    }
+
+    Corpus corpus()
+    {
+        return m_Corpus;
+    }
+
+    void join() { m_Thread.join(); }
+    void detach() { m_Thread.detach();  }
+};

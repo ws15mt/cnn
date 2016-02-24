@@ -1349,3 +1349,51 @@ vector<int> remove_first_and_last(const vector<int>& rep)
     std::copy(rep.begin() + 1, rep.end() - 1, trimedrep.begin());
     return trimedrep;
 }
+
+void DataReader::read_corpus(Dict& sd, int kSRC_SOS, int kSRC_EOS, long part_size)
+{
+    string line;
+
+    m_Corpus.clear();
+
+    Dialogue diag;
+    string prv_diagid = "-1";
+    int lc = 0, stoks = 0, ttoks = 0;
+
+    long iln = 0;
+    while (getline(m_ifs, line) && iln < part_size) {
+        trim_left(line);
+        trim_right(line);
+        if (line.length() == 0)
+            break;
+        ++lc;
+        Sentence source, target;
+        string diagid;
+
+        diagid = MultiTurnsReadSentencePair(line, &source, &sd, &target, &sd, false, kSRC_SOS, kSRC_EOS, false);
+        if (diagid == "")
+            continue;
+
+        if (diagid != prv_diagid)
+        {
+            if (diag.size() > 0)
+                m_Corpus.push_back(diag);
+            diag.clear();
+            prv_diagid = diagid;
+        }
+        diag.push_back(SentencePair(source, target));
+        stoks += source.size();
+        ttoks += target.size();
+
+        if ((source.front() != kSRC_SOS && source.back() != kSRC_EOS)) {
+            cerr << "Sentence in " << lc << " didn't start or end with <s>, </s>\n";
+            abort();
+        }
+
+        iln++;
+    }
+
+    if (diag.size() > 0)
+        m_Corpus.push_back(diag);
+    cerr << "from corpus " << m_Filename << ": " << lc << " lines, " << stoks << " & " << ttoks << " tokens (s & t), " << sd.size() << " & " << sd.size() << " types\n";
+}
