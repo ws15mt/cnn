@@ -76,7 +76,7 @@ struct AttentionalModel {
     Builder builder_src_bwd;
     bool rnn_src_embeddings;
     bool giza_extensions;
-    int vocab_size_tgt;
+    unsigned vocab_size_tgt;
 
     // statefull functions for incrementally creating computation graph, one
     // target word at a time
@@ -110,17 +110,17 @@ AttentionalModel<Builder>::AttentionalModel(cnn::Model& model,
     unsigned vocab_size_src, unsigned _vocab_size_tgt, unsigned layers, unsigned hidden_dim, 
     unsigned align_dim, bool _rnn_src_embeddings, bool _giza_extentions, unsigned hidden_replicates, 
     LookupParameters* cs, LookupParameters *ct, bool use_external_memory = false, cnn::real iscale = 1.0)
-    : layers(layers), builder(layers, (_rnn_src_embeddings) ? 3 * hidden_dim : 2 * hidden_dim, hidden_dim, &model, iscale),
-  builder_src_fwd(1, hidden_dim, hidden_dim, &model, iscale),
-  builder_src_bwd(1, hidden_dim, hidden_dim, &model, iscale),
+    : layers(layers), builder(layers, { (_rnn_src_embeddings) ? 3 * hidden_dim : 2 * hidden_dim, hidden_dim }, &model, iscale),
+    builder_src_fwd(1, { hidden_dim, hidden_dim }, &model, iscale),
+    builder_src_bwd(1, { hidden_dim, hidden_dim }, &model, iscale),
   rnn_src_embeddings(_rnn_src_embeddings), 
   giza_extensions(_giza_extentions), vocab_size_tgt(_vocab_size_tgt),
   num_aux_vecs(0)
 {
-    p_cs = (cs) ? cs : model.add_lookup_parameters(long(vocab_size_src), {long(hidden_dim)}, iscale); 
-    p_ct = (ct) ? ct : model.add_lookup_parameters(vocab_size_tgt, {long(hidden_dim)}, iscale); 
-    p_R = model.add_parameters({long(vocab_size_tgt), long(hidden_dim)}, iscale);
-    p_bias = model.add_parameters({ long(vocab_size_tgt) }, iscale);
+    p_cs = (cs) ? cs : model.add_lookup_parameters(vocab_size_src, {hidden_dim}, iscale); 
+    p_ct = (ct) ? ct : model.add_lookup_parameters(vocab_size_tgt, {hidden_dim}, iscale); 
+    p_R = model.add_parameters({vocab_size_tgt, hidden_dim}, iscale);
+    p_bias = model.add_parameters({ vocab_size_tgt }, iscale);
 
     if (use_external_memory)
     { 
@@ -133,7 +133,7 @@ AttentionalModel<Builder>::AttentionalModel(cnn::Model& model,
 #ifdef DBG_NEW_RNNEM
         for (auto l = 0; l < layers; ++l)
         {
-            Parameters * pp = model.add_parameters({ long(hidden_dim), long(RNNEM_MEM_SIZE) }, iscale);
+            Parameters * pp = model.add_parameters({ hidden_dim, RNNEM_MEM_SIZE }, iscale);
             pp->reset_to_zero(); 
             p_h0.push_back(pp); 
         }
@@ -141,27 +141,27 @@ AttentionalModel<Builder>::AttentionalModel(cnn::Model& model,
     }
     for (auto l = 0; l < hidden_replicates * layers; ++l)
     {
-        Parameters *pp = model.add_parameters({ long(hidden_dim) }, iscale);
+        Parameters *pp = model.add_parameters({ hidden_dim }, iscale);
         pp->reset_to_zero();
         p_h0.push_back(pp);
     }
 
-    p_Wa = model.add_parameters({ long(align_dim), long(hidden_dim) }, iscale);
-    p_P = model.add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+    p_Wa = model.add_parameters({ align_dim, hidden_dim }, iscale);
+    p_P = model.add_parameters({ hidden_dim, hidden_dim }, iscale);
     if (rnn_src_embeddings) {
-        p_Ua = model.add_parameters({ long(align_dim), 2 * long(hidden_dim) }, iscale);
-        p_Q = model.add_parameters({ long(hidden_dim), 2 * long(hidden_dim) }, iscale);
+        p_Ua = model.add_parameters({ align_dim, 2 * hidden_dim }, iscale);
+        p_Q = model.add_parameters({ hidden_dim, 2 * hidden_dim }, iscale);
     }
     else {
-        p_Ua = model.add_parameters({ long(align_dim), long(hidden_dim) }, iscale);
-        p_Q = model.add_parameters({ long(hidden_dim), long(hidden_dim) }, iscale);
+        p_Ua = model.add_parameters({ align_dim, hidden_dim }, iscale);
+        p_Q = model.add_parameters({ hidden_dim, hidden_dim }, iscale);
     }
 #ifdef ALIGNMENT
     if (giza_extensions) {
-        p_Ta = model.add_parameters({long(align_dim), 9});
+        p_Ta = model.add_parameters({align_dim), 9});
     }
 #endif
-    p_va = model.add_parameters({ long(align_dim) }, iscale);
+    p_va = model.add_parameters({ align_dim }, iscale);
 }
 
 template <class Builder>
@@ -392,7 +392,8 @@ Expression AttentionalModel<Builder>::BuildGraph(const std::vector<int> &source,
     const unsigned tlen = target.size() - 1;
     for (unsigned t = 0; t < tlen; ++t) {
         Expression i_r_t = add_input(target[t], t, cg);
-        errs.push_back(pickneglogsoftmax(i_r_t, target[t + 1]));
+        Expression i_e_t = log_softmax(i_r_t);
+        errs.push_back(-pick(i_e_t, target[t + 1]));
         if (verbose)
             display_value(errs.back(), cg);
     }
@@ -516,15 +517,15 @@ AttentionalModel<Builder>::display(const std::vector<int> &source, const std::ve
         cout << setw(2) << j << ' ';
     cout << endl;
 
-    for (int i = 0; i < I; ++i) {
+    for (unsigned i = 0; i < I; ++i) {
         cout.setf(ios_base::adjustfield, ios_base::left);
         //cout << setw(12) << td.Convert(target[i+1]) << "  ";
         cout << setw(12) << td.Convert(target[i]) << "  ";
         cout.setf(ios_base::adjustfield, ios_base::right);
         cnn::real max_v = 0;
         int max_j = -1;
-        for (int j = 0; j < J; ++j) {
-            cnn::real v = TensorTools::AccessElement(a, Dim(j, i));
+        for (unsigned j = 0; j < J; ++j) {
+            cnn::real v = TensorTools::AccessElement(a, { j, i });
             string symbol;
             for (int s = 0; s <= num_symbols; ++s) {
                 if (s == 0) 
@@ -632,7 +633,7 @@ AttentionalModel<Builder>::beam_decode(const std::vector<int> &source, Computati
     priority_queue<Hypothesis, vector<Hypothesis>, CompareHypothesis> chart;
     chart.push(Hypothesis(builder.state(), sos_sym, 0.0f, 0));
 
-    boost::integer_range<int> vocab = boost::irange(0, vocab_size_tgt);
+    boost::integer_range<int> vocab = boost::irange(0, (int)vocab_size_tgt);
     vector<int> vec_vocab(vocab_size_tgt, 0);
     for (auto k : vocab)
     {

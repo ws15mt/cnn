@@ -445,7 +445,8 @@ void test_kbest_arcs(Model &model, AM_t &am, string test_file, int top_k)
 		    const unsigned tlen = target.size() - 1;
 		    for (unsigned t = 0; t < tlen; ++t) {
 			Expression i_r_t = am.add_input(target[t], t, cg);
-			Expression i_err = pickneglogsoftmax(i_r_t, target[t+1]);
+            Expression i_err_t = log_softmax(i_r_t);
+			Expression i_err = -pick(i_err_t, target[t+1]);
 			errs.push_back(i_err);
 		    }
 		    Expression i_nerr = sum(errs);
