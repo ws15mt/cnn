@@ -138,6 +138,7 @@ namespace cnn {
         {
             twords = 0;
             swords = 0;
+            prv_response.clear();
             s2tmodel.reset();
         }
 
@@ -214,9 +215,9 @@ namespace cnn {
 
             ComputationGraph cg;
             if (prv_response.size() == 0)
-                decode_output = decode(shuman_input, cg, td, last_cxt_s, last_decoder_s);
+                decode_output = decode(shuman_input, cg, td);
             else
-                decode_output = decode(prv_response, shuman_input, cg, td, last_cxt_s, last_decoder_s);
+                decode_output = decode(prv_response, shuman_input, cg, td);
 
             if (verbose)
             {
@@ -244,7 +245,7 @@ namespace cnn {
                 }
 
                 if (pp != kSRC_EOS && pp != kSRC_SOS)
-                    response = response + td.Convert(pp);
+                    response = response + td.Convert(pp) + " ";
 
                 if (verbose)
                 {
