@@ -87,16 +87,6 @@ namespace cnn {
             return results;
         }
 
-        virtual std::vector<int> decode(const std::vector<int> &source, ComputationGraph& cg, cnn::Dict  &tdict,
-            vector<vector<cnn::real>>& v_cxt_s, vector<vector<cnn::real>>& v_decoder_s)
-        {
-            s2tmodel.reset();  /// reset network
-            vector<int> iret = s2tmodel.decode(source, cg, tdict);
-
-            s2tmodel.serialise_context(cg, v_cxt_s, v_decoder_s);
-            return iret;
-        }
-
         // parallel decoding
         virtual vector<Sentence>batch_decode(const vector<Sentence>& cur_sentence, ComputationGraph& cg, cnn::Dict & tdict)
         {
