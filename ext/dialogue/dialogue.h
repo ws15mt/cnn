@@ -271,6 +271,9 @@ public:
     void save_context(ComputationGraph& cg)
     {
         to_cxt.clear();
+        if (v_decoder_context.size() == 0)
+            return;
+
         vector<Expression> ve;
         vector<vector<Expression>> vve;
         size_t ndim = v_decoder_context[0].size();
@@ -291,7 +294,7 @@ public:
 
     void assign_cxt(ComputationGraph &cg, unsigned int nutt)
     {
-        if (turnid <= 0 || last_cxt_s.size() == 0 || last_decoder_s.size() == 0)
+        if (turnid <= 0 || last_cxt_s.size() == 0)
         {
             /// no information from previous turns
             reset();
@@ -330,7 +333,6 @@ public:
         v_errs.clear();
         tgt_words = 0;
         src_words = 0;
-
     }
 
     void assign_cxt(ComputationGraph &cg, unsigned int nutt,
