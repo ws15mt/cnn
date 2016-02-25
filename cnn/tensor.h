@@ -157,7 +157,7 @@ struct Tensor {
     ar & boost::serialization::make_array(vc, d.size());
     CUDA_CHECK(cudaMemcpyAsync(v, vc, d.size() * sizeof(cnn::real), cudaMemcpyHostToDevice));
 #else
-    v = static_cast<cnn::real*>(cnn_mm_malloc(d.size() * sizeof(cnn::real), 32));
+    v = static_cast<cnn::real*>(cnn_mm_malloc(d.size() * sizeof(cnn::real), sizeof(cnn::real)));
     ar & boost::serialization::make_array(v, d.size());
 #endif
   }
