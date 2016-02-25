@@ -54,6 +54,11 @@ struct ComputationGraph {
   VariableIndex add_input(const Dim& d, const std::vector<cnn::real>& pdata);
   VariableIndex add_input(const Dim& d, const std::vector<cnn::real>* pdata);
 
+  // REFERENCES
+  // the computational network will pull references in from the user's data pointer
+  // structures and make them available to the computation
+  VariableIndex add_reference(const Dim& d, const cnn::real* pm);
+
 
   // PARAMETERS
   // parameters are things that are optimized. in contrast to a system like
