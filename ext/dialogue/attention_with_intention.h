@@ -45,7 +45,6 @@ public:
     void setAlignDim(cnn::Model& model, unsigned alignd, cnn::real iscale);
 
     void assign_cxt(ComputationGraph &cg, unsigned int nutt) ;
-    void assign_cxt(ComputationGraph &cg, unsigned int nutt, vector<vector<cnn::real>>&, vector<vector<cnn::real>>&);
     void assign_cxt(ComputationGraph &cg, const vector<vector<int>>&) {
         throw("not implemented");
     };
@@ -113,19 +112,6 @@ void AttentionWithIntention<Builder, Decoder>::assign_cxt(ComputationGraph &cg, 
     i_va = parameter(cg, p_va);
 
     DialogueBuilder<Builder, Decoder>::assign_cxt(cg, nutt);
-
-    if (turnid == 0)
-        return;
-}
-
-template<class Builder, class Decoder>
-void AttentionWithIntention<Builder, Decoder>::assign_cxt(ComputationGraph &cg, unsigned int nutt,
-    vector<vector<cnn::real>>& v_last_s, vector<vector<cnn::real>>& v_decoder_s){
-    i_U = parameter(cg, p_U);
-    i_Wa = parameter(cg, p_Wa);
-    i_va = parameter(cg, p_va);
-
-    DialogueBuilder<Builder, Decoder>::assign_cxt(cg, nutt, v_last_s, v_decoder_s);
 
     if (turnid == 0)
         return;
@@ -2875,11 +2861,6 @@ public:
         p_scale = model.add_parameters({ 1 }, 0.0, "p_scale");
     }
 
-    void assign_cxt(ComputationGraph& cg, unsigned int nutt, vector<vector<cnn::real>>& v_cxt_s, vector<vector<cnn::real>>& v_decoder_s)
-    {
-        throw("not implemented");
-    }
-    
     void assign_cxt(ComputationGraph& cg, unsigned int nutt)
     {
         throw("not implemented");
@@ -3158,12 +3139,6 @@ public:
         turnid++;
 
         return target;
-    }
-
-    void serialise_context(ComputationGraph& cg,
-        vector<vector<cnn::real>>& v_last_cxt_s,
-        vector<vector<cnn::real>>& v_last_decoder_s)
-    {
     }
 
     void serialise_context(ComputationGraph& cg)
@@ -3695,50 +3670,6 @@ public:
         return target;
     }
 
-    void serialise_context(ComputationGraph& cg,
-        vector<vector<cnn::real>>& v_last_cxt_s,
-        vector<vector<cnn::real>>& v_last_decoder_s)
-    {
-        /// get the top output
-        vector<vector<cnn::real>> vm;
-
-        vm.clear();
-        for (const auto &p : combiner.final_s())
-        {
-            vm.push_back(get_value(p, cg));
-        }
-        last_cxt_s = vm;
-        v_last_cxt_s = last_cxt_s;
-
-        vector<vector<cnn::real>> v_last_d;
-        unsigned int nutt = v_decoder_context.size();
-        size_t ndim = v_decoder_context[0].size();
-        v_last_d.resize(ndim);
-
-        size_t ik = 0;
-        for (const auto &p : v_decoder_context)
-        {
-            /// for each utt
-            vm.clear();
-            for (const auto &v : p)
-                vm.push_back(get_value(v, cg));
-
-            size_t iv = 0;
-            for (auto p : vm)
-            {
-                if (ik == 0)
-                {
-                    v_last_d[iv].resize(nutt * p.size());
-                }
-                std::copy_n(p.begin(), p.size(), &v_last_d[iv][ik * p.size()]);
-                iv++;
-            }
-            ik++;
-        }
-        last_decoder_s = v_last_d;
-        v_last_decoder_s = last_decoder_s;
-    }
-
     /**
     1) save context hidden state
     in last_cxt_s as [replicate_hidden_layers][nutt]
@@ -3749,14 +3680,7 @@ public:
     void serialise_context(ComputationGraph& cg)
     {
         /// get the top output
-        vector<vector<cnn::real>> vm;
-
-        vm.clear();
-        for (const auto &p : combiner.final_s())
-        {
-            vm.push_back(get_value(p, cg));
-        }
-        last_cxt_s = vm;
+        serialise(cg, combiner);
 
         vector<vector<cnn::real>> v_last_d;
         unsigned int nutt = v_decoder_context.size();
@@ -3764,6 +3688,7 @@ public:
         v_last_d.resize(ndim);
 
         size_t ik = 0;
+        vector<vector<cnn::real>> vm;
         for (const auto &p : v_decoder_context)
         {
             /// for each utt
