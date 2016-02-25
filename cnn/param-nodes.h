@@ -59,6 +59,23 @@ struct InputNode : public Node {
   const std::vector<cnn::real>* pdata;
 };
 
+// represents specified (not learned) inputs to the network
+// memory allocation is managed outside of this node
+struct ReferenceNode : public Node {
+    explicit ReferenceNode(const Dim& d, const cnn::real* pdat) : dim(d), pdata(pdat) {}
+    std::string as_string(const std::vector<std::string>& arg_names) const override;
+    Dim dim_forward(const std::vector<Dim>& xs) const override;
+    virtual bool supports_multibatch() const override { return true; }
+    void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
+    void backward_impl(const std::vector<const Tensor*>& xs,
+        const Tensor& fx,
+        const Tensor& dEdf,
+        unsigned i,
+        Tensor& dEdxi) const override;
+    Dim dim;
+    const cnn::real* pdata;
+};
+
 // represents specified (not learned) scalar inputs to the network
 struct ScalarInputNode : public Node {
   explicit ScalarInputNode(real s) : data(s), pdata(&data) {}

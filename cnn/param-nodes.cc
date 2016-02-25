@@ -96,6 +96,42 @@ void InputNode::backward_impl(const vector<const Tensor*>& xs,
   abort();
 }
 
+string ReferenceNode::as_string(const vector<string>& arg_names) const {
+    ostringstream s;
+    s << "reference(" << dim << ')';
+    return s.str();
+}
+
+Dim ReferenceNode::dim_forward(const vector<Dim>& xs) const {
+    return dim;
+}
+
+void ReferenceNode::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    assert(xs.size() == 0);
+#if HAVE_CUDA
+    cudaMemcpyAsync(fx.v, pdata, dim.size() * sizeof(cnn::real), cudaMemcpyDeviceToDevice);
+#else
+    // TODO memcpy is only necessary if pdata->front() points to an unaligned location
+    // need to compute this value
+    bool is_input_address_aligned = false;
+    if (!is_input_address_aligned) {
+        memcpy(fx.v, pdata, dim.size() * sizeof(cnn::real));
+    }
+    else {
+        fx.v = const_cast<cnn::real*>(pdata);
+    }
+#endif
+}
+
+void ReferenceNode::backward_impl(const vector<const Tensor*>& xs,
+    const Tensor& fx,
+    const Tensor& dEdf,
+    unsigned i,
+    Tensor& dEdxi) const {
+    cerr << "called backward() on arity 0 node\n";
+    abort();
+}
+
 string ScalarInputNode::as_string(const vector<string>& arg_names) const {
   ostringstream s;
   s << "scalar_constant(" << pdata << ')';
