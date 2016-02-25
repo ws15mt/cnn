@@ -109,13 +109,14 @@ public:
         }
 
         last_context_exp.clear();
-        for (const auto &p : last_cxt_s)
+        for (const auto p : last_cxt_s)
         {
             Expression iv;
             if (nutt > 1)
-                iv = input(cg, { (unsigned int)p.size() / nutt, nutt }, &p);
+                iv = reference(cg, { (unsigned int)hidden_dim[INTENTION_LAYER], nutt
+        }, p);
             else
-                iv = input(cg, { (unsigned int)p.size() }, &p);
+                iv = reference(cg, { (unsigned int)hidden_dim[INTENTION_LAYER] }, p);
             last_context_exp.push_back(iv);
         }
 
