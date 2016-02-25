@@ -1000,6 +1000,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
     bool b_do_padding, int kEOS /// for padding if so use kEOS as the padding symbol
     )
 {
+    cout << "batch_train: "; 
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
     unsigned si = training.size(); /// number of dialgoues in training
@@ -1011,7 +1012,8 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
     unsigned lines = 0;
     int epoch = 0;
 
-    reset_smoothed_ppl();
+    if (b_inside_logic) 
+        reset_smoothed_ppl();
 
     int prv_epoch = -1;
     vector<bool> v_selected(training.size(), false);  /// track if a dialgoue is used
@@ -1068,7 +1070,9 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             if (b_do_padding)
             {
                 /// padding all input and output in each turn into same length with </s> symbol
-                PDialogue pd = padding_with_eos(v_dialogues, kEOS);
+                /// padding </s> to the front for source side
+                /// padding </s> to the back for target side
+                PDialogue pd = padding_with_eos(v_dialogues, kEOS, { false, true});
                 v_dialogues = pd;
             }
 
@@ -1687,23 +1691,45 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
     cnn::real largest_cost = 9e+99;
     cnn::real largest_dev_cost = 9e+99;
 
-    ifstream ifs(train_filename);
+    reset_smoothed_ppl();
+
+    DataReader dr(train_filename);
     int trial = 0;
-    while(sgd.epoch < max_epochs)
+    dr.start(sd, kSRC_SOS, kSRC_EOS, epochsize);
+    dr.join();
+    
+    Corpus training = dr.corpus();
+    training_numturn2did = get_numturn2dialid(training);
+
+    while (sgd.epoch < max_epochs)
     {
-        cerr << "Reading training data from " << train_filename << "...\n";
-        Corpus training = read_corpus(ifs, sd, kSRC_SOS, kSRC_EOS, epochsize);
+        Timer this_epoch("this epoch completed in");
+
+        dr.detach();
+        dr.start(sd, kSRC_SOS, kSRC_EOS, epochsize);
+
+        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check, false, do_padding, kSRC_EOS);
+
+        if (fmod(trial , 20) == 0)
+        {
+            ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
+            boost::archive::text_oarchive oa(out);
+            oa << model;
+            out.close();
+        }
+
+        dr.join(); /// synchroze data thread and main thread
+        training = dr.corpus();
         training_numturn2did = get_numturn2dialid(training);
 
-        if (ifs.eof() || training.size() == 0)
+        if (training.size() == 0)
         {
-            ifs.close();
-            ifs.open(train_filename); 
-            
-            if (training.size() == 0)
-            {
-                continue;
-            }
+            dr.restart(); 
+            dr.start(sd, kSRC_SOS, kSRC_EOS, epochsize);
+            dr.join(); /// make sure data is completely read
+            training = dr.corpus();  /// copy the data from data thread to the data to be used in the main thread
+            training_numturn2did = get_numturn2dialid(training);
+
             ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
             boost::archive::text_oarchive oa(out);
             oa << model;
@@ -1730,18 +1756,8 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
             }
         }
 
-        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check, false, do_padding, kSRC_EOS);
-
-        if (fmod(trial , 10) == 0)
-        {
-            ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
-            boost::archive::text_oarchive oa(out);
-            oa << model;
-            out.close();
-        }
         trial++;
     }
-    ifs.close();
 }
 
 /**
