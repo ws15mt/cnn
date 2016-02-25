@@ -72,7 +72,7 @@ protected:
     vector<Expression> to_cxt;  /// this is the final_s from decoder RNNm
 
     map<int, vector<vector<cnn::real>>> to_cxt_value; /// memory of to_cxt
-    vector<vector<cnn::real>> last_cxt_s;  /// memory of context history for LSTM including h and c, use this for initialization of intent RNN
+    vector<cnn::real*> last_cxt_s;  /// memory of context history for LSTM including h and c, use this for initialization of intent RNN
     vector<vector<cnn::real>> last_decoder_s;  /// memory of target side decoder history for LSTM including h and c, use this for initialization of source side RNN
     vector<Expression> last_context_exp;  /// expression to the last context hidden state
 
@@ -80,6 +80,10 @@ protected:
 
     unsigned int nutt; // for multiple training utterance per inibatch
     vector<cnn::real> zero;
+
+protected:
+    cnn::real * m_pined_memory; /// memory for serialization either on device or on host
+
 public:
     /// for criterion
     vector<Expression> v_errs;
@@ -122,9 +126,21 @@ public:
         p_cxt2dec_w = model.add_parameters({ hidden_dim[DECODER_LAYER], hidden_dim[INTENTION_LAYER] }, iscale);
 
         i_h0.clear();
+
+        m_pined_memory = static_cast<cnn::real*>(cnn_mm_malloc(pin_memory_size(), sizeof(cnn::real)));
+
     };
 
-    ~DialogueBuilder(){};
+    ~DialogueBuilder(){
+        cnn_mm_free(m_pined_memory);
+    };
+
+    int pin_memory_size()
+    {
+        /// 4 layers, 500 dimension and 20 sentences
+        /// this is the maximum size in byte for a pined memory
+        return 4*500*20 * sizeof(cnn::real);
+    }
 
     /// for context
     void reset()
@@ -181,52 +197,27 @@ public:
         return i_x_t;
     }
 
-    void serialise_context(ComputationGraph& cg,
-        vector<vector<cnn::real>>& v_last_cxt_s,
-        vector<vector<cnn::real>>& v_last_decoder_s)
+    void serialise(ComputationGraph& cg, Builder& combiner)
     {
-        /// get the top output
-        vector<vector<cnn::real>> vm;
-
-        vm.clear();
-        for (const auto &p : context.final_s())
+        int stt = 0;
+        last_cxt_s.clear();
+        for (const auto &p : combiner.final_s())
         {
-            vm.push_back(get_value(p, cg));
+            Tensor tv = cg.get_value(p);
+#ifdef HAVE_CUDA
+            cudaMemcpyAsync(m_pined_memory + stt, tv.v, sizeof(cnn::real) * tv.d.size(), cudaMemcpyDeviceToDevice);
+#else
+            memcpy(m_pined_memory + stt, tv.v, sizeof(cnn::real) * tv.d.size());
+#endif
+            last_cxt_s.push_back(m_pined_memory + stt);
+
+            stt += tv.d.size();
+
+            if (stt * sizeof(cnn::real) > pin_memory_size())
+                runtime_error("serialised data size is larger than the allocated pined memory size");
         }
-        last_cxt_s = vm;
-        v_last_cxt_s = last_cxt_s;
-
-        if (v_decoder_context.size() == 0)
-            return;
-
-        vector<vector<cnn::real>> v_last_d;
-        unsigned int nutt = v_decoder_context.size();
-        size_t ndim = v_decoder_context[0].size();
-        v_last_d.resize(ndim);
-
-        size_t ik = 0;
-        for (const auto &p : v_decoder_context)
-        {
-            /// for each utt
-            vm.clear();
-            for (const auto &v : p)
-                vm.push_back(get_value(v, cg));
-
-            size_t iv = 0;
-            for (auto p : vm)
-            {
-                if (ik == 0)
-                {
-                    v_last_d[iv].resize(nutt * p.size());
-                }
-                std::copy_n(p.begin(), p.size(), &v_last_d[iv][ik * p.size()]);
-                iv++;
-            }
-            ik++;
-        }
-        last_decoder_s = v_last_d;
-        v_last_decoder_s = last_decoder_s;
     }
+
 
     /**
     1) save context hidden state
@@ -238,15 +229,9 @@ public:
     void serialise_context(ComputationGraph& cg)
     {
         /// get the top output
+        serialise(cg, context);
+
         vector<vector<cnn::real>> vm;
-
-        vm.clear();
-        for (const auto &p : context.final_s())
-        {
-            vm.push_back(get_value(p, cg));
-        }
-        last_cxt_s = vm;
-
         if (v_decoder_context.size() == 0)
             return;
 
@@ -314,13 +299,13 @@ public:
         }
 
         last_context_exp.clear();
-        for (const auto &p : last_cxt_s)
+        for (const auto p : last_cxt_s)
         {
             Expression iv;
             if (nutt > 1)
-                iv = input(cg, { (unsigned int)p.size() / nutt, nutt}, &p);
+                iv = reference(cg, { (unsigned int)hidden_dim[INTENTION_LAYER], nutt }, p);
             else
-                iv = input(cg, { (unsigned int)p.size() }, &p);
+                iv = reference(cg, { (unsigned int)hidden_dim[INTENTION_LAYER] }, p);
             last_context_exp.push_back(iv);
         }
 
@@ -330,58 +315,6 @@ public:
             Expression iv;
             if (nutt > 1)
                 iv = input(cg, { (unsigned int)p.size() / nutt, nutt }, &p);
-            else
-                iv = input(cg, { (unsigned int)p.size() }, &p);
-            v_last_d.push_back(iv);
-        }
-
-        to_cxt = v_last_d;
-
-        /// prepare for the next run
-        v_encoder_bwd.clear();
-        v_encoder_fwd.clear();
-        v_decoder.clear();
-        i_h0.clear();
-        v_errs.clear();
-        tgt_words = 0;
-        src_words = 0;
-
-    }
-
-    /**
-    assign observation to the hidden latent varaible
-
-    @v_last_cxt_s [parameter_index][values vector for this parameter]. this is to the context or intention network
-    @v_last_decoder_s [parameter_index][values vector for this parameter]. this is to the decoder network
-    */
-    void assign_cxt(ComputationGraph &cg, unsigned int nutt,
-        vector<vector<cnn::real>>& v_last_cxt_s, 
-        vector<vector<cnn::real>>& v_last_decoder_s)
-    {
-        if (turnid <= 0 || v_last_cxt_s.size() == 0 || v_last_decoder_s.size() == 0)
-        {
-            /// no information from previous turns
-            reset();
-            return;
-        }
-
-        last_context_exp.clear();
-        for (const auto &p : v_last_cxt_s)
-        {
-            Expression iv;
-            if (nutt > 1)
-                iv = input(cg, { (unsigned int) p.size() / nutt, nutt }, &p);
-            else
-                iv = input(cg, { (unsigned int) p.size() }, &p);
-            last_context_exp.push_back(iv);
-        }
-
-        vector<Expression> v_last_d;
-        for (const auto &p : v_last_decoder_s)
-        {
-            Expression iv;
-            if (nutt > 1)
-                iv = input(cg, { (unsigned int) p.size() / nutt, nutt }, &p);
             else
                 iv = input(cg, { (unsigned int)p.size() }, &p);
             v_last_d.push_back(iv);
