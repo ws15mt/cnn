@@ -113,8 +113,7 @@ public:
         {
             Expression iv;
             if (nutt > 1)
-                iv = reference(cg, { (unsigned int)hidden_dim[INTENTION_LAYER], nutt
-        }, p);
+                iv = reference(cg, { (unsigned int)hidden_dim[INTENTION_LAYER], nutt}, p);
             else
                 iv = reference(cg, { (unsigned int)hidden_dim[INTENTION_LAYER] }, p);
             last_context_exp.push_back(iv);
