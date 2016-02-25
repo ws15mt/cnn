@@ -129,9 +129,13 @@ vector<vector<Expression>> pack_obs_uttfirst(FCorpusPointers raw, unsigned mbsiz
     return ret;
 }
 
-PDialogue padding_with_eos(const PDialogue& v_diag, int padding_symbol)
+/**
+@param padding_to_the_back: true if padding is to the back of the input sequence; false if padding is to the front of the sequence
+*/
+PDialogue padding_with_eos(const PDialogue& v_diag, int padding_symbol, const std::vector<bool>& padding_to_the_back)
 {
     PDialogue res;
+    assert(padding_to_the_back.size() == 2 || padding_to_the_back.size() == 1);
 
     for (auto& t : v_diag)
     {
@@ -139,8 +143,8 @@ PDialogue padding_with_eos(const PDialogue& v_diag, int padding_symbol)
         int max_tgt = -1;
         for (auto &sp : t)
         {
-            max_src = std::max<int>(sp.first.size(), max_src);
-            max_tgt = std::max<int>(sp.second.size(), max_tgt);
+            max_src = std::max<int>(sp.first.size(), max_src);  /// max source side length
+            max_tgt = std::max<int>(sp.second.size(), max_tgt); /// max target side length
         }
 
         PTurn i_turn;
@@ -148,8 +152,18 @@ PDialogue padding_with_eos(const PDialogue& v_diag, int padding_symbol)
         {
             Sentence src(max_src, padding_symbol);
             Sentence tgt(max_tgt, padding_symbol);
-            std::copy_n(t[p].first.begin(), t[p].first.size(), src.begin());
-            std::copy_n(t[p].second.begin(), t[p].second.size(), tgt.begin());
+
+            bool padding_back = padding_to_the_back[0];
+            if (padding_back)
+                std::copy_n(t[p].first.begin(), t[p].first.size(), src.begin());
+            else
+                std::copy_n(t[p].first.begin(), t[p].first.size(), src.end() - t[p].first.size());
+
+            padding_back = (padding_to_the_back.size() == 2) ? padding_to_the_back[1] : padding_to_the_back[0];
+            if (padding_back)
+                std::copy_n(t[p].second.begin(), t[p].second.size(), tgt.begin());
+            else
+                std::copy_n(t[p].second.begin(), t[p].second.size(), tgt.end() - t[p].second.size());
 
             i_turn.push_back(make_pair(src, tgt));
         }

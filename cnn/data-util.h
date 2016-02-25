@@ -111,7 +111,7 @@ Expression vec2exp(const vector<cnn::real>& v_data, ComputationGraph& cg);
 //////////////////////////////////////////////////////////////////////////////////////////////
 
 /// padding with eos symbol
-PDialogue padding_with_eos(const PDialogue& v_diag, int padding_symbol);
+PDialogue padding_with_eos(const PDialogue& v_diag, int padding_symbol, const std::vector<bool>& padding_to_back);
 
 /// return the index of the selected dialogues
 vector<int> get_same_length_dialogues(Corpus corp, int nbr_dialogues, size_t &min_nbr_turns, vector<bool>& used, PDialogue& selected, NumTurn2DialogId& info);
