@@ -3682,6 +3682,9 @@ public:
         /// get the top output
         serialise(cg, combiner);
 
+        if (v_decoder_context.size() == 0)
+            return;
+
         vector<vector<cnn::real>> v_last_d;
         unsigned int nutt = v_decoder_context.size();
         size_t ndim = v_decoder_context[0].size();
@@ -3947,7 +3950,6 @@ public:
             oslen = (oslen < p.size()) ? p.size() : oslen;
 
         v_decoder_context.clear();
-        v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
             vector<int> vobs;
             for (auto p : target_response)
@@ -3971,20 +3973,6 @@ public:
                     /// only compute errors on with output labels
                     this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
                     tgt_words++;
-                }
-                else if (t == target_response[i].size() - 1)
-                {
-                    /// get the last hidden state to decode the i-th utterance
-                    vector<Expression> v_t;
-                    for (auto p : decoder.final_s())
-                    {
-                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
-                        int stt = i * hidden_dim[DECODER_LAYER];
-                        int stp = stt + hidden_dim[DECODER_LAYER];
-                        Expression i_t = pickrange(i_tt, stt, stp);
-                        v_t.push_back(i_t);
-                    }
-                    v_decoder_context[i] = v_t;
                 }
             }
         }
@@ -4021,7 +4009,6 @@ public:
             oslen = (oslen < p.size()) ? p.size() : oslen;
 
         v_decoder_context.clear();
-        v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
             vector<int> vobs;
             for (auto p : target_response)
@@ -4045,20 +4032,6 @@ public:
                     /// only compute errors on with output labels
                     this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
                     tgt_words++;
-                }
-                else if (t == target_response[i].size() - 1)
-                {
-                    /// get the last hidden state to decode the i-th utterance
-                    vector<Expression> v_t;
-                    for (auto p : decoder.final_s())
-                    {
-                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
-                        int stt = i * hidden_dim[DECODER_LAYER];
-                        int stp = stt + hidden_dim[DECODER_LAYER];
-                        Expression i_t = pickrange(i_tt, stt, stp);
-                        v_t.push_back(i_t);
-                    }
-                    v_decoder_context[i] = v_t;
                 }
             }
         }
@@ -4128,7 +4101,6 @@ public:
             target.push_back(w);
         }
 
-        v_decoder_context.push_back(decoder.final_s());
         save_context(cg);
         serialise_context(cg);
 
@@ -4180,7 +4152,6 @@ public:
             target.push_back(w);
         }
 
-        v_decoder_context.push_back(decoder.final_s());
         save_context(cg);
         serialise_context(cg);
 
@@ -4402,7 +4373,6 @@ public:
             oslen = (oslen < p.size()) ? p.size() : oslen;
 
         v_decoder_context.clear();
-        v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
             vector<int> vobs;
             for (auto p : target_response)
@@ -4426,20 +4396,6 @@ public:
                     /// only compute errors on with output labels
                     this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
                     tgt_words++;
-                }
-                else if (t == target_response[i].size() - 1)
-                {
-                    /// get the last hidden state to decode the i-th utterance
-                    vector<Expression> v_t;
-                    for (auto p : decoder.final_s())
-                    {
-                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
-                        int stt = i * hidden_dim[DECODER_LAYER];
-                        int stp = stt + hidden_dim[DECODER_LAYER];
-                        Expression i_t = pickrange(i_tt, stt, stp);
-                        v_t.push_back(i_t);
-                    }
-                    v_decoder_context[i] = v_t;
                 }
             }
         }
@@ -4476,7 +4432,6 @@ public:
             oslen = (oslen < p.size()) ? p.size() : oslen;
 
         v_decoder_context.clear();
-        v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
             vector<int> vobs;
             for (auto p : target_response)
@@ -4499,20 +4454,6 @@ public:
                     /// only compute errors on with output labels
                     this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
                     tgt_words++;
-                }
-                else if (t == target_response[i].size() - 1)
-                {
-                    /// get the last hidden state to decode the i-th utterance
-                    vector<Expression> v_t;
-                    for (auto p : decoder.final_s())
-                    {
-                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
-                        int stt = i * hidden_dim[DECODER_LAYER];
-                        int stp = stt + hidden_dim[DECODER_LAYER];
-                        Expression i_t = pickrange(i_tt, stt, stp);
-                        v_t.push_back(i_t);
-                    }
-                    v_decoder_context[i] = v_t;
                 }
             }
         }
@@ -4572,7 +4513,6 @@ public:
             target.push_back(w);
         }
 
-        v_decoder_context.push_back(decoder.final_s());
         save_context(cg);
         serialise_context(cg);
 
@@ -4623,7 +4563,6 @@ public:
             target.push_back(w);
         }
 
-        v_decoder_context.push_back(decoder.final_s());
         save_context(cg);
         serialise_context(cg);
 
@@ -4855,7 +4794,6 @@ public:
             oslen = (oslen < p.size()) ? p.size() : oslen;
 
         v_decoder_context.clear();
-        v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
             vector<int> vobs;
             for (auto p : target_response)
@@ -4879,20 +4817,6 @@ public:
                     /// only compute errors on with output labels
                     this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
                     tgt_words++;
-                }
-                else if (t == target_response[i].size() - 1)
-                {
-                    /// get the last hidden state to decode the i-th utterance
-                    vector<Expression> v_t;
-                    for (auto p : decoder.final_s())
-                    {
-                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
-                        int stt = i * hidden_dim[DECODER_LAYER];
-                        int stp = stt + hidden_dim[DECODER_LAYER];
-                        Expression i_t = pickrange(i_tt, stt, stp);
-                        v_t.push_back(i_t);
-                    }
-                    v_decoder_context[i] = v_t;
                 }
             }
         }
@@ -4929,7 +4853,6 @@ public:
             oslen = (oslen < p.size()) ? p.size() : oslen;
 
         v_decoder_context.clear();
-        v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
             vector<int> vobs;
             for (auto p : target_response)
@@ -4952,20 +4875,6 @@ public:
                     /// only compute errors on with output labels
                     this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
                     tgt_words++;
-                }
-                else if (t == target_response[i].size() - 1)
-                {
-                    /// get the last hidden state to decode the i-th utterance
-                    vector<Expression> v_t;
-                    for (auto p : decoder.final_s())
-                    {
-                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
-                        int stt = i * hidden_dim[DECODER_LAYER];
-                        int stp = stt + hidden_dim[DECODER_LAYER];
-                        Expression i_t = pickrange(i_tt, stt, stp);
-                        v_t.push_back(i_t);
-                    }
-                    v_decoder_context[i] = v_t;
                 }
             }
         }
@@ -5025,7 +4934,6 @@ public:
             target.push_back(w);
         }
 
-        v_decoder_context.push_back(decoder.final_s());
         save_context(cg);
         serialise_context(cg);
 
@@ -5076,7 +4984,6 @@ public:
             target.push_back(w);
         }
 
-        v_decoder_context.push_back(decoder.final_s());
         save_context(cg);
         serialise_context(cg);
 
@@ -5310,7 +5217,6 @@ public:
             oslen = (oslen < p.size()) ? p.size() : oslen;
 
         v_decoder_context.clear();
-        v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
             vector<int> vobs;
             for (auto p : target_response)
@@ -5334,20 +5240,6 @@ public:
                     /// only compute errors on with output labels
                     this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
                     tgt_words++;
-                }
-                else if (t == target_response[i].size() - 1)
-                {
-                    /// get the last hidden state to decode the i-th utterance
-                    vector<Expression> v_t;
-                    for (auto p : decoder.final_s())
-                    {
-                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
-                        int stt = i * hidden_dim[DECODER_LAYER];
-                        int stp = stt + hidden_dim[DECODER_LAYER];
-                        Expression i_t = pickrange(i_tt, stt, stp);
-                        v_t.push_back(i_t);
-                    }
-                    v_decoder_context[i] = v_t;
                 }
             }
         }
@@ -5384,7 +5276,6 @@ public:
             oslen = (oslen < p.size()) ? p.size() : oslen;
 
         v_decoder_context.clear();
-        v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
             vector<int> vobs;
             for (auto p : target_response)
@@ -5407,20 +5298,6 @@ public:
                     /// only compute errors on with output labels
                     this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
                     tgt_words++;
-                }
-                else if (t == target_response[i].size() - 1)
-                {
-                    /// get the last hidden state to decode the i-th utterance
-                    vector<Expression> v_t;
-                    for (auto p : decoder.final_s())
-                    {
-                        Expression i_tt = reshape(p, { (nutt * hidden_dim[DECODER_LAYER]) });
-                        int stt = i * hidden_dim[DECODER_LAYER];
-                        int stp = stt + hidden_dim[DECODER_LAYER];
-                        Expression i_t = pickrange(i_tt, stt, stp);
-                        v_t.push_back(i_t);
-                    }
-                    v_decoder_context[i] = v_t;
                 }
             }
         }
@@ -5480,7 +5357,6 @@ public:
             target.push_back(w);
         }
 
-        v_decoder_context.push_back(decoder.final_s());
         save_context(cg);
         serialise_context(cg);
 
@@ -5531,7 +5407,6 @@ public:
             target.push_back(w);
         }
 
-        v_decoder_context.push_back(decoder.final_s());
         save_context(cg);
         serialise_context(cg);
 
