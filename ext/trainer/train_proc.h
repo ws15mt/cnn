@@ -327,9 +327,10 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
         size_t turn_id = 0;
 
         /// train on two segments of a dialogue
-        ComputationGraph cg;
         vector<int> res;
-        for (auto spair : diag){
+        for (auto spair : diag)
+        {
+            ComputationGraph cg;
 
             SentencePair turn = spair;
             vector<string> sref, srec;
