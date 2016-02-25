@@ -11,7 +11,7 @@
 #include "cnn/dglstm.h"
 #include "cnn/dict.h"
 #include "cnn/expr.h"
-#include "expr-xtra.h"
+#include "cnn/expr-xtra.h"
 
 #include <algorithm>
 #include <queue>
