@@ -119,7 +119,6 @@ Expression SimpleRNNBuilder::add_input_impl(int prev, const Expression &in) {
     for (unsigned i = 0; i < layers; ++i) {
         const vector<Expression>& vars = param_vars[i];
 
-        //    Expression y = affine_transform({ vars[2], vars[0], x });
         Expression y = affine_transform({ biases[i][0], vars[0], x });
 
         if (prev == -1 && h0.size() > 0)
