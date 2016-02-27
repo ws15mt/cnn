@@ -83,7 +83,7 @@ protected:
     Parameters* p_Q;
     Expression i_Wa, i_va, i_Q;
     Expression attention(int trg_tok, ComputationGraph& cg);
-    Expression decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg) override;
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg) override;
 };
 
 template<class Builder, class Decoder>
@@ -155,7 +155,7 @@ Expression AttentionWithIntention<Builder, Decoder>::attention(int trg_tok, Comp
 }
 
 template<class Builder, class Decoder>
-Expression AttentionWithIntention<Builder, Decoder>::decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg)
+Expression AttentionWithIntention<Builder, Decoder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
 {
     Expression i_c_t;
     unsigned int nutt = trg_tok.size();
@@ -355,7 +355,7 @@ protected:
     Expression i_att_gate_A, i_att_gate_b, v_att_gate_b;
     Parameters* p_att_gate_A, *p_att_gate_b;
     Expression attention_gate(Expression i_h_tm1);
-    Expression decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg) override;
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg) override;
 
 };
 
@@ -367,7 +367,7 @@ Expression GatedAttention<Builder, Decoder>::attention_gate(Expression i_h_tm1)
 }
 
 template<class Builder, class Decoder>
-Expression GatedAttention<Builder, Decoder>::decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg)
+Expression GatedAttention<Builder, Decoder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
 {
     Expression i_c_t;
     unsigned int nutt = trg_tok.size();
@@ -432,7 +432,7 @@ public:
         v_decoder_context.clear();
         v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : osent)
             {
                 if (t < p.size()){
@@ -637,7 +637,7 @@ protected:
         v_decoder.back()->start_new_sequence(vcxt);  /// get the intention
     }
 
-    Expression decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg)
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
         unsigned int nutt = trg_tok.size();
@@ -702,7 +702,7 @@ public:
         }
     }
 
-    Expression decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg) override;
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg) override;
 
     void start_new_instance(const std::vector<std::vector<int>> &source, ComputationGraph &cg) override
     {
@@ -827,7 +827,7 @@ public:
 };
 
 template<class Builder, class Decoder>
-Expression AWI_Bilinear<Builder, Decoder>::decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg)
+Expression AWI_Bilinear<Builder, Decoder>::decoder_step(vector<int> trg_tok, ComputationGraph& cg)
 {
     Expression i_c_t;
     unsigned int nutt = trg_tok.size();
@@ -1164,7 +1164,7 @@ public:
         v_decoder_context.clear();
         v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : osent)
             {
                 if (t < p.size()){
@@ -1266,7 +1266,7 @@ public:
         return target;
     }
 
-    Expression decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg)
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
         unsigned int nutt = trg_tok.size();
@@ -1498,7 +1498,7 @@ public:
         v_decoder_context.clear();
         v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : osent)
             {
                 if (t < p.size()){
@@ -1600,7 +1600,7 @@ public:
         return target;
     }
 
-    Expression decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg)
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
         unsigned int nutt = trg_tok.size();
@@ -1796,7 +1796,7 @@ public:
         decoder.start_new_sequence(vcxt);  /// get the intention
     }
 
-    Expression decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg)
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
         unsigned int nutt = trg_tok.size();
@@ -2044,7 +2044,7 @@ public:
         return v_input;
     }
 
-    Expression decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg)
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
         unsigned int nutt = trg_tok.size();
@@ -2116,7 +2116,7 @@ public:
     {
     }
 
-    Expression decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg)
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
         unsigned int nutt = trg_tok.size();
@@ -2282,7 +2282,7 @@ public:
         v_decoder_context.clear();
         v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : osent)
             {
                 if (t < p.size()){
@@ -3295,7 +3295,7 @@ public:
             cout << "done decoder.start_new_sequence" << endl;
     }
 
-    Expression decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg)
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         if (verbose)
             cout << "MultiSource_LinearEncoder::decoder_step" << endl;
@@ -3372,7 +3372,7 @@ public:
         v_decoder_context.clear();
         v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : target_response)
             {
                 if (t < p.size())
@@ -3470,7 +3470,7 @@ public:
         v_decoder_context.clear();
         v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : target_response)
             {
                 if (t < p.size())
@@ -3864,7 +3864,7 @@ public:
         decoder.start_new_sequence(v_to_dec);  /// get the intention
     }
 
-    Expression decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg)
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
         unsigned int nutt = trg_tok.size();
@@ -3951,7 +3951,7 @@ public:
 
         v_decoder_context.clear();
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : target_response)
             {
                 if (t < p.size())
@@ -4010,7 +4010,7 @@ public:
 
         v_decoder_context.clear();
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : target_response)
             {
                 if (t < p.size())
@@ -4298,7 +4298,7 @@ public:
 
     }
 
-    Expression decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg)
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
         unsigned int nutt = trg_tok.size();
@@ -4374,7 +4374,7 @@ public:
 
         v_decoder_context.clear();
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : target_response)
             {
                 if (t < p.size())
@@ -4433,7 +4433,7 @@ public:
 
         v_decoder_context.clear();
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : target_response)
             {
                 if (t < p.size())
@@ -4717,7 +4717,7 @@ public:
 
     }
 
-    Expression decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg)
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
         unsigned int nutt = trg_tok.size();
@@ -4795,7 +4795,7 @@ public:
 
         v_decoder_context.clear();
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : target_response)
             {
                 if (t < p.size())
@@ -4854,7 +4854,7 @@ public:
 
         v_decoder_context.clear();
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : target_response)
             {
                 if (t < p.size())
@@ -5140,7 +5140,7 @@ public:
 
     }
 
-    Expression decoder_step(vector<unsigned> trg_tok, ComputationGraph& cg)
+    Expression decoder_step(vector<int> trg_tok, ComputationGraph& cg)
     {
         Expression i_c_t;
         unsigned int nutt = trg_tok.size();
@@ -5218,7 +5218,7 @@ public:
 
         v_decoder_context.clear();
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : target_response)
             {
                 if (t < p.size())
@@ -5277,7 +5277,7 @@ public:
 
         v_decoder_context.clear();
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : target_response)
             {
                 if (t < p.size())
@@ -5555,7 +5555,7 @@ public:
         v_decoder_context.clear();
         v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : target_response)
             {
                 if (t < p.size())
@@ -5621,7 +5621,7 @@ public:
         v_decoder_context.clear();
         v_decoder_context.resize(nutt);
         for (int t = 0; t < oslen; ++t) {
-            vector<unsigned> vobs;
+            vector<int> vobs;
             for (auto p : target_response)
             {
                 if (t < p.size())
