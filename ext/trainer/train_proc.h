@@ -99,7 +99,7 @@ public:
     void batch_train(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real& largest_cost, bool do_segmental_training, bool update_sgd, 
         bool doGradientCheck, bool b_inside_logic, 
-        bool do_padding, int kEOS  /// do padding. if so, use kEOS as the padding symbol
+        const vector<bool>& padding_to_back, int kEOS  /// do padding. if so, use kEOS as the padding symbol
         );
     void supervised_pretrain(Model &model, Proc &am, Corpus &training, Corpus &devel,
         Trainer &sgd, string out_file, cnn::real target_ppl, int min_diag_id,
@@ -109,7 +109,7 @@ public:
         bool bcharlevel = false, bool nosplitdialogue = false);
     void train(Model &model, Proc &am, TupleCorpus &training, Trainer &sgd, string out_file, int max_epochs);
     void REINFORCEtrain(Model &model, Proc &am, Proc &am_agent_mirrow, Corpus &training, Corpus &devel, Trainer &sgd, string out_file, Dict & td, int max_epochs, int nparallel, cnn::real& largest_cost, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0);
-    void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training, bool do_gradient_check, bool do_padding);
+    void split_data_batch_train(string train_filename, Model &model, Proc &am, Corpus &devel, Trainer &sgd, string out_file, int max_epochs, int nparallel, int epochsize, bool do_segmental_training, bool do_gradient_check, const vector<bool>& padding_position);
     
     /** report perplexity 
 
@@ -852,6 +852,10 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDia
         if (doGradientCheck)
             CheckGrad(model, cg);
 
+        dloss += as_scalar(cg.get_value(am.s2txent.i));
+        if (verbose)
+            cout << "dloss " << dloss << endl;
+
         if (sgd != nullptr)
         {
             if (verbose)
@@ -864,9 +868,6 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDia
                 cout << " done update" << endl;
         }
 
-        dloss += as_scalar(cg.get_value(am.s2txent.i));
-        if (verbose)
-            cout << "dloss " << dloss << endl;
     
         dchars_s += am.swords;
         dchars_t += am.twords;
@@ -998,7 +999,7 @@ template <class AM_t>
 void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, Corpus &devel,
     Trainer &sgd, string out_file, int max_epochs, int nparallel, cnn::real &best, bool segmental_training,
     bool sgd_update_epochs, bool do_gradient_check, bool b_inside_logic, 
-    bool b_do_padding, int kEOS /// for padding if so use kEOS as the padding symbol
+    const vector<bool>& padding_to_back, int kEOS /// for padding if so use kEOS as the padding symbol
     )
 {
     cout << "batch_train: "; 
@@ -1068,12 +1069,12 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             if (nutt == 0)
                 break;
 
-            if (b_do_padding)
+            if (padding_to_back.size() > 0)
             {
                 /// padding all input and output in each turn into same length with </s> symbol
                 /// padding </s> to the front for source side
                 /// padding </s> to the back for target side
-                PDialogue pd = padding_with_eos(v_dialogues, kEOS, { false, true});
+                PDialogue pd = padding_with_eos(v_dialogues, kEOS, padding_to_back);
                 v_dialogues = pd;
             }
 
@@ -1687,7 +1688,7 @@ template <class AM_t>
 void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &model, AM_t &am, Corpus &devel, 
     Trainer &sgd, string out_file, 
     int max_epochs, int nparallel, int epochsize, bool segmental_training,
-    bool do_gradient_check, bool do_padding)
+    bool do_gradient_check, const vector<bool>& padding_position)
 {
     cnn::real largest_cost = 9e+99;
     cnn::real largest_dev_cost = 9e+99;
@@ -1709,7 +1710,7 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
         dr.detach();
         dr.start(sd, kSRC_SOS, kSRC_EOS, epochsize);
 
-        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check, false, do_padding, kSRC_EOS);
+        batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check, false, padding_position, kSRC_EOS);
 
         if (fmod(trial , 20) == 0)
         {

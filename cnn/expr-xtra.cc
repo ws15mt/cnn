@@ -98,6 +98,34 @@ vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source,
     return source_embeddings;
 }
 
+/// source [1..NUTT][1..T] is speaker first and then content from each utterance
+/// return a vector for each time [1..T] and each element has an embedding in matrix for all speakers
+vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs)
+{
+    size_t nutt = source.size();
+    /// get the maximum length of utternace from all speakers
+    slen = source[0].size();
+    for (auto p : source)
+    {
+        if (slen != p.size())
+            runtime_error("input sentences should have same lengths");
+    }
+
+    std::vector<Expression> source_embeddings;
+
+    Expression i_x_t;
+
+    for (int t = 0; t < slen; ++t) {
+        vector<unsigned> idx; 
+        for (size_t k = 0; k < nutt; k++)
+            idx.push_back(source[k][t]);
+        Expression i_x_t = lookup(cg, p_cs, idx);
+        source_embeddings.push_back(i_x_t);
+    }
+
+    return source_embeddings;
+}
+
 /// organise data in the following format
 /// [<first sentence> <second sentence> ...]
 /// for example with two sentences with length N1 for the first sentence and length N2 for the second sentence
