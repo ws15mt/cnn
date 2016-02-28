@@ -47,8 +47,9 @@ Expression exp(const Expression& x) { return Expression(x.pg, x.pg->add_function
 Expression square(const Expression& x) { return Expression(x.pg, x.pg->add_function<Square>({x.i})); }
 Expression cube(const Expression& x) { return Expression(x.pg, x.pg->add_function<Cube>({x.i})); }
 Expression logistic(const Expression& x) { return Expression(x.pg, x.pg->add_function<LogisticSigmoid>({x.i})); }
-Expression rectify(const Expression& x) { return Expression(x.pg, x.pg->add_function<Rectify>({x.i})); }
-Expression hinge(const Expression& x, unsigned index, cnn::real m) { return Expression(x.pg, x.pg->add_function<Hinge>({x.i}, index, m)); }
+Expression rectify(const Expression& x) { return Expression(x.pg, x.pg->add_function<Rectify>({ x.i })); }
+Expression exponential_linear_units(const Expression& x, cnn::real scale) { return Expression(x.pg, x.pg->add_function<ExponentialLinearUnits>({ x.i }, scale)); }
+Expression hinge(const Expression& x, unsigned index, cnn::real m) { return Expression(x.pg, x.pg->add_function<Hinge>({ x.i }, index, m)); }
 Expression hinge(const Expression& x, const unsigned* pindex, cnn::real m) { return Expression(x.pg, x.pg->add_function<Hinge>({x.i}, pindex, m)); }
 Expression log_softmax(const Expression& x) { return Expression(x.pg, x.pg->add_function<LogSoftmax>({x.i})); }
 Expression log_softmax(const Expression& x, const std::vector<unsigned>& d) { return Expression(x.pg, x.pg->add_function<RestrictedLogSoftmax>({x.i}, d)); }
