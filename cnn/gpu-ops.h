@@ -38,6 +38,8 @@ namespace gpu {
     void vnegate_backward(int n, const cnn::real* dEdf, cnn::real* dEdx);
     void vrelu(int n, const cnn::real* x, cnn::real* y);
     void vrelu_backward(int n, const cnn::real* fx, const cnn::real* dEdf, cnn::real* dEdx);
+    void vexponential_linear_units(int n, const cnn::real* x, const cnn::real scale, cnn::real* y);
+    void vexponential_linear_units_backward(int n, const cnn::real* fx, const cnn::real* dEdf, const cnn::real scale, cnn::real* dEdx);
     void vexp(int n, const cnn::real* x, cnn::real* y);
     void vtanh(int n, const cnn::real* x, cnn::real* y);
     void vtanh_backward(int n, const cnn::real* fx, const cnn::real* dEdf, cnn::real* dEdx);

@@ -108,6 +108,16 @@ void vrelu_backward(int n, const cnn::real* fx, const cnn::real* dEdf, cnn::real
   accBinaryExprKernel<<<tb.first, tb.second>>>(n, fx, dEdf, dEdx, FRectifyBackward());
 }
 
+void vexponential_linear_units(int n, const cnn::real* x, const cnn::real scale, cnn::real* y) {
+    auto tb = SizeToBlockThreadPair(n);
+    unaryExprKernel << <tb.first, tb.second >> >(n, x, y, FExponentialLinearUnits(scale));
+}
+
+void vexponential_linear_units_backward(int n, const cnn::real* fx, const cnn::real* dEdf, const cnn::real scale, cnn::real* dEdx) {
+    auto tb = SizeToBlockThreadPair(n);
+    accBinaryExprKernel << <tb.first, tb.second >> >(n, fx, dEdf, dEdx, FExponentialLinearUnitsBackward(scale));
+}
+
 void vtanh(int n, const cnn::real* x, cnn::real* y) {
   auto tb = SizeToBlockThreadPair(n);
   unaryExprKernel<<<tb.first, tb.second>>>(n, x, y, FTanh());
