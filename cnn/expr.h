@@ -61,6 +61,7 @@ Expression cube(const Expression& x);
 Expression log(const Expression& x);
 Expression logistic(const Expression& x);
 Expression rectify(const Expression& x);
+Expression exponential_linear_units(const Expression& x, cnn::real scale = 1.0);
 Expression hinge(const Expression& x, unsigned index, cnn::real m = 1.0);
 Expression hinge(const Expression& x, const unsigned* pindex, cnn::real m = 1.0);
 Expression log_softmax(const Expression& x);
