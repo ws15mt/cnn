@@ -733,14 +733,25 @@ Dim Negate::dim_forward(const vector<Dim>& xs) const {
 }
 
 string Rectify::as_string(const vector<string>& arg_names) const {
-  ostringstream s;
-  s << "ReLU(" << arg_names[0] << ')';
-  return s.str();
+    ostringstream s;
+    s << "ReLU(" << arg_names[0] << ')';
+    return s.str();
 }
 
 Dim Rectify::dim_forward(const vector<Dim>& xs) const {
-  assert(xs.size() == 1);
-  return xs[0];
+    assert(xs.size() == 1);
+    return xs[0];
+}
+
+string ExponentialLinearUnits::as_string(const vector<string>& arg_names) const {
+    ostringstream s;
+    s << "ExponentialLinearUnits(" << arg_names[0] << "), scale = " << scale ;
+    return s.str();
+}
+
+Dim ExponentialLinearUnits::dim_forward(const vector<Dim>& xs) const {
+    assert(xs.size() == 1);
+    return xs[0];
 }
 
 string HuberDistance::as_string(const vector<string>& arg_names) const {

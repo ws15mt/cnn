@@ -1818,6 +1818,28 @@ void Rectify::backward_impl(const vector<const Tensor*>& xs,
 #endif
 }
 
+void ExponentialLinearUnits::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    assert(xs.size() == 1);
+#if HAVE_CUDA
+    gpu::vexponential_linear_units(fx.d.size(), xs[0]->v, scale, fx.v);
+#else
+    auto x = **xs[0];
+    *fx = x.unaryExpr(FExponentialLinearUnits(scale));
+#endif
+}
+
+void ExponentialLinearUnits::backward_impl(const vector<const Tensor*>& xs,
+    const Tensor& fx,
+    const Tensor& dEdf,
+    unsigned i,
+    Tensor& dEdxi) const {
+#if HAVE_CUDA
+    gpu::vexponential_linear_units_backward(fx.d.size(), fx.v, dEdf.v, scale, dEdxi.v);
+#else
+    *dEdxi += (*fx).binaryExpr(*dEdf, FExponentialLinearUnitsBackward(scale));
+#endif
+}
+
 void HuberDistance::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 2);
 #ifdef HAVE_CUDA
