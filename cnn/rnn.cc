@@ -210,4 +210,94 @@ void SimpleRNNBuilder::copy(const RNNBuilder & rnn) {
   }
 }
 
+Expression SimpleRNNBuilderWithELU::add_input_impl(int prev, const Expression &in) {
+    const unsigned t = h.size();
+    h.push_back(vector<Expression>(layers));
+
+    Expression x = in;
+
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+
+        Expression y = affine_transform({ biases[i][0], vars[0], x });
+
+        if (prev == -1 && h0.size() > 0)
+            y = y + vars[1] * h0[i];
+        else if (prev >= 0)
+            y = y + vars[1] * h[prev][i];
+
+        x = h[t][i] = exponential_linear_units(y);
+    }
+    return h[t].back();
+}
+
+Expression SimpleRNNBuilderWithELU::add_input_impl(int prev, const std::vector<Expression> &in) {
+    const unsigned t = h.size();
+    h.push_back(vector<Expression>(layers));
+
+    assert(in.size() == layers);
+    Expression x = in[0];
+
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        Expression x_additional;
+        Expression y = affine_transform({ biases[i][0], vars[0], x });
+
+        if (prev == -1 && h0.size() > 0)
+            y = y + vars[1] * h0[i];
+        else if (prev >= 0)
+            y = y + vars[1] * h[prev][i];
+        Expression z = exponential_linear_units(y);
+        if (i > 0)
+        {
+            z = z + in[i];
+        }
+        x = h[t][i] = z;
+    }
+    return h[t].back();
+}
+
+Expression SimpleRNNBuilderWithELU::add_input_impl(const vector<Expression>& prev_history, const Expression &in) {
+    const unsigned t = h.size();
+    h.push_back(vector<Expression>(layers));
+
+    Expression x = in;
+
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+
+        //    Expression y = affine_transform({ vars[2], vars[0], x });
+        Expression y = affine_transform({ biases[i][0], vars[0], x });
+
+        if (prev_history.size() == layers)
+            y = y + vars[1] * prev_history[i];
+
+        x = h[t][i] = exponential_linear_units(y);
+    }
+    return h[t].back();
+}
+
+Expression SimpleRNNBuilderWithELU::add_auxiliary_input(const Expression &in, const Expression &aux) {
+    const unsigned t = h.size();
+    h.push_back(vector<Expression>(layers));
+
+    Expression x = in;
+
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        assert(vars.size() >= L2H + 1);
+
+        //    Expression y = affine_transform({ vars[HB], vars[X2H], x, vars[L2H], aux });
+        Expression y = affine_transform({ biases[i][1], vars[X2H], x, vars[L2H], aux });
+
+        if (t == 0 && h0.size() > 0)
+            y = y + vars[H2H] * h0[i];
+        else if (t >= 1)
+            y = y + vars[H2H] * h[t - 1][i];
+
+        x = h[t][i] = exponential_linear_units(y);
+    }
+    return h[t].back();
+}
+
 } // namespace cnn
