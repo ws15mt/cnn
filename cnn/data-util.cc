@@ -1372,6 +1372,7 @@ string builder_flavour(variables_map vm)
 {
     string flavour = "rnn";
     if (vm.count("lstm"))	flavour = "lstm";
+    else if (vm.count("rnn_elu"))	flavour = "rnn_elu";
     else if (vm.count("gru"))	flavour = "gru";
     else if (vm.count("dglstm"))	flavour = "dglstm";
     else if (vm.count("dglstm-dnn")) flavour = "dnn";

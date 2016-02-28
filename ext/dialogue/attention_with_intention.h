@@ -4990,7 +4990,6 @@ public:
         turnid++;
         return target;
     }
-
 };
 
 /**
