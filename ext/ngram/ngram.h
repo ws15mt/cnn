@@ -15,6 +15,7 @@
 #include "cnn/dglstm.h"
 #include "cnn/dict.h"
 #include "cnn/expr.h"
+#include "cnn/math.h"
 #include <boost/program_options/variables_map.hpp>
 #include <boost/lexical_cast.hpp>
 #include <boost/algorithm/string.hpp>
