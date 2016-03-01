@@ -528,6 +528,23 @@ struct Rectify : public Node {
                   Tensor& dEdxi) const override;
 };
 
+// y = x if x > 0
+// y = scale * (exp(x) - 1.0) if x <= 0 
+// see "fast and accurate deep network learning by exponential linear units (ELUs)
+// by D.-A. Clevert, T. Unterthiner and S. Hochreiter, ICLR 2016
+struct ExponentialLinearUnits : public Node {
+    explicit ExponentialLinearUnits(const std::initializer_list<VariableIndex>& a, cnn::real scale) : Node(a), scale(scale) {}
+    std::string as_string(const std::vector<std::string>& arg_names) const override;
+    Dim dim_forward(const std::vector<Dim>& xs) const override;
+    void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
+    void backward_impl(const std::vector<const Tensor*>& xs,
+        const Tensor& fx,
+        const Tensor& dEdf,
+        unsigned i,
+        Tensor& dEdxi) const override;
+    cnn::real scale; /// scale in the negative part of inputs
+};
+
 // you could do this with LogisticSigmoid, Softmax or a variety of other
 // functions, but this is often useful.
 // x_1 must be a vector with values between 0 and 1
@@ -571,6 +588,19 @@ struct Sum : public Node {
                     const Tensor& dEdf,
                     unsigned i,
                     Tensor& dEdxi) const override;
+};
+
+// y = \sum_i x_i into a scalar
+struct Reduce: public Node {
+    template <typename T> explicit Reduce(const T& a) : Node(a) {}
+    std::string as_string(const std::vector<std::string>& arg_names) const override;
+    Dim dim_forward(const std::vector<Dim>& xs) const override;
+    void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
+    void backward_impl(const std::vector<const Tensor*>& xs,
+        const Tensor& fx,
+        const Tensor& dEdf,
+        unsigned i,
+        Tensor& dEdxi) const override;
 };
 
 // y = \sum_i x_i
