@@ -173,6 +173,33 @@ PDialogue padding_with_eos(const PDialogue& v_diag, int padding_symbol, const st
     return res;
 }
 
+/**
+@param padding_to_the_back: true if padding is to the back of the input sequence; false if padding is to the front of the sequence
+*/
+Sentences padding_with_eos(const Sentences& v_sent, int padding_symbol, bool  padding_to_the_back)
+{
+    Sentences res;
+
+    int max_src = -1;
+    for (auto &sp : v_sent)
+    {
+        max_src = std::max<int>(sp.size(), max_src);  /// max source side length
+    }
+
+    for (auto& s : v_sent)
+    {
+        Sentence src(max_src, padding_symbol);
+
+        if (padding_to_the_back)
+            std::copy_n(s.begin(), s.size(), src.begin());
+        else
+            std::copy_n(s.begin(), s.size(), src.end() - s.size());
+        res.push_back(src);
+    }
+
+    return res;
+}
+
 /** 
 extract from a dialogue corpus, a set of dialogues with the same number of turns
 @corp : dialogue corpus
@@ -1345,6 +1372,7 @@ string builder_flavour(variables_map vm)
 {
     string flavour = "rnn";
     if (vm.count("lstm"))	flavour = "lstm";
+    else if (vm.count("rnn_elu"))	flavour = "rnn_elu";
     else if (vm.count("gru"))	flavour = "gru";
     else if (vm.count("dglstm"))	flavour = "dglstm";
     else if (vm.count("dglstm-dnn")) flavour = "dnn";
