@@ -223,9 +223,17 @@ struct FPairwiseRankLoss {
 };
 
 struct FRectifyBackward {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &t, const cnn::real &d) const {
-    return (t) ? d : 0.f;
-  }
+    CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &t, const cnn::real &d) const {
+        return (t) ? d : 0.f;
+    }
+};
+
+struct FExponentialLinearUnitsBackward {
+    FExponentialLinearUnitsBackward(cnn::real m) : a(m) {}
+    CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &t, const cnn::real &d) const {
+        return (t) ? d : d * (t + a);
+    }
+    cnn::real a; /// scale in the negative input part
 };
 
 struct FRectifyNegateBackward {
@@ -303,9 +311,17 @@ struct FLogSoftmaxBackward {
 };
 
 struct FRectify {
-  CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
-    return (x > 0.f) ? x : 0.f;
-  }
+    CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+        return (x > 0.f) ? x : 0.f;
+    }
+};
+
+struct FExponentialLinearUnits {
+    explicit FExponentialLinearUnits(cnn::real scale) : a(scale) {}
+    CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
+        return (x > 0.f) ? x : a * (exp(x) - 1.0f);
+    }
+    cnn::real a; /// scale in the negative input part
 };
 
 struct FSoftSign {
