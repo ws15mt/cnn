@@ -175,7 +175,7 @@ struct SimpleRNNBuilder : public RNNBuilder {
 
   void set_data_in_parallel(int n);
 
-private:
+protected:
     // first index is time, second is layer
   std::vector<std::vector<Expression>> h;
 
@@ -184,6 +184,29 @@ private:
   std::vector<Expression> h0;
   bool lagging;
   std::vector<std::vector<Expression>> biases;
+};
+
+struct SimpleRNNBuilderWithELU : public SimpleRNNBuilder {
+    SimpleRNNBuilderWithELU() = default;
+    explicit SimpleRNNBuilderWithELU(unsigned layers,
+        const vector<unsigned>& dims,
+        Model* model,
+        cnn::real i_scale = 1.0,
+        string name = "",
+        bool support_lags = false) :SimpleRNNBuilder(layers, dims, model, i_scale, name, support_lags){};
+    /// for parameter sharing 
+    SimpleRNNBuilderWithELU(const SimpleRNNBuilderWithELU& ref)
+        : SimpleRNNBuilder(ref)
+    {
+    }
+
+protected:
+    Expression add_input_impl(int prev, const Expression& x) override;
+    Expression add_input_impl(int prev, const std::vector<Expression>& x) override;
+    Expression add_input_impl(const std::vector<Expression>& prev_history, const Expression& x) override;
+
+public:
+    Expression add_auxiliary_input(const Expression& x, const Expression &aux);
 };
 
 } // namespace cnn
