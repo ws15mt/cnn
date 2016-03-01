@@ -547,6 +547,32 @@ void LogSumExp::backward_impl(const vector<const Tensor*>& xs,
   d.array() += (**xs[i] - *fx).array().exp() * (*dEdf).array();
 }
 
+void Reduce::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    const unsigned num_args = xs.size();
+    assert(num_args == 1 && fx.d.cols() == 1);
+#if HAVE_CUDA
+    gpu::vector_sum(xs[0]->d.size(), 1, xs[0]->v, fx.v, true); 
+#else
+    fx.v[0] = 0.0; 
+    for (int k = 0; k < xs[0]->d.size(); k++)
+        fx.v[0] += xs[0]->v[k]; 
+#endif
+    return;
+}
+
+void Reduce::backward_impl(const vector<const Tensor*>& xs,
+    const Tensor& fx,
+    const Tensor& dEdf,
+    unsigned i,
+    Tensor& dEdxi) const {
+#if HAVE_CUDA
+    gpu::vector_add_const(dEdxi.d.size(), 1, dEdxi.v, 1, 1, dEdf.v, dEdxi.v, true);
+#else
+    for (int k = 0; k < dEdxi.d.size(); k++)
+        dEdxi.v[k] += dEdf.v[0];
+#endif
+}
+
 void Sum::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
     const unsigned num_args = xs.size();
     if (num_args == 1) {
@@ -1815,6 +1841,28 @@ void Rectify::backward_impl(const vector<const Tensor*>& xs,
   gpu::vrelu_backward(fx.d.size(), fx.v, dEdf.v, dEdxi.v);
 #else
   *dEdxi += (*fx).binaryExpr(*dEdf, FRectifyBackward());
+#endif
+}
+
+void ExponentialLinearUnits::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    assert(xs.size() == 1);
+#if HAVE_CUDA
+    gpu::vexponential_linear_units(fx.d.size(), xs[0]->v, scale, fx.v);
+#else
+    auto x = **xs[0];
+    *fx = x.unaryExpr(FExponentialLinearUnits(scale));
+#endif
+}
+
+void ExponentialLinearUnits::backward_impl(const vector<const Tensor*>& xs,
+    const Tensor& fx,
+    const Tensor& dEdf,
+    unsigned i,
+    Tensor& dEdxi) const {
+#if HAVE_CUDA
+    gpu::vexponential_linear_units_backward(fx.d.size(), fx.v, dEdf.v, scale, dEdxi.v);
+#else
+    *dEdxi += (*fx).binaryExpr(*dEdf, FExponentialLinearUnitsBackward(scale));
 #endif
 }
 
