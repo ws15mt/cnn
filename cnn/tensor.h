@@ -184,12 +184,6 @@ struct TensorTools {
   static void SetElements(const Tensor& v, const std::vector<cnn::real>& vec);
   static void CopyElements(const Tensor& v, const Tensor& v_src);
 };
-cnn::real rand01();
-int rand0n(int n);
-cnn::real rand_normal();
-int rand0n_uniform(int n);
-
-#define LZERO -57.00
 
 } // namespace cnn
 
