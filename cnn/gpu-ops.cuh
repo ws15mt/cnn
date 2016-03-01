@@ -7,16 +7,16 @@ namespace cnn {
 namespace gpu {
 
     // each block processes one column. There must be 512 threads in a block
-    template <class ElemType>
+    template <class T>
     __global__ void _assignColumnwiseLogSoftmaxOf(
-        const ElemType* a,
-        ElemType* us,
+        const T* a,
+        T* us,
         const int m_numCols,
         const int m_numRows)
     {
         // We first find max per column
-        __shared__ ElemType colMax[1];
-        __shared__ ElemType partials[MAX_THREADS_PER_BLOCK];
+        __shared__ T colMax[1];
+        __shared__ T partials[MAX_THREADS_PER_BLOCK];
         colMax[0] = -10000000;
         partials[threadIdx.x] = -10000000;
 
@@ -76,13 +76,13 @@ namespace gpu {
         __syncthreads();
 
         // Now start finding sums
-        __shared__ ElemType colSum[1];
+        __shared__ T colSum[1];
         colSum[0] = 0.0f;
         for (int i = threadIdx.x; i < m_numRows; i += MAX_THREADS_PER_BLOCK)
         {
-            ElemType tmp = a[IDX2C(i, blockIdx.x, m_numRows)] - colMax[0];
+            T tmp = a[IDX2C(i, blockIdx.x, m_numRows)] - colMax[0];
             us[IDX2C(i, blockIdx.x, m_numRows)] = tmp;
-            partials[threadIdx.x] += (sizeof(ElemType) == sizeof(float)) ? expf(tmp) : exp(tmp);
+            partials[threadIdx.x] += (sizeof(T) == sizeof(float)) ? expf(tmp) : exp(tmp);
         }
         __syncthreads();
 
@@ -131,7 +131,7 @@ namespace gpu {
         if (threadIdx.x == 0)
         {
             colSum[0] = partials[0] + partials[1] + partials[2] + partials[3];
-            colSum[0] = (sizeof(ElemType) == sizeof(float)) ? logf(colSum[0]) : log(colSum[0]);
+            colSum[0] = (sizeof(T) == sizeof(float)) ? logf(colSum[0]) : log(colSum[0]);
         }
         __syncthreads();
 
@@ -142,16 +142,16 @@ namespace gpu {
     }
 
     // each block processes one column. There must be 512 threads in a block
-    template <class ElemType>
+    template <class T>
     __global__ void _assignColumnwiseSoftmaxOf(
-        const ElemType* a,
-        ElemType* us,
+        const T* a,
+        T* us,
         const int m_numCols,
         const int m_numRows)
     {
         // We first find max per column
-        __shared__ ElemType colMax[1];
-        __shared__ ElemType partials[MAX_THREADS_PER_BLOCK];
+        __shared__ T colMax[1];
+        __shared__ T partials[MAX_THREADS_PER_BLOCK];
         colMax[0] = -10000000;
         partials[threadIdx.x] = -10000000;
 
@@ -211,13 +211,13 @@ namespace gpu {
         __syncthreads();
 
         // Now start finding sums
-        __shared__ ElemType colSum[1];
+        __shared__ T colSum[1];
         colSum[0] = 0.0f;
         for (int i = threadIdx.x; i < m_numRows; i += MAX_THREADS_PER_BLOCK)
         {
-            ElemType tmp = a[IDX2C(i, blockIdx.x, m_numRows)] - colMax[0];
+            T tmp = a[IDX2C(i, blockIdx.x, m_numRows)] - colMax[0];
             us[IDX2C(i, blockIdx.x, m_numRows)] = tmp;
-            partials[threadIdx.x] += (sizeof(ElemType) == sizeof(float)) ? expf(tmp) : exp(tmp);
+            partials[threadIdx.x] += (sizeof(T) == sizeof(float)) ? expf(tmp) : exp(tmp);
         }
         __syncthreads();
 
@@ -266,35 +266,35 @@ namespace gpu {
         if (threadIdx.x == 0)
         {
             colSum[0] = partials[0] + partials[1] + partials[2] + partials[3];
-            colSum[0] = (sizeof(ElemType) == sizeof(float)) ? logf(colSum[0]) : log(colSum[0]);
+            colSum[0] = (sizeof(T) == sizeof(float)) ? logf(colSum[0]) : log(colSum[0]);
         }
         __syncthreads();
 
         for (int i = threadIdx.x; i < m_numRows; i += 512)
         {
-            ElemType tmp = us[IDX2C(i, blockIdx.x, m_numRows)] - colSum[0];
-            us[IDX2C(i, blockIdx.x, m_numRows)] = (sizeof(ElemType) == sizeof(float)) ? expf(tmp) : exp(tmp);
+            T tmp = us[IDX2C(i, blockIdx.x, m_numRows)] - colSum[0];
+            us[IDX2C(i, blockIdx.x, m_numRows)] = (sizeof(T) == sizeof(float)) ? expf(tmp) : exp(tmp);
         }
     }
 
     // each block processes one column. There must be 512 threads in a block
-    template <class ElemType>
+    template <class T>
     __global__ void _assignColumnwiseSoftmaxOfBackward(
-        const ElemType* fx,   /// value of this softmax
-        const ElemType* dEdf, /// gradient to be backpropagated
-        ElemType* dEdxi,      /// backpropagated gradient
+        const T* fx,   /// value of this softmax
+        const T* dEdf, /// gradient to be backpropagated
+        T* dEdxi,      /// backpropagated gradient
         const int m_numCols,
         const int m_numRows)
     {
-        __shared__ ElemType partials[MAX_THREADS_PER_BLOCK];
+        __shared__ T partials[MAX_THREADS_PER_BLOCK];
         partials[threadIdx.x] = 0.0f; 
-        __shared__ ElemType innerProductAtThisColumn[1];
+        __shared__ T innerProductAtThisColumn[1];
         innerProductAtThisColumn[0] = 0.0f;
 
         for (int i = threadIdx.x; i < m_numRows; i += MAX_THREADS_PER_BLOCK)
         {
-            ElemType v = fx[IDX2C(i, blockIdx.x, m_numRows)];
-            ElemType tmp = v * dEdf[IDX2C(i, blockIdx.x, m_numRows)]; 
+            T v = fx[IDX2C(i, blockIdx.x, m_numRows)];
+            T tmp = v * dEdf[IDX2C(i, blockIdx.x, m_numRows)]; 
             dEdxi[IDX2C(i, blockIdx.x, m_numRows)] += tmp;  /// elementwise product of value and gradient, and add it to the input gradient
             partials[threadIdx.x] += tmp;
         }
@@ -350,15 +350,15 @@ namespace gpu {
 
         for (int i = threadIdx.x; i < m_numRows; i += 512)
         {
-            ElemType tmp = innerProductAtThisColumn[0] * fx[IDX2C(i, blockIdx.x, m_numRows)];
+            T tmp = innerProductAtThisColumn[0] * fx[IDX2C(i, blockIdx.x, m_numRows)];
             dEdxi[IDX2C(i, blockIdx.x, m_numRows)] -= tmp; /// subtract with inner product of this column times softmax value
         }
     }
 
-    template <class ElemType>
-    __global__ void _vectorSum(
-        ElemType* c,       // output
-        const ElemType* a, // input
+    template <class T>
+    __global__ void _vector_sum(
+        T* c,       // output
+        const T* a, // input
         const int n, // a.numRows
         const int m, // a.numCols
         const bool isColWise)
@@ -367,7 +367,7 @@ namespace gpu {
         if ((isColWise && id >= m) || (!isColWise && id >= n))
             return;
 
-        ElemType sum = 0;
+        T sum = 0;
 
         if (isColWise)
         {
@@ -386,10 +386,29 @@ namespace gpu {
         c[id] = sum;
     }
 
-    template <class ElemType>
+    template <class T>
+    __global__ void _vector_add_const(
+        T* c,       // output
+        const T* a, // input
+        const int n, // a.numRows
+        const int m, // a.numCols
+        const T* b,  // the const value
+        const bool isColWise)
+    {
+        int id = blockDim.x * blockIdx.x + threadIdx.x;
+        if ((isColWise && id >= m) || (!isColWise && id >= n))
+            return;
+        __shared__ T s[1];
+        s[0] = *b;
+        __syncthreads();
+
+        c[id] = s[0] + a[id];
+    }
+
+    template <class T>
     __global__ void _rowElementMultiplyWith(
-        ElemType* us,
-        const ElemType* a,
+        T* us,
+        const T* a,
         const int N, // usrow;
         const int M) // acol;
     {
@@ -397,9 +416,9 @@ namespace gpu {
         if (id >= M)
             return;
 
-        // __shared__ ElemType _a[MAX_THREADS_PER_BLOCK];
+        // __shared__ T _a[MAX_THREADS_PER_BLOCK];
         // _a[threadIdx.x]=a[id];
-        ElemType mul = a[id];
+        T mul = a[id];
         for (int i = 0; i < N; ++i)
         {
             us[IDX2C(i, id, N)] = us[IDX2C(i, id, N)] * mul;

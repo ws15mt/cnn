@@ -32,12 +32,16 @@ namespace gpu {
     void vcwise_quotient(int n, const cnn::real* x0, const cnn::real* x1, cnn::real* y);
     void vcwise_quotient_backward(int n, const cnn::real* dEdy, const cnn::real* x_other, cnn::real* dEdx);
     void vconstant_minusx(int n, cnn::real c, const cnn::real* x, cnn::real* y);
+    /// c should be zero if used as back-propagation of y = x - c, since dx += dy should be the gradient to x
+    void vconstant_minusx_backward(int n, cnn::real c, const cnn::real* x, cnn::real* y);
     void vconstant_multiplyx(int n, cnn::real c, const cnn::real* x, cnn::real* y);
     void vconstant_multiplyx_backward(int n, cnn::real c, const cnn::real* x, cnn::real* y);
     void vnegate(int n, const cnn::real* x, cnn::real* y);
     void vnegate_backward(int n, const cnn::real* dEdf, cnn::real* dEdx);
     void vrelu(int n, const cnn::real* x, cnn::real* y);
     void vrelu_backward(int n, const cnn::real* fx, const cnn::real* dEdf, cnn::real* dEdx);
+    void vexponential_linear_units(int n, const cnn::real* x, const cnn::real scale, cnn::real* y);
+    void vexponential_linear_units_backward(int n, const cnn::real* fx, const cnn::real* dEdf, const cnn::real scale, cnn::real* dEdx);
     void vexp(int n, const cnn::real* x, cnn::real* y);
     void vtanh(int n, const cnn::real* x, cnn::real* y);
     void vtanh_backward(int n, const cnn::real* fx, const cnn::real* dEdf, cnn::real* dEdx);
@@ -57,6 +61,11 @@ namespace gpu {
     void sgd_update(int n, const cnn::real* g, cnn::real* x, cnn::real scale, cnn::real lambda);
     void sgd_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real * v, cnn::real scale, cnn::real lambda, cnn::real momentum);
     void rmsprop_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real* v, cnn::real *r, cnn::real scale, cnn::real lambda, cnn::real momentum, cnn::real rho, cnn::real epsilon);
+
+    void vector_sum(int rows, int cols, const cnn::real * a, cnn::real* c, const bool isColWise);
+    void vector_add_const(int rows, int cols, const cnn::real * a, int brow, int bcol, const cnn::real* b, cnn::real * c, bool isColWise);
+
+
 } // namespace gpu
 } // namespace cnn
 
