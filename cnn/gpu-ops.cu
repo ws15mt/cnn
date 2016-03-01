@@ -73,6 +73,11 @@ void vconstant_minusx(int n, cnn::real c, const cnn::real* x, cnn::real* y) {
     unaryExprKernel << <tb.first, tb.second >> >(n, x, y, FConstantMinus(c));
 }
 
+void vconstant_minusx_backward(int n, cnn::real c, const cnn::real* x, cnn::real* y) {
+    auto tb = SizeToBlockThreadPair(n);
+    accUnaryExprKernel << <tb.first, tb.second >> >(n, x, y, FConstantMinus(c));
+}
+
 void vconstant_multiplyx(int n, cnn::real c, const cnn::real* x, cnn::real* y) {
     auto tb = SizeToBlockThreadPair(n);
     unaryExprKernel << <tb.first, tb.second >> >(n, x, y, FConstantMultiply(c));
@@ -106,6 +111,16 @@ void vrelu(int n, const cnn::real* x, cnn::real* y) {
 void vrelu_backward(int n, const cnn::real* fx, const cnn::real* dEdf, cnn::real* dEdx) {
   auto tb = SizeToBlockThreadPair(n);
   accBinaryExprKernel<<<tb.first, tb.second>>>(n, fx, dEdf, dEdx, FRectifyBackward());
+}
+
+void vexponential_linear_units(int n, const cnn::real* x, const cnn::real scale, cnn::real* y) {
+    auto tb = SizeToBlockThreadPair(n);
+    unaryExprKernel << <tb.first, tb.second >> >(n, x, y, FExponentialLinearUnits(scale));
+}
+
+void vexponential_linear_units_backward(int n, const cnn::real* fx, const cnn::real* dEdf, const cnn::real scale, cnn::real* dEdx) {
+    auto tb = SizeToBlockThreadPair(n);
+    accBinaryExprKernel << <tb.first, tb.second >> >(n, fx, dEdf, dEdx, FExponentialLinearUnitsBackward(scale));
 }
 
 void vtanh(int n, const cnn::real* x, cnn::real* y) {
@@ -175,7 +190,7 @@ void l2_norm_reducer(int n, const cnn::real* x0, cnn::real* y, bool square, bool
   ker_l2_norm_reducer<<<tb.first,tb.second>>>(n, x0, y, square, accumulate);
 }
 
-void VectorSum(int rows, int cols, const cnn::real * a, cnn::real* c, const bool isColWise)
+void vector_sum(int rows, int cols, const cnn::real * a, cnn::real* c, const bool isColWise)
 {
     assert(rows > 0 && cols > 0); // converting from size_t to int may cause overflow
 
@@ -195,14 +210,43 @@ void VectorSum(int rows, int cols, const cnn::real * a, cnn::real* c, const bool
     }
 
     cudaEventCreate(&done);
-    _vectorSum<cnn::real> << <blocksPerGrid, MAX_THREADS_PER_BLOCK, 0, cudaStreamDefault >> >(c, a, n, m, isColWise);
+    _vector_sum<cnn::real> << <blocksPerGrid, MAX_THREADS_PER_BLOCK, 0, cudaStreamDefault >> >(c, a, n, m, isColWise);
+    cudaEventRecord(done);
+    cudaEventSynchronize(done);
+    cudaEventDestroy(done);
+}
+
+void vector_add_const(int rows, int cols, const cnn::real * a, int brow, int bcol, const cnn::real* b, cnn::real * c, bool isColWise)
+{
+    assert(rows > 0 && cols > 0); // converting from size_t to int may cause overflow
+
+    int m = cols;
+    int n = rows;
+
+    if (brow != bcol && brow != 1)
+        cuda_exception("const dimension has to be a scalar");
+
+    cudaEvent_t done = nullptr;
+
+    int blocksPerGrid = 0;
+    if (isColWise) // col-wise
+    {
+        blocksPerGrid = (int)ceil(1.0 * m / MAX_THREADS_PER_BLOCK);
+    }
+    else
+    {
+        blocksPerGrid = (int)ceil(1.0 * n / MAX_THREADS_PER_BLOCK);
+    }
+
+    cudaEventCreate(&done);
+    _vector_add_const<cnn::real> << <blocksPerGrid, MAX_THREADS_PER_BLOCK, 0, cudaStreamDefault >> >(c, a, n, m, b, isColWise);
     cudaEventRecord(done);
     cudaEventSynchronize(done);
     cudaEventDestroy(done);
 }
 
 /// assume that a is a vector with col dimension
-void RowElementMultiplyWith(int arow, int acol, const cnn::real * a, int brow, int bcol, cnn::real * b)
+void row_element_multiply_with(int arow, int acol, const cnn::real * a, int brow, int bcol, cnn::real * b)
 {
     if (arow != 1 || acol != bcol)
     {
@@ -242,8 +286,8 @@ void logsoftmax(int row, int col, const cnn::real* x0, cnn::real* y)
 void logsoftmax_backward(int row, int col, const cnn::real *fx, const cnn::real *dEdf, cnn::real *dEdx, cnn::real * gpu_softmax, cnn::real *grd)
 {
     vexp(row * col, fx, gpu_softmax);
-    VectorSum(row, col, dEdf, grd, true); 
-    RowElementMultiplyWith(1, col, grd, row, col, gpu_softmax);
+    vector_sum(row, col, dEdf, grd, true);
+    row_element_multiply_with(1, col, grd, row, col, gpu_softmax);
 
     auto tb = SizeToBlockThreadPair(col * row);
     accBinaryExprKernel << <tb.first, tb.second >> >(col * row, dEdf, gpu_softmax, dEdx, FSubtract());
