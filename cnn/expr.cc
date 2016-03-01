@@ -47,8 +47,9 @@ Expression exp(const Expression& x) { return Expression(x.pg, x.pg->add_function
 Expression square(const Expression& x) { return Expression(x.pg, x.pg->add_function<Square>({x.i})); }
 Expression cube(const Expression& x) { return Expression(x.pg, x.pg->add_function<Cube>({x.i})); }
 Expression logistic(const Expression& x) { return Expression(x.pg, x.pg->add_function<LogisticSigmoid>({x.i})); }
-Expression rectify(const Expression& x) { return Expression(x.pg, x.pg->add_function<Rectify>({x.i})); }
-Expression hinge(const Expression& x, unsigned index, cnn::real m) { return Expression(x.pg, x.pg->add_function<Hinge>({x.i}, index, m)); }
+Expression rectify(const Expression& x) { return Expression(x.pg, x.pg->add_function<Rectify>({ x.i })); }
+Expression exponential_linear_units(const Expression& x, cnn::real scale) { return Expression(x.pg, x.pg->add_function<ExponentialLinearUnits>({ x.i }, scale)); }
+Expression hinge(const Expression& x, unsigned index, cnn::real m) { return Expression(x.pg, x.pg->add_function<Hinge>({ x.i }, index, m)); }
 Expression hinge(const Expression& x, const unsigned* pindex, cnn::real m) { return Expression(x.pg, x.pg->add_function<Hinge>({x.i}, pindex, m)); }
 Expression log_softmax(const Expression& x) { return Expression(x.pg, x.pg->add_function<LogSoftmax>({x.i})); }
 Expression log_softmax(const Expression& x, const std::vector<unsigned>& d) { return Expression(x.pg, x.pg->add_function<RestrictedLogSoftmax>({x.i}, d)); }
@@ -75,6 +76,8 @@ Expression binary_log_loss(const Expression& x, const Expression& y) { return Ex
 Expression pairwise_rank_loss(const Expression& x, const Expression& y, real m) { return Expression(x.pg, x.pg->add_function<PairwiseRankLoss>({x.i, y.i}, m)); }
 Expression poisson_loss(const Expression& x, unsigned y) { return Expression(x.pg, x.pg->add_function<PoissonRegressionLoss>({x.i}, y)); }
 Expression poisson_loss(const Expression& x, const unsigned* py) { return Expression(x.pg, x.pg->add_function<PoissonRegressionLoss>({x.i}, py)); }
+
+Expression reduce(const Expression& x) { return Expression(x.pg, x.pg->add_function<Reduce>({ x.i })); }
 
 Expression conv1d_narrow(const Expression& x, const Expression& f) { return Expression(x.pg, x.pg->add_function<Conv1DNarrow>({x.i, f.i})); }
 Expression conv1d_wide(const Expression& x, const Expression& f) { return Expression(x.pg, x.pg->add_function<Conv1DWide>({x.i, f.i})); }

@@ -61,6 +61,7 @@ Expression cube(const Expression& x);
 Expression log(const Expression& x);
 Expression logistic(const Expression& x);
 Expression rectify(const Expression& x);
+Expression exponential_linear_units(const Expression& x, cnn::real scale = 1.0);
 Expression hinge(const Expression& x, unsigned index, cnn::real m = 1.0);
 Expression hinge(const Expression& x, const unsigned* pindex, cnn::real m = 1.0);
 Expression log_softmax(const Expression& x);
@@ -88,6 +89,10 @@ Expression binary_log_loss(const Expression& x, const Expression& y);
 Expression pairwise_rank_loss(const Expression& x, const Expression& y, real m=1.0);
 Expression poisson_loss(const Expression& x, unsigned y);
 Expression poisson_loss(const Expression& x, const unsigned* py);
+
+// reduce to a scalar
+// to-do reduce to a vector given a dimension
+Expression reduce(const Expression& x); 
 
 // various convolutiony things
 Expression conv1d_narrow(const Expression& x, const Expression& f);
