@@ -371,16 +371,16 @@ struct Concatenate : public Node {
 // concatenate column vectors into a matrix
 // x_i must be a column vector in R^n
 struct ConcatenateColumns : public Node {
-    template <typename T> explicit ConcatenateColumns(const T& a) : Node(a) { aux_mem = nullptr; }
+  template <typename T> explicit ConcatenateColumns(const T& a) : Node(a) { aux_mem = nullptr; }
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
-  size_t aux_storage_size() const override;
   void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
   void backward_impl(const std::vector<const Tensor*>& xs,
                   const Tensor& fx,
                   const Tensor& dEdf,
                   unsigned i,
                   Tensor& dEdxi) const override;
+  mutable std::vector<unsigned> acc_col_size;
 };
 
 // x_1 is a scalar (or row vector)

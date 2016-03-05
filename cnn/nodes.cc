@@ -963,38 +963,22 @@ void Concatenate::backward_impl(const vector<const Tensor*>& xs,
 #endif
 }
 
-#define MAX_CONCAT_COLS_ARGS 16384
-/// 4096
-size_t ConcatenateColumns::aux_storage_size() const {
-  return MAX_CONCAT_COLS_ARGS * sizeof(unsigned);
-}
-
 void ConcatenateColumns::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   unsigned c = 0;
-  assert(xs.size() < MAX_CONCAT_COLS_ARGS);
-  if (xs.size() >= MAX_CONCAT_COLS_ARGS)
-  {
-      cerr << "column size too large to " << xs.size() << endl;
-      throw("error : column size too large");
-  }
 
-  unsigned* pp = static_cast<unsigned*>(aux_mem);
+  acc_col_size.clear();
   for (unsigned i = 0; i < xs.size(); ++i) {
-#if HAVE_CUDA
-    CUDA_CHECK(cudaMemcpy(pp+i, &c, sizeof(unsigned), cudaMemcpyHostToDevice));
-    // CUBLAS matricies are column-major, so just copy the memory
     auto & xi = *xs[i];
-    const unsigned rows = xi.d.rows();
     const unsigned cols = xi.d.cols();
-    CUDA_CHECK(cudaMemcpyAsync(&fx.v[rows*c], &xi.v[0], sizeof(cnn::real) * rows * cols, cudaMemcpyDeviceToDevice));
-    c += cols;
+#if HAVE_CUDA
+    // CUBLAS matricies are column-major, so just copy the memory
+    const unsigned rows = xi.d.rows();
+    CUDA_CHECK(cudaMemcpyAsync(&fx.v[rows*c], xi.v, sizeof(cnn::real) * rows * cols, cudaMemcpyDeviceToDevice));
 #else
-      static_cast<unsigned*>(aux_mem)[i] = c;
-      auto xi = **xs[i];
-    int d = xi.cols();
-    (*fx).middleCols(c, d) = xi;
-    c += d;
+    (*fx).middleCols(c, cols) = **xs[i];
 #endif
+    c += cols;
+    acc_col_size.push_back(c);
   }
 }
 
@@ -1004,12 +988,11 @@ void ConcatenateColumns::backward_impl(const vector<const Tensor*>& xs,
                                     unsigned i,
                                     Tensor& dEdxi) const {
   unsigned* pp = static_cast<unsigned*>(aux_mem);
+  unsigned c = acc_col_size[i];
 #if HAVE_CUDA
   const unsigned rows = dEdxi.d.rows();
   const unsigned cols = dEdxi.d.cols();
-  unsigned c;
-  CUDA_CHECK(cudaMemcpy(&c, pp + i, sizeof(unsigned), cudaMemcpyDeviceToHost));
-  const unsigned begin = c*rows;
+  const unsigned begin = (c - cols)*rows;
   if (sizeof(cnn::real) == sizeof(float))
       CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows * cols, reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(&dEdf.v[begin]), 1, reinterpret_cast<float*>(dEdxi.v), 1));
   else if (sizeof(cnn::real) == sizeof(double))
@@ -1017,8 +1000,7 @@ void ConcatenateColumns::backward_impl(const vector<const Tensor*>& xs,
 #else
   auto dEdx = *dEdxi;
   int d = dEdx.cols();
-  int c = static_cast<unsigned*>(aux_mem)[i];
-  dEdx += (*dEdf).middleCols(c, d);
+  dEdx += (*dEdf).middleCols(c - d, d);
 #endif
 }
 
