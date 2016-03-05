@@ -2,7 +2,7 @@
 
 namespace cnn {
 
-#define USE_DOUBLE
+//#define USE_DOUBLE
 #ifdef USE_DOUBLE
 typedef double real;
 #else
@@ -29,7 +29,10 @@ typedef float real;
 #define MAX_THREADS_PER_BLOCK 512
 
 ///for gradient checking
-#define GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL 5
+#define GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL 4
 #define GRADIENT_CHECK_PARAM_DELTA 1e-5
+
+/// for math
+#define LZERO -57.00
 
 };

@@ -24,7 +24,5 @@ namespace cnn {
     /// sample_dist : the sample distribution, size = vocab_size
     std::vector<int> rand0n_uniform(int vecsize, int n_exclusive, const std::vector<cnn::real>& sample_dist);
 
-    #define LZERO -57.00
-
 } // namespace cnn
 

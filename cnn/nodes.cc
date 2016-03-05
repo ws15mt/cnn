@@ -1497,48 +1497,25 @@ inline void CUDAMatrixMultiply(const Tensor& l, const Tensor& r, Tensor& y, cons
   //         r.v, r.d.rows(),
   //         acc_scalar, y.v, y.d.rows()));
   // }
-  if(l.d.bd == 1) {
     // If the left side has one batch, multiply by columns
     // [x, z, b] = [x, y] * [y, z, b]
     // -> [x, z*b] = [x, y], [y, z*b]
 #ifdef USE_DOUBLE
-      CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
-          y.d.rows(), y.d.cols() * y.d.batch_elems(), l.d.cols(),
+   CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
+          y.d.rows(), y.d.cols(), l.d.cols(),
           kSCALAR_ONE,
           l.v, l.d.rows(),
           r.v, r.d.rows(),
           acc_scalar,
           y.v, y.d.rows()));
 #else
-      CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
-          y.d.rows(), y.d.cols() * y.d.batch_elems(), l.d.cols(),
+   CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
+          y.d.rows(), y.d.cols(), l.d.cols(),
           kSCALAR_ONE,
           l.v, l.d.rows(),
           r.v, r.d.rows(),
           acc_scalar, y.v, y.d.rows()));
 #endif
-  }
-  else {
-    // Otherwise, loop over the batches
-    assert(r.d.bd == 1 || r.d.bd == l.d.bd);
-    for(unsigned b = 0; b < l.d.bd; ++b) {
-#ifdef USE_DOUBLE
-        CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
-            y.d.rows(), y.d.cols(), l.d.cols(),
-            kSCALAR_ONE,
-            l.batch_ptr(b), l.d.rows(),
-            r.batch_ptr(b), r.d.rows(),
-            acc_scalar, y.batch_ptr(b), y.d.rows()));
-#else
-        CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
-            y.d.rows(), y.d.cols(), l.d.cols(),
-            kSCALAR_ONE,
-            l.batch_ptr(b), l.d.rows(),
-            r.batch_ptr(b), r.d.rows(),
-            acc_scalar, y.batch_ptr(b), y.d.rows()));
-#endif
-    }
-  }
 }
 #endif
 
@@ -1569,56 +1546,46 @@ void MatrixMultiply::backward_impl(const vector<const Tensor*>& xs,
                                 unsigned i,
                                 Tensor& dEdxi) const {
   assert(i < 2);
-  int max_b = max(xs[0]->d.bd, xs[1]->d.bd);
 #if HAVE_CUDA
   if (i == 0) {
-    for(int b = 0; b < max_b; ++b)
 #ifdef USE_DOUBLE
-        CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
+      CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
         dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
         kSCALAR_ONE,
-        dEdf.batch_ptr(b), dEdf.d.rows(),
-        xs[1]->batch_ptr(b), xs[1]->d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+        dEdf.v, dEdf.d.rows(),
+        xs[1]->v, xs[1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #else
-        CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
-        dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
-        kSCALAR_ONE,
-        dEdf.batch_ptr(b), dEdf.d.rows(),
-        xs[1]->batch_ptr(b), xs[1]->d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+      CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
+          dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
+          kSCALAR_ONE,
+          dEdf.v, dEdf.d.rows(),
+          xs[1]->v, xs[1]->d.rows(),
+          kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #endif
   }
   else {
-    // TODO: Fix this to share
-    for(int b = 0; b < max_b; ++b)
 #ifdef USE_DOUBLE
-        CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
+    CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
         dEdxi.d.rows(), dEdxi.d.cols(), xs[0]->d.rows(),
         kSCALAR_ONE,
-        xs[0]->batch_ptr(b), xs[0]->d.rows(),
-        dEdf.batch_ptr(b), dEdf.d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+        xs[0]->v, xs[0]->d.rows(),
+        dEdf.v, dEdf.d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #else
-        CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
+    CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
         dEdxi.d.rows(), dEdxi.d.cols(), xs[0]->d.rows(),
         kSCALAR_ONE,
-        xs[0]->batch_ptr(b), xs[0]->d.rows(),
-        dEdf.batch_ptr(b), dEdf.d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+        xs[0]->v, xs[0]->d.rows(),
+        dEdf.v, dEdf.d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #endif
   }
 #else
   if (i == 0) {
-    for(int b = 0; b < max_b; ++b)
-      dEdxi.batch_matrix(b).noalias() += dEdf.batch_matrix(b) * xs[1]->batch_matrix(b).transpose();
+    dEdxi.colbatch_matrix().noalias() += dEdf.colbatch_matrix() * xs[1]->colbatch_matrix().transpose();
   } else {
-    if(xs[0]->d.bd == 1) {
-      dEdxi.colbatch_matrix().noalias() += (**xs[0]).transpose() * dEdf.colbatch_matrix();
-    } else {
-      for(int b = 0; b < max_b; ++b)
-        dEdxi.batch_matrix(b).noalias() += xs[0]->batch_matrix(b).transpose() * dEdf.batch_matrix(b);
-    }
+    dEdxi.colbatch_matrix().noalias() += xs[0]->colbatch_matrix().transpose() * dEdf.colbatch_matrix();
   }
 #endif
 }
@@ -1703,22 +1670,11 @@ void AffineTransform::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) 
 #else
   assert(fx.d.bd == 1);
   // Add, using broadcasting or not
-  if(fx.d.bd > 1 && xs[0]->d.bd == 1) {
-    fx.rowcol_matrix().colwise() = xs[0]->vec();
-  } else {
-    for(unsigned b = 0; b < fx.d.bd; ++b)
-      fx.batch_matrix(b) = xs[0]->batch_matrix(b);
-  }
-
+  fx.colbatch_matrix().noalias() = xs[0]->colbatch_matrix();
+  
   // Multiply
   for (unsigned i = 1; i < xs.size(); i += 2) {
-    if(xs[i]->d.bd == 1) {
-      fx.colbatch_matrix().noalias() += **xs[i] * xs[i+1]->colbatch_matrix();
-    } else {
-      assert(xs[i+1]->d.bd == 1 || xs[i+1]->d.bd == xs[i]->d.bd);
-      for(unsigned b = 0; b < xs[i]->d.bd; ++b)
-        fx.batch_matrix(b).noalias() += xs[i]->batch_matrix(b) * xs[i+1]->batch_matrix(b);
-    }
+    fx.colbatch_matrix().noalias() += **xs[i] * xs[i+1]->colbatch_matrix();
   }
 #endif
 }
@@ -1738,63 +1694,47 @@ void AffineTransform::backward_impl(const vector<const Tensor*>& xs,
 #else
     assert(fx.d.bd == 1);
     // Add, using broadcasting or not
-    if(dEdxi.d.bd > 1 && dEdf.d.bd == 1) {
-      dEdxi.rowcol_matrix().colwise() += dEdf.vec();
-    } else {
-      for(unsigned b = 0; b < dEdxi.d.bd; ++b)
-        dEdxi.batch_matrix(b) += dEdf.batch_matrix(b);
-    }
+    dEdxi.colbatch_matrix().noalias() += dEdf.colbatch_matrix();
 #endif
   } else if (i % 2 == 1) { // left argument of matrix multiply
-    int max_b = max(dEdf.d.bd, xs[i+1]->d.bd);
 #if HAVE_CUDA
-    for(int b = 0; b < max_b; ++b)
 #ifdef USE_DOUBLE
-        CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
+    CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
         dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
         kSCALAR_ONE,
-        dEdf.batch_ptr(b), dEdf.d.rows(),
-        xs[i + 1]->batch_ptr(b), xs[i + 1]->d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+        dEdf.v, dEdf.d.rows(),
+        xs[i + 1]->v, xs[i + 1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #else
-        CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
+    CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
         dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
         kSCALAR_ONE,
-        dEdf.batch_ptr(b), dEdf.d.rows(),
-        xs[i + 1]->batch_ptr(b), xs[i + 1]->d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+        dEdf.v, dEdf.d.rows(),
+        xs[i + 1]->v, xs[i + 1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #endif
 #else
-    for(int b = 0; b < max_b; ++b)
-      dEdxi.batch_matrix(b).noalias() += dEdf.batch_matrix(b) * xs[i+1]->batch_matrix(b).transpose();
+    dEdxi.colbatch_matrix().noalias() += dEdf.colbatch_matrix() * xs[i+1]->colbatch_matrix().transpose();
 #endif
   } else {  // right argument of matrix multiply
-    int max_b = max(xs[i-1]->d.bd, dEdf.d.bd);
 #if HAVE_CUDA
-    // TODO: Add reverse
-    for(int b = 0; b < max_b; ++b)
 #ifdef USE_DOUBLE
-        CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
+    CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
         dEdxi.d.rows(), dEdxi.d.cols(), xs[i - 1]->d.rows(),
         kSCALAR_ONE,
-        xs[i - 1]->batch_ptr(b), xs[i - 1]->d.rows(),
-        dEdf.batch_ptr(b), xs[i - 1]->d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+        xs[i - 1]->v, xs[i - 1]->d.rows(),
+        dEdf.v, xs[i - 1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #else
     CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
-        dEdxi.d.rows(), dEdxi.d.cols(), xs[i-1]->d.rows(),
+        dEdxi.d.rows(), dEdxi.d.cols(), xs[i - 1]->d.rows(),
         kSCALAR_ONE,
-        xs[i-1]->batch_ptr(b), xs[i-1]->d.rows(),
-        dEdf.batch_ptr(b), xs[i-1]->d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+        xs[i - 1]->v, xs[i - 1]->d.rows(),
+        dEdf.v, xs[i - 1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #endif
 #else
-    if(xs[i-1]->d.bd == 1) {
-      dEdxi.colbatch_matrix().noalias() += (**xs[i-1]).transpose() * dEdf.colbatch_matrix();
-    } else {
-      for(int b = 0; b < max_b; ++b)
-        dEdxi.batch_matrix(b).noalias() += xs[i-1]->batch_matrix(b).transpose() * dEdf.batch_matrix(b);
-    }
+    dEdxi.colbatch_matrix().noalias() += (**xs[i-1]).transpose() * dEdf.colbatch_matrix();
 #endif
   }
 }

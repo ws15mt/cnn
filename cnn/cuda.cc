@@ -67,15 +67,16 @@ void Initialize_GPU(int& argc, char**& argv) {
   CUDA_CHECK(cudaSetDevice(selected));
   CUBLAS_CHECK(cublasCreate(&cublas_handle));
   CUBLAS_CHECK(cublasSetPointerMode(cublas_handle, CUBLAS_POINTER_MODE_DEVICE));
-  CUDA_CHECK(cudaMalloc(&kSCALAR_MINUSONE, sizeof(float)));
-  CUDA_CHECK(cudaMalloc(&kSCALAR_ONE, sizeof(float)));
-  CUDA_CHECK(cudaMalloc(&kSCALAR_ZERO, sizeof(float)));
-  float minusone = -1;
-  CUDA_CHECK(cudaMemcpyAsync(kSCALAR_MINUSONE, &minusone, sizeof(float), cudaMemcpyHostToDevice));
-  float one = 1;
-  CUDA_CHECK(cudaMemcpyAsync(kSCALAR_ONE, &one, sizeof(float), cudaMemcpyHostToDevice));
-  float zero = 0;
-  CUDA_CHECK(cudaMemcpyAsync(kSCALAR_ZERO, &zero, sizeof(float), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMalloc(&kSCALAR_MINUSONE, sizeof(cnn::real)));
+  CUDA_CHECK(cudaMalloc(&kSCALAR_ONE, sizeof(cnn::real)));
+  CUDA_CHECK(cudaMalloc(&kSCALAR_ZERO, sizeof(cnn::real)));
+  cnn::real minusone = -1;
+  CUDA_CHECK(cudaMemcpyAsync(kSCALAR_MINUSONE, &minusone, sizeof(cnn::real), cudaMemcpyHostToDevice));
+  cnn::real one = 1;
+  CUDA_CHECK(cudaMemcpyAsync(kSCALAR_ONE, &one, sizeof(cnn::real), cudaMemcpyHostToDevice));
+  cnn::real zero = 0;
+  CUDA_CHECK(cudaMemcpyAsync(kSCALAR_ZERO, &zero, sizeof(cnn::real), cudaMemcpyHostToDevice));
+
 
   Initialize_CUDNN();
 }

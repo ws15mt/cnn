@@ -2,6 +2,7 @@
 #define CNN_GPU_FUNCTORS_H
 
 #include <cstdint>
+#include <cnn/macros.h>
 using namespace std;
 #if HAVE_CUDA
 #define CNN_DEVICE_FUNC __device__
@@ -37,38 +38,16 @@ static inline ElemType fastpow2 (ElemType p) {
   return v.f;
 }
 
-#if 1
-#if 0
-static inline cnn::real fastexp (cnn::real p) {
-  return fastpow2 (1.442695040f * p);
+static CNN_DEVICE_FUNC inline cnn::real fastexp(cnn::real p) {
+    return (sizeof(cnn::real) == sizeof(float)) ? expf(p) : exp(p);
 }
-#else
-template<class ElemType>
-static inline ElemType fastexp (ElemType p) {
-  return exp(p);
-}
-#endif
-#else
-// Schraudolph version, but it's a bit crappy in terms of
-// performance and not that much faster
-#define EXPAF (8388608 / 0.6931471806f)
-static inline cnn::real fastexp (cnn::real p) {
-  union { cnn::real f; int32_t i; } eco;
-  eco.i = (int32_t)(EXPAF * (p)) + 1065353216;
-  return eco.f;
-}
-#endif
+
+#define CNN_EXPF fastexp
 
 #if defined(__GNU_LIBRARY__) && (__GLIBC__ == 2) && (__GLIBC_MINOR__ < 14) && !defined(HAVE_CUDA)
 #define USE_FASTEXP
 #else
 #undef USE_FASTEXP
-#endif
-
-#ifdef USE_FASTEXP
-#define CNN_EXPF fastexp
-#else
-#define CNN_EXPF expf
 #endif
 
 namespace cnn {
@@ -178,7 +157,7 @@ struct FTanh {
     cnn::real b = 135135.0f + x2 * (62370.0f + x2 * (3150.0f + x2 * 28.0f));
     return a / b;
 #else
-    return tanhf(x);
+    return (sizeof(cnn::real) == sizeof(float))?tanhf(x):tanh(x);
 #endif
   }
 };
@@ -245,7 +224,7 @@ struct FRectifyNegateBackward {
 struct FSoftmaxNormalize {
   explicit FSoftmaxNormalize(cnn::real logz) : logz(logz) {}
   CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
-    return CNN_EXPF(x - logz);
+    return fastexp(x - logz);
   }
   cnn::real logz;
 };
@@ -303,10 +282,8 @@ struct FWeightedError {
 struct FLogSoftmaxBackward {
   explicit FLogSoftmaxBackward(cnn::real off_diag_sum) : off_diag_sum(off_diag_sum) {}
   CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &t, const cnn::real &d) const {
-      //return off_diag_sum * CNN_EXPF(t) + d;
-      return off_diag_sum * exp(t) + d;
-      //return (off_diag_sum + d) * t;
-  }
+      return off_diag_sum * fastexp(t) + d;
+   }
   cnn::real off_diag_sum;
 };
 
@@ -339,7 +316,7 @@ struct FSoftSignBackward {
 
 struct FLogisticSigmoid {
   CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
-    return 1.f / (1.f + CNN_EXPF(-x));
+      return 1.f / (1.f + CNN_EXPF(-x));
   }
 };
 
@@ -358,13 +335,14 @@ struct FSqDist {
 
 struct FExp {
     CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
-        return exp(x);
+        return CNN_EXPF(x); 
     }
 };
 
 struct FLog {
     CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x) const {
-        return log(x);
+        if (x < 1e-25) return LZERO;
+        return (sizeof(cnn::real) == sizeof(float)) ? logf(x) : log(x);
     }
 };
 
