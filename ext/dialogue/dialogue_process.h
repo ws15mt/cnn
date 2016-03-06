@@ -537,8 +537,6 @@ namespace cnn {
 
             s2tmodel.serialise_context(cg);
 
-            cg.incremental_forward();
-
             i_errs.push_back(s2txent);
             return object;
         }
@@ -592,8 +590,6 @@ namespace cnn {
             s2txent = i_err;
 
             s2tmodel.serialise_context(cg);
-
-            cg.incremental_forward();
 
             return object_cur_s2cur_t;
         }
