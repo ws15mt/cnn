@@ -15,6 +15,10 @@
 #include <thrust/version.h>
 #include "cnn/gpu-ops.h"
 #include "cnn/cuda.h"
+#include <thrust/device_ptr.h>
+#include <thrust/transform.h>
+#include <thrust/transform_reduce.h>
+#include <cnn/functors.h>
 #endif
 
 using namespace std;
@@ -204,6 +208,8 @@ Model::~Model() {
   for (auto p : all_params) delete p;
   if (gradient_norm_scratch)
       cnn_mm_free(gradient_norm_scratch); 
+  if (gscale)
+      cnn_mm_free_host(gscale);
 }
 
 void Model::project_weights(cnn::real radius) {
@@ -223,17 +229,28 @@ void Model::project_weights(cnn::real radius) {
 
 cnn::real Model::gradient_l2_norm() const {
   if (!gradient_norm_scratch)
+  {
       gradient_norm_scratch = (cnn::real*)cnn_mm_malloc(all_params.size() * sizeof(cnn::real), CNN_ALIGN);
+  }
+  if (gscale == nullptr)
+      gscale = (cnn::real*)cnn_mm_malloc_host(sizeof(cnn::real) * all_params.size(), CNN_ALIGN);
   int pi = 0;
   for (auto p : all_params) {
     p->g_squared_l2norm(&gradient_norm_scratch[pi]);
     ++pi;
   }
 #if HAVE_CUDA
-  cnn::real res = 0;
-  gpu::l2_norm_reducer(all_params.size(), gradient_norm_scratch, gradient_norm_scratch, false, false);
-  cudaMemcpy(&res, gradient_norm_scratch, sizeof(cnn::real),  cudaMemcpyDeviceToHost);
-  return sqrt(res);
+//  gpu::l2_norm_reducer(all_params.size(), gradient_norm_scratch, gradient_norm_scratch, false, false);
+//  cudaMemcpy(gscale, gradient_norm_scratch, sizeof(cnn::real),  cudaMemcpyDeviceToHost);
+  // *gscale = sqrt(*gscale);
+  // return *gscale;
+  
+  // do reduction in CPU as one whole block of memcpy can be fast
+  CUDA_CHECK(cudaMemcpyAsync(gscale, gradient_norm_scratch, sizeof(cnn::real) * all_params.size(), cudaMemcpyDeviceToHost));
+  cnn::real gg = 0; 
+  for (int k = 0; k < all_params.size(); k++)
+      gg += gscale[k] * gscale[k];
+  return sqrt(gg);
 #else
   cnn::real gg = 0;
   for (int i = 0; i < pi; ++i)
