@@ -163,6 +163,11 @@ void sgd_update(int n, const cnn::real* g, cnn::real* x, cnn::real scale, cnn::r
     accBinaryExprKernel << <tb.first, tb.second >> >(n, x, g, x, FL2SGDUpdate(lambda, scale));
 }
 
+void sgd_update(int n, const cnn::real* g, cnn::real* x, cnn::real* scale, cnn::real* lambda) {
+    auto tb = SizeToBlockThreadPair(n);
+    accBinaryExprKernel << <tb.first, tb.second >> >(n, x, g, x, FL2SGDUpdatePtrArguments (lambda, scale));
+}
+
 void sgd_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real* v, cnn::real scale, cnn::real lambda, cnn::real momentum) {
     auto tb = SizeToBlockThreadPair(n);
     accTripletExprKernel << <tb.first, tb.second >> >(n, x, g, v, x, FL2SGDMomentumUpdate(lambda, scale, momentum));
@@ -188,6 +193,14 @@ void sqeucdist(int n, const cnn::real* x0, const cnn::real *x1, cnn::real* y) {
 void l2_norm_reducer(int n, const cnn::real* x0, cnn::real* y, bool square, bool accumulate) {
   auto tb = SizeToBlockThreadPair(n);
   ker_l2_norm_reducer<<<tb.first,tb.second>>>(n, x0, y, square, accumulate);
+}
+
+void sqrt_of_l2_norm_reducer(int n, cnn::real* x0, cnn::real& res)
+{
+    thrust::device_ptr<cnn::real> dv_ptr = thrust::device_pointer_cast(x0);
+    FSquare unary_op;
+    thrust::plus<cnn::real> binary_op;
+    res = std::sqrt(thrust::transform_reduce(dv_ptr, dv_ptr + n, unary_op, 0.0, binary_op));
 }
 
 void vector_sum(int rows, int cols, const cnn::real * a, cnn::real* c, const bool isColWise)

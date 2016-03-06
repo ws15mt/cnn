@@ -319,7 +319,7 @@ void KMaxPooling::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) cons
 #else
   auto x = **xs[0];
   auto y=*fx;
-  float tmp[1024];
+  cnn::real tmp[1024];
   assert(x.cols() < 1024);
   unsigned mi = 0;
   const unsigned rows = x.rows();

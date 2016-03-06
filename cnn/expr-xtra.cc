@@ -747,7 +747,7 @@ void display_value(const Expression &source, ComputationGraph &cg, string what_t
         cout << what_to_say << endl;
     for (unsigned j = 0; j < J; ++j) {
         for (unsigned i = 0; i < I; ++i) {
-            cnn::real v = TensorTools::AccessElement(a, j*I + i);
+            cnn::real v = TensorTools::AccessElement(a, IDX2C(j,i, J)); 
             std::cout << v << ' ';
         }
         std::cout << endl;

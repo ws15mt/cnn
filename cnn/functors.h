@@ -364,6 +364,16 @@ struct FL2SGDUpdate {
     cnn::real scale;
 };
 
+/// use pointer as arguments
+struct FL2SGDUpdatePtrArguments {
+    FL2SGDUpdatePtrArguments(cnn::real *l, cnn::real *s) : lambda(l), scale(s) {}
+    CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x, const cnn::real &g) const {
+        return - x * (*lambda) - (*scale) * g;
+    }
+    cnn::real *lambda;
+    cnn::real *scale;
+};
+
 struct FL2SGDMomentumUpdate {
     FL2SGDMomentumUpdate(cnn::real l, cnn::real s, cnn::real m) : lambda(l), scale(-s), momentum(m) {}
     CNN_DEVICE_FUNC inline cnn::real operator()(const cnn::real &x, const cnn::real &g, cnn::real &v) {
