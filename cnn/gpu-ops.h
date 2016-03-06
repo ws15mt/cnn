@@ -50,6 +50,7 @@ namespace gpu {
     void vlogistic(int n, const cnn::real* x, cnn::real* y);
     void vlogistic_backward(int n, const cnn::real* fx, const cnn::real* dEdf, cnn::real* dEdx);
     void l2_norm_reducer(int n, const cnn::real* x0, cnn::real* y, bool square, bool accumulate);
+    void sqrt_of_l2_norm_reducer(int n, cnn::real* x0, cnn::real& res);
     void sqeucdist(int n, const cnn::real* x0, const cnn::real *x1, cnn::real* y);
     void sqeucdist_backward(int n, const cnn::real* dEdy, const cnn::real* x0, const cnn::real* x1, cnn::real* dEdx, int i);
     void pnlsoftmax(int n, int elem_idx, const cnn::real* x0, cnn::real* y, cnn::real* logz);
@@ -59,6 +60,7 @@ namespace gpu {
     void softmax(int row, int col, const cnn::real* x0, cnn::real* y);
     void softmax_backward(int row, int col, const cnn::real *fx, const cnn::real *dEdf, cnn::real *dEdx);
     void sgd_update(int n, const cnn::real* g, cnn::real* x, cnn::real scale, cnn::real lambda);
+    void sgd_update(int n, const cnn::real* g, cnn::real* x, cnn::real* scale, cnn::real* lambda);
     void sgd_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real * v, cnn::real scale, cnn::real lambda, cnn::real momentum);
     void rmsprop_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real* v, cnn::real *r, cnn::real scale, cnn::real lambda, cnn::real momentum, cnn::real rho, cnn::real epsilon);
 
