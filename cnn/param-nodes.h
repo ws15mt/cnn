@@ -78,8 +78,8 @@ struct ReferenceNode : public Node {
 
 // represents specified (not learned) scalar inputs to the network
 struct ScalarInputNode : public Node {
-  explicit ScalarInputNode(real s) : data(s), pdata(&data) {}
-  explicit ScalarInputNode(const real* ps) : data(), pdata(ps) {}
+  explicit ScalarInputNode(cnn::real s) : data(s), pdata(&data) {}
+  explicit ScalarInputNode(const cnn::real* ps) : data(), pdata(ps) {}
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
   void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
