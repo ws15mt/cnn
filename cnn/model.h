@@ -116,55 +116,60 @@ private:
 // this knows how to serialize itself
 // parameters know how to track their gradients, but any extra information (like velocity) will live here
 class Model {
+private: 
+    mutable cnn::real *gscale; /// gradient scale, memory to be allocated by GPU if HAVE_CUDA
+    /// for speed-up, this memory is called from cudaMallocHost if HAVE_CUDA
  public:
-  Model() : gradient_norm_scratch() {}
-  ~Model();
-  cnn::real gradient_l2_norm() const;
-  void reset_gradient();
-  // set scale to use custom initialization
-  Parameters* add_parameters(const Dim& d, cnn::real scale = 1.0f, std::string nodename = "");
-  LookupParameters* add_lookup_parameters(unsigned n, const Dim& d, cnn::real scale = 1.0f, std::string nodename = "");
-  // project weights so their L2 norm = radius
-  void project_weights(cnn::real radius = 1.0f);
+    Model() : gradient_norm_scratch() { 
+        gscale = nullptr; 
+    }
+    ~Model();
+    cnn::real gradient_l2_norm() const;
+    void reset_gradient();
+    // set scale to use custom initialization
+    Parameters* add_parameters(const Dim& d, cnn::real scale = 1.0f, std::string nodename = "");
+    LookupParameters* add_lookup_parameters(unsigned n, const Dim& d, cnn::real scale = 1.0f, std::string nodename = "");
+    // project weights so their L2 norm = radius
+    void project_weights(cnn::real radius = 1.0f);
 
-  const std::vector<ParametersBase*>& all_parameters_list() const { return all_params; }
-  const std::vector<Parameters*>& parameters_list() const { return params; }
-  const std::vector<LookupParameters*>& lookup_parameters_list() const { return lookup_params; }
+    const std::vector<ParametersBase*>& all_parameters_list() const { return all_params; }
+    const std::vector<Parameters*>& parameters_list() const { return params; }
+    const std::vector<LookupParameters*>& lookup_parameters_list() const { return lookup_params; }
 
  private:
-  friend class boost::serialization::access;
-  template<class Archive>
-  void save(Archive& ar, const unsigned int version) const {
+    friend class boost::serialization::access;
+    template<class Archive>
+    void save(Archive& ar, const unsigned int version) const {
       int np = params.size();
-    int nlp = lookup_params.size();
-    ar & np;
-    ar & nlp;
-    for (unsigned i = 0; i < params.size(); ++i)
-      ar & *params[i];
-    for (unsigned i = 0; i < lookup_params.size(); ++i)
-      ar & *lookup_params[i];
-  }
-  template<class Archive>
-  void load(Archive& ar, const unsigned int version) {
-    int np, nlp;
-    ar & np;
-    ar & nlp;
-    assert(np == (int)params.size());
-    assert(nlp == (int)lookup_params.size());
-    for (unsigned i = 0; i < params.size(); ++i)
-      ar & *params[i];
-    for (unsigned i = 0; i < lookup_params.size(); ++i)
-      ar & *lookup_params[i];
-    all_params.clear();
-    for (auto p : params) all_params.push_back(p);
-    for (auto p : lookup_params) all_params.push_back(p);
-  }
-  BOOST_SERIALIZATION_SPLIT_MEMBER()
+        int nlp = lookup_params.size();
+        ar & np;
+        ar & nlp;
+        for (unsigned i = 0; i < params.size(); ++i)
+          ar & *params[i];
+        for (unsigned i = 0; i < lookup_params.size(); ++i)
+          ar & *lookup_params[i];
+    }
+    template<class Archive>
+    void load(Archive& ar, const unsigned int version) {
+        int np, nlp;
+        ar & np;
+        ar & nlp;
+        assert(np == (int)params.size());
+        assert(nlp == (int)lookup_params.size());
+        for (unsigned i = 0; i < params.size(); ++i)
+          ar & *params[i];
+        for (unsigned i = 0; i < lookup_params.size(); ++i)
+          ar & *lookup_params[i];
+        all_params.clear();
+        for (auto p : params) all_params.push_back(p);
+        for (auto p : lookup_params) all_params.push_back(p);
+    }
+    BOOST_SERIALIZATION_SPLIT_MEMBER()
 
-  std::vector<ParametersBase*> all_params;
-  std::vector<Parameters*> params;
-  std::vector<LookupParameters*> lookup_params;
-  mutable cnn::real* gradient_norm_scratch;
+    std::vector<ParametersBase*> all_params;
+    std::vector<Parameters*> params;
+    std::vector<LookupParameters*> lookup_params;
+    mutable cnn::real* gradient_norm_scratch;
 };
 void save_cnn_model(std::string filename, Model* model);
 void load_cnn_model(std::string filename, Model* model);
