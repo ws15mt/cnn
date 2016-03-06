@@ -85,13 +85,67 @@ NumTurn2DialogId training_numturn2did;
 NumTurn2DialogId devel_numturn2did;
 NumTurn2DialogId test_numturn2did;
 
+#define MAX_NBR_TRUNS 200000
+struct TrainingScores{
+public:
+    long swords; /// source side number of words
+    long twords; /// target side number of words
+    int training_score_current_location;
+    int training_score_buf_size;
+    cnn::real *training_scores;
+
+    cnn::real dloss; 
+
+public:
+    TrainingScores(int bufsize) : training_score_buf_size(bufsize) {
+        training_scores = (cnn::real*) cnn_mm_malloc(training_score_buf_size * sizeof(cnn::real), CNN_ALIGN);
+        training_score_current_location = 0;
+        swords = 0;
+        twords = 0;
+    }
+    ~TrainingScores()
+    {
+        cnn_mm_free(training_scores);
+    }
+
+    void reset()
+    {
+        swords = 0;
+        twords = 0;
+        training_score_current_location = 0;
+    }
+
+    cnn::real compute_score()
+    {
+        if (training_score_current_location > MAX_NBR_TRUNS - 1)
+            std::runtime_error("TrainingScore out of memory");
+
+        dloss = 0;
+        vector<cnn::real> raw_score = as_vector(training_score_current_location, training_scores); 
+        for (auto& p : raw_score)
+            dloss += p;
+        return dloss;
+    }
+};
+
 /**
 The higher level training process
 */
 template <class Proc>
 class TrainProcess{
+private:
+    TrainingScores* training_set_scores;
+    TrainingScores* dev_set_scores;
+
 public:
-    TrainProcess(){
+    TrainProcess() {
+        training_set_scores = new TrainingScores(MAX_NBR_TRUNS);
+        dev_set_scores = new TrainingScores(MAX_NBR_TRUNS);
+    }
+    ~TrainProcess()
+    {
+        delete[] training_set_scores;
+        delete[] dev_set_scores;
     }
 
     void prt_model_info(size_t LAYERS, size_t VOCAB_SIZE_SRC, const vector<unsigned>& dims, size_t nreplicate, size_t decoder_additiona_input_to, size_t mem_slots, cnn::real scale);
@@ -129,9 +183,8 @@ public:
     void collect_sample_responses(Proc& am, Corpus &training);
 
     void nosegmental_forward_backward(Model &model, Proc &am, PDialogue &v_v_dialogues, int nutt,
-        cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr);
-    void segmental_forward_backward(Model &model, Proc &am, PDialogue &v_v_dialogues, int nutt,
-        cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, bool doGradientCheck = false, Trainer* sgd = nullptr);
+        TrainingScores* scores, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr);
+    void segmental_forward_backward(Model &model, Proc &am, PDialogue &v_v_dialogues, int nutt, TrainingScores *scores, bool resetmodel, bool doGradientCheck = false, Trainer* sgd = nullptr);
     void REINFORCE_nosegmental_forward_backward(Model &model, Proc &am, Proc &am_mirrow, PDialogue &v_v_dialogues, int nutt,
         cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, Trainer* sgd, Dict& sd, cnn::real reward_baseline = 0.0, cnn::real threshold_prob_for_sampling = 1.0,
         bool update_model = true);
@@ -186,9 +239,7 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
     /// report BLEU score
     test(model, am, devel, out_file + "bleu", sd);
 
-    cnn::real ddloss = 0;
-    cnn::real ddchars_s = 0;
-    cnn::real ddchars_t = 0;
+    dev_set_scores->reset(); 
 
     {
         vector<bool> vd_selected(devel.size(), false);  /// track if a dialgoue is used
@@ -208,9 +259,9 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
         while (ndutt > 0)
         {
             if (segmental_training)
-                segmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, false);
+                segmental_forward_backward(model, am, vd_dialogues, ndutt, dev_set_scores, false);
             else
-                nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+                nosegmental_forward_backward(model, am, vd_dialogues, ndutt, dev_set_scores, true);
 
             id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, test_corpusinfo);
             ndutt = id_sel_idx.size();
@@ -225,8 +276,9 @@ void TrainProcess<AM_t>::test(Model &model, AM_t &am, Corpus &devel, string out_
         }
     }
 
-    cerr << "\n***Test [lines =" << lines << " out of total " << devel.size() << " lines ] E = " << (ddloss / ddchars_t) << " ppl=" << exp(ddloss / ddchars_t) << ' ';
-    of << "\n***Test [lines =" << lines << " out of total " << devel.size() << " lines ] E = " << (ddloss / ddchars_t) << " ppl=" << exp(ddloss / ddchars_t) << endl; 
+    dev_set_scores->compute_score();
+    cerr << "\n***Test [lines =" << lines << " out of total " << devel.size() << " lines ] E = " << (dev_set_scores->dloss / dev_set_scores->twords) << " ppl=" << exp(dev_set_scores->dloss / dev_set_scores->twords) << ' ';
+    of << "\n***Test [lines =" << lines << " out of total " << devel.size() << " lines ] E = " << (dev_set_scores->dloss / dev_set_scores->twords) << " ppl=" << exp(dev_set_scores->dloss / dev_set_scores->twords) << ' ';
 
     /// if report score in embedding space
     if (score_embedding_fn.size() > 0)
@@ -265,9 +317,7 @@ cnn::real TrainProcess<AM_t>::testPPL(Model &model, AM_t &am, Corpus &devel, Num
 
     Timer iteration("completed in");
 
-    cnn::real ddloss = 0;
-    ddchars_s = 0;
-    ddchars_t = 0;
+    dev_set_scores->reset();
 
     vector<bool> vd_selected(devel.size(), false);  /// track if a dialgoue is used
     size_t id_stt_diag_id = 0;
@@ -279,20 +329,20 @@ cnn::real TrainProcess<AM_t>::testPPL(Model &model, AM_t &am, Corpus &devel, Num
     while (ndutt > 0)
     {
         if (segmental_training)
-            segmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, false);
+            segmental_forward_backward(model, am, vd_dialogues, ndutt, dev_set_scores, false);
         else
-            nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+            nosegmental_forward_backward(model, am, vd_dialogues, ndutt, dev_set_scores, true);
 
         id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, test_corpusinfo);
         ndutt = id_sel_idx.size();
 
     }
-
-    cerr << "\n***Test [lines =" << lines << " out of total " << devel.size() << " lines ] E = " << (ddloss / ddchars_t) << " ppl=" << exp(ddloss / ddchars_t) << ' ';
+    dev_set_scores->compute_score();
+    cerr << "\n***Test [lines =" << lines << " out of total " << devel.size() << " lines ] E = " << (dev_set_scores->dloss / dev_set_scores->twords) << " ppl=" << exp(dev_set_scores->dloss / dev_set_scores->twords) << ' ';
 
     of.close();
 
-    return ddloss;
+    return dev_set_scores->dloss;
 }
 
 /** warning, the test function use the true past response as the context, when measure bleu score
@@ -777,8 +827,7 @@ void TrainProcess<AM_t>::REINFORCE_nosegmental_forward_backward(Model &model, AM
 }
 
 template <class AM_t>
-void TrainProcess<AM_t>::nosegmental_forward_backward(Model &model, AM_t &am, PDialogue &v_v_dialogues, int nutt,
-    cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr)
+void TrainProcess<AM_t>::nosegmental_forward_backward(Model &model, AM_t &am, PDialogue &v_v_dialogues, int nutt, TrainingScores* scores, bool resetmodel = false, int init_turn_id = 0, Trainer* sgd = nullptr)
 {
     size_t turn_id = init_turn_id;
     size_t i_turns = 0;
@@ -809,10 +858,14 @@ void TrainProcess<AM_t>::nosegmental_forward_backward(Model &model, AM_t &am, PD
         i_turns++;
     }
 
-    dloss += as_scalar(cg.get_value(am.s2txent.i));
+    Tensor tv = cg.get_value(am.s2txent.i);
+    TensorTools::PushElementsToMemory(scores->training_score_current_location,
+        scores->training_score_buf_size,
+        scores->training_scores, tv); 
 
-    dchars_s += am.swords;
-    dchars_t += am.twords;
+    scores->swords += am.swords;
+    scores->twords += am.twords;
+
 
     if (sgd != nullptr)
     {
@@ -822,8 +875,7 @@ void TrainProcess<AM_t>::nosegmental_forward_backward(Model &model, AM_t &am, PD
 }
 
 template <class AM_t>
-void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDialogue &v_v_dialogues, int nutt,
-    cnn::real &dloss, cnn::real & dchars_s, cnn::real & dchars_t, bool resetmodel, bool doGradientCheck, Trainer* sgd)
+void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDialogue &v_v_dialogues, int nutt, TrainingScores * scores, bool resetmodel, bool doGradientCheck, Trainer* sgd)
 {
     size_t turn_id = 0;
     size_t i_turns = 0;
@@ -864,19 +916,19 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDia
                 cout << " done update" << endl;
         }
 
-        dloss += as_scalar(cg.get_value(am.s2txent.i));
-        if (verbose)
-            cout << "dloss " << dloss << endl;
-    
-        dchars_s += am.swords;
-        dchars_t += am.twords;
+        Tensor tv = cg.get_value(am.s2txent.i);
+        TensorTools::PushElementsToMemory(scores->training_score_current_location,
+            scores->training_score_buf_size,
+            scores->training_scores,
+            tv);
+
+        scores->swords += am.swords;
+        scores->twords += am.twords;
 
         prv_turn = turn;
         turn_id++;
         i_turns++;
-
     }
-
 }
 
 /**
@@ -1031,10 +1083,7 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
            (!sgd_update_epochs && si < training.size()))  /// run one pass of the data
     {
         Timer iteration("completed in");
-        cnn::real dloss = 0;
-        cnn::real dchars_s = 0;
-        cnn::real dchars_t = 0;
-        cnn::real dchars_tt = 0;
+        training_set_scores->reset();
 
         PDialogue v_dialogues;  // dialogues are orgnaized in each turn, in each turn, there are parallel data from all speakers
 
@@ -1086,18 +1135,20 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
             }
 
             if (segmental_training)
-                segmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, false, do_gradient_check, &sgd);
+                segmental_forward_backward(model, am, v_dialogues, nutt, training_set_scores, false, do_gradient_check, &sgd);
             else
-                nosegmental_forward_backward(model, am, v_dialogues, nutt, dloss, dchars_s, dchars_t, true, 0, &sgd);
+                nosegmental_forward_backward(model, am, v_dialogues, nutt, training_set_scores, true, 0, &sgd);
 
             si += nutt;
             lines += nutt;
             iter += nutt;
         }
 
+        training_set_scores->compute_score();
+
         sgd.status();
-        iteration.WordsPerSecond(dchars_t + dchars_s);
-        cerr << "\n***Train " << (lines / (cnn::real)training.size()) * 100 << " %100 of epoch[" << sgd.epoch << "] E = " << (dloss / dchars_t) << " ppl=" << exp(dloss / dchars_t) << ' ';
+        iteration.WordsPerSecond(training_set_scores->twords + training_set_scores->swords);
+        cerr << "\n***Train " << (lines / (cnn::real)training.size()) * 100 << " %100 of epoch[" << sgd.epoch << "] E = " << (training_set_scores->dloss / training_set_scores->twords) << " ppl=" << exp(training_set_scores->dloss / training_set_scores->twords) << ' ';
 
 
         vector<SentencePair> vs;
@@ -1185,10 +1236,11 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, Corpus &training, Corpus 
 
     while (sgd.epoch < max_epochs) {
         Timer iteration("completed in");
+        training_set_scores->reset(); 
+        dev_set_scores->reset();
         cnn::real dloss = 0;
         cnn::real dchars_s = 0;
         cnn::real dchars_t = 0;
-        cnn::real dchars_tt = 0;
 
         for (unsigned iter = 0; iter < report_every_i; ++iter) {
 
@@ -1284,9 +1336,7 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, Corpus &training, Corpus 
         // show score on dev data?
         report++;
         if (floor(sgd.epoch) != prv_epoch || report % dev_every_i_reports == 0 || fmod(lines, (cnn::real)training.size()) == 0.0) {
-            cnn::real ddloss = 0;
-            cnn::real ddchars_s = 0;
-            cnn::real ddchars_t = 0;
+            dev_set_scores->reset();
 
             {
                 vector<bool> vd_selected(devel.size(), false);  /// track if a dialgoue is used
@@ -1305,7 +1355,7 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, Corpus &training, Corpus 
 
                 while (ndutt > 0)
                 {
-                    nosegmental_forward_backward(model, am, vd_dialogues, ndutt, ddloss, ddchars_s, ddchars_t, true);
+                    nosegmental_forward_backward(model, am, vd_dialogues, ndutt, dev_set_scores, true);
 
                     id_sel_idx = get_same_length_dialogues(devel, NBR_DEV_PARALLEL_UTTS, id_stt_diag_id, vd_selected, vd_dialogues, devel_numturn2did);
                     ndutt = id_sel_idx.size();
@@ -1319,7 +1369,9 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, Corpus &training, Corpus 
                     }
                 }
             }
-            ddloss = smoothed_ppl(ddloss);
+
+            dev_set_scores->compute_score();
+            cnn::real ddloss = smoothed_ppl(dev_set_scores->dloss);
             if (ddloss < best) {
                 best = ddloss;
                 ofstream out(out_file, ofstream::out);
@@ -1331,7 +1383,7 @@ void TrainProcess<AM_t>::train(Model &model, AM_t &am, Corpus &training, Corpus 
                 sgd.eta0 *= 0.5; /// reduce learning rate
                 sgd.eta *= 0.5; /// reduce learning rate
             }
-            cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (ddloss / ddchars_t) << " ppl=" << exp(ddloss / ddchars_t) << ' ';
+            cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dev_set_scores->dloss / dev_set_scores->twords) << " ppl=" << exp(dev_set_scores->dloss / dev_set_scores->twords) << ' ';
         }
 
         prv_epoch = floor(sgd.epoch);
