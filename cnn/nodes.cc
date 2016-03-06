@@ -551,7 +551,7 @@ void Reduce::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
     const unsigned num_args = xs.size();
     assert(num_args == 1 && fx.d.cols() == 1);
 #if HAVE_CUDA
-    gpu::vector_sum(xs[0]->d.size(), 1, xs[0]->v, fx.v, true); 
+    l2_norm_reducer(xs[0]->d.size(), xs[0]->v, fx.v, false, false);
 #else
     fx.v[0] = 0.0; 
     for (int k = 0; k < xs[0]->d.size(); k++)
@@ -566,7 +566,7 @@ void Reduce::backward_impl(const vector<const Tensor*>& xs,
     unsigned i,
     Tensor& dEdxi) const {
 #if HAVE_CUDA
-    gpu::vector_add_const(dEdxi.d.size(), 1, dEdxi.v, 1, 1, dEdf.v, dEdxi.v, true);
+    l2_norm_reducer(1, dEdf.v, dEdxi.v, false, true);
 #else
     for (int k = 0; k < dEdxi.d.size(); k++)
         dEdxi.v[k] += dEdf.v[0];
@@ -673,8 +673,7 @@ void SumBatches::backward_impl(const vector<const Tensor*>& xs,
 }
 
 size_t Average::aux_storage_size() const {
-    int sz = 1;
-    return sz* sizeof(cnn::real);
+    return sizeof(cnn::real);
 }
 
 void Average::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
@@ -705,16 +704,38 @@ void Average::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
 #endif
 }
 
+/**
+check if a 1/sz is allready computed and stored in GPU memory, 
+if so, use it. otherwise, need to compute it and put it in the back_off_mem
+*/
+#ifdef HAVE_CUDA
+cnn::real* pointer_to_one_over_size(int sz, cnn::real * back_off_mem)
+{
+    cnn::real *fdevptr = nullptr;
+    if (sz > MEM_PRE_ALLOCATED_CONSTS_NUMBERS + 1)
+    {
+        cnn::real nbr_samples = 1. / sz;
+        fdevptr = static_cast<cnn::real*>(back_off_mem);
+        CUDA_CHECK(cudaMemcpy(fdevptr, &nbr_samples, sizeof(cnn::real), cudaMemcpyHostToDevice));
+    }
+    else if (sz == 1)
+        fdevptr = kSCALAR_ONE;
+    else{
+        fdevptr = kSCALAR_ONE_OVER_INT[sz - 2];
+    }
+    return fdevptr;
+}
+#endif
+
 void Average::backward_impl(const vector<const Tensor*>& xs,
                      const Tensor& fx,
                      const Tensor& dEdf,
                      unsigned i,
                      Tensor& dEdxi) const {
-
 #if HAVE_CUDA
-    cnn::real fscale = 1. / xs.size();
-    cnn::real *fdevptr = static_cast<cnn::real*>(aux_mem);
-    CUDA_CHECK(cudaMemcpy(fdevptr, &fscale, sizeof(cnn::real), cudaMemcpyHostToDevice));
+    /// to speed-up, use pre-allocated const, instead of doing cpu to gpu memcpy of the const
+    cnn::real *fdevptr = pointer_to_one_over_size(xs.size(), static_cast<cnn::real*>(aux_mem));
+
     if (sizeof(cnn::real) == sizeof(float))
         CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), reinterpret_cast<float*>(fdevptr), reinterpret_cast<float*>(dEdf.v), 1, reinterpret_cast<float*>(dEdxi.v), 1));
     else if (sizeof(cnn::real) == sizeof(double))
@@ -1043,7 +1064,7 @@ void Hinge::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   const unsigned rows = x.rows();
   cnn::real y = 0;
   cnn::real* eloss = static_cast<cnn::real*>(aux_mem);
-  const real mlystar = margin - x(*pelement);
+  const cnn::real mlystar = margin - x(*pelement);
   for (unsigned i = 0; i < rows; ++i) {
     if (*pelement != i) {
       eloss[i] = max<cnn::real>(0.f, mlystar + x(i));
@@ -1107,7 +1128,7 @@ void MaxPooling1D::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) con
     unsigned from = i * width;
     unsigned to = from + width;
     if (to > x_rows) to = x_rows;
-    real best = x(from, 0);
+    cnn::real best = x(from, 0);
     unsigned bestr = from;
     for (unsigned r = from + 1; r < to; ++r) {
       if (x(r, 0) > best) {
@@ -1315,13 +1336,13 @@ void LogSoftmax::backward_impl(const vector<const Tensor*>& xs,
 }
 
 template <class T>
-EIGEN_STRONG_INLINE real logsumexp(const T& x, const vector<unsigned>& denom) {
-  real m = x(denom[0],0);
+EIGEN_STRONG_INLINE cnn::real logsumexp(const T& x, const vector<unsigned>& denom) {
+  cnn::real m = x(denom[0],0);
   for (auto i : denom) {
-    real r = x(i,0);
+    cnn::real r = x(i,0);
     if (r > m) m = r;
   }
-  real z = 0;
+  cnn::real z = 0;
   for (auto i : denom)
     z += expf(x(i,0) - m);
   return m + logf(z);
@@ -1337,8 +1358,8 @@ void RestrictedLogSoftmax::forward_impl(const vector<const Tensor*>& xs, Tensor&
   assert(denom.size() > 0);
   auto x = **xs[0];
   assert(x.cols() == 1);
-  const real logz = logsumexp(x, denom);
-  TensorTools::Constant(fx, -numeric_limits<real>::infinity());
+  const cnn::real logz = logsumexp(x, denom);
+  TensorTools::Constant(fx, -numeric_limits<cnn::real>::infinity());
   for (auto i : denom)
     (*fx)(i,0) = x(i,0) - logz;
   if (denom.size() == 1) (*fx)(denom.front(), 0) = 0;
@@ -1893,7 +1914,7 @@ void SquaredEuclideanDistance::backward_impl(const vector<const Tensor*>& xs,
 #else
   auto x1 = **xs[0];
   auto x2 = **xs[1];
-  real scale = dEdf.v[0] * 2;
+  cnn::real scale = dEdf.v[0] * 2;
   if (i == 1) scale = -scale;
   *dEdxi += scale * (x1 - x2);
 #endif
