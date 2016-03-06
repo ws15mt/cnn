@@ -17,8 +17,8 @@ struct Timer {
   {
       auto stop = std::chrono::high_resolution_clock::now();
       int ms = std::chrono::duration<double, std::milli>(stop - start).count();
-      float se = ms * 1000.0;
-      float wps = nwords / se;
+      cnn::real se = ms * 1000.0;
+      cnn::real wps = nwords / se;
       std::cerr << "[ words per second ] = " << wps << std::endl; 
   }
   std::string msg;
