@@ -1528,18 +1528,11 @@ void MatrixMultiply::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) c
   // fx = 0*fx + xs[0] * xs[1]
   CUDAMatrixMultiply(*xs[0], *xs[1], fx, kSCALAR_ZERO);
 #else
-  assert(fx.d.bd == max(xs[0]->d.bd, xs[1]->d.bd));
-  if(xs[0]->d.bd == 1) {
-    // If the left side has one batch, multiply by columns
-    // [x, z, b] = [x, y] * [y, z, b]
-    // -> [x, z*b] = [x, y], [y, z*b]
-    fx.colbatch_matrix().noalias() = **xs[0] * xs[1]->colbatch_matrix();
-  } else {
-    // Otherwise, loop over the batches
-    assert(xs[1]->d.bd == 1 || xs[1]->d.bd == xs[0]->d.bd);
-    for(unsigned b = 0; b < xs[0]->d.bd; ++b)
-      fx.batch_matrix(b).noalias() = xs[0]->batch_matrix(b) * xs[1]->batch_matrix(b);
-  }
+  assert(fx.d.bd == 1); 
+  // If the left side has one batch, multiply by columns
+  // [x, z, b] = [x, y] * [y, z, b]
+  // -> [x, z*b] = [x, y], [y, z*b]
+  fx.colbatch_matrix().noalias() = **xs[0] * xs[1]->colbatch_matrix();
 #endif
 }
 

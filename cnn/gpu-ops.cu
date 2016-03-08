@@ -178,6 +178,8 @@ https://github.com/OrangeOwlSolutions/Thrust/blob/master/Calculating_the_norm_of
 */
 void rmsprop_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real* v, cnn::real *r, cnn::real scale, cnn::real lambda, cnn::real momentum, cnn::real rho, cnn::real epsilon) {
     auto tb = SizeToBlockThreadPair(n);
+    /// it may be more efficient to compute in cpu and not do reduce in gpu, but my observation is not 
+    /// that case
     cnn::real squared_norm = thrust::transform_reduce(thrust::device_pointer_cast(g), thrust::device_pointer_cast(g + n), FSquare(), (cnn::real)0.0, thrust::plus<cnn::real>());
     *r = rho * (*r) + (1 - rho) * squared_norm;
     cnn::real den = sqrt(*r + epsilon);

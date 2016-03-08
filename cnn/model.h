@@ -11,7 +11,8 @@
 
 #include "cnn/tensor.h"
 
-#define CNN_ALIGN 256
+#define CNN_ALIGN 64
+// 2^ALIGN = 2^6 = 64
 
 namespace cnn {
 
