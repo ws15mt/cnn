@@ -901,7 +901,9 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDia
             am.build_graph(prv_turn, turn, cg);
         }
 
-        if (doGradientCheck)
+        if (doGradientCheck 
+            && turn_id > 3 // do gradient check after burn-in
+            )
             CheckGrad(model, cg);
 
         if (sgd != nullptr)
