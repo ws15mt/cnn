@@ -127,6 +127,10 @@ struct RmsPropWithMomentumTrainer : public Trainer {
         Trainer(m, lam, e0), epsilon(eps), rho(rho), shadow_params_allocated(false), momentum(mom) {}
     void update(cnn::real nutt, cnn::real scale = 1.0) override;
 
+    void compute_gradient_norm(
+        std::vector<Parameters*> plist, std::vector<cnn::real>& vpgrd_norm,
+        std::vector<LookupParameters*> llist, std::vector<cnn::real>& vl_grd_norm);
+
     cnn::real epsilon;
     cnn::real rho;
     bool shadow_params_allocated;
