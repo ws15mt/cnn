@@ -176,12 +176,28 @@ void sgd_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real* v, 
 /** followed some examples of using thrust at
 https://github.com/OrangeOwlSolutions/Thrust/blob/master/Calculating_the_norm_of_arrays.cu
 */
+/// this is old code that computes gradient norm for every parameter
+/*
 void rmsprop_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real* v, cnn::real *r, cnn::real scale, cnn::real lambda, cnn::real momentum, cnn::real rho, cnn::real epsilon) {
     auto tb = SizeToBlockThreadPair(n);
     /// it may be more efficient to compute in cpu and not do reduce in gpu, but my observation is not 
     /// that case
     cnn::real squared_norm = thrust::transform_reduce(thrust::device_pointer_cast(g), thrust::device_pointer_cast(g + n), FSquare(), (cnn::real)0.0, thrust::plus<cnn::real>());
     *r = rho * (*r) + (1 - rho) * squared_norm;
+    cnn::real den = sqrt(*r + epsilon);
+    accTripletExprKernel << <tb.first, tb.second >> >(n, x, g, v, x, FL2SGDMomentumUpdate(lambda, scale / den, momentum));
+    //CUDA_CHECK(cudaFree(sqnorm));
+}
+*/
+
+/// this is a newer code that uses gradient norms computed elsewhere. 
+/// potential speed-up can be achieved to compute all of gradient norms in GPU and then transfer them to
+/// CPU in a bulk. 
+void rmsprop_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real* v, cnn::real *r, cnn::real scale, cnn::real lambda, cnn::real momentum, cnn::real rho, cnn::real epsilon, cnn::real grd_squared_norm) {
+    auto tb = SizeToBlockThreadPair(n);
+    /// it may be more efficient to compute in cpu and not do reduce in gpu, but my observation is not 
+    /// that case
+    *r = rho * (*r) + (1 - rho) * grd_squared_norm;
     cnn::real den = sqrt(*r + epsilon);
     accTripletExprKernel << <tb.first, tb.second >> >(n, x, g, v, x, FL2SGDMomentumUpdate(lambda, scale / den, momentum));
     //CUDA_CHECK(cudaFree(sqnorm));
