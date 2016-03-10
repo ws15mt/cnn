@@ -3717,6 +3717,11 @@ public:
 };
 
 /** additionally with attention
+  the decoder response from the last turn is used as input to a RNN, 
+  the last state of this RNN is the initial state of another RNN, which takes input from the current user input
+  the last state of the another RNN is used as input to the intention RNN,
+  the last state of the intention RNN is the initial state of the decoder RNN,
+  the decoder RNN uses attention to the current user input
 */
 template <class Builder, class Decoder>
 class AttMultiSource_LinearEncoder : public MultiSource_LinearEncoder <Builder, Decoder>{
@@ -4997,6 +5002,7 @@ public:
         turnid++;
         return target;
     }
+
 };
 
 /**
