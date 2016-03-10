@@ -547,6 +547,32 @@ void LogSumExp::backward_impl(const vector<const Tensor*>& xs,
   d.array() += (**xs[i] - *fx).array().exp() * (*dEdf).array();
 }
 
+void Reduce::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    const unsigned num_args = xs.size();
+    assert(num_args == 1 && fx.d.cols() == 1);
+#if HAVE_CUDA
+    l2_norm_reducer(xs[0]->d.size(), xs[0]->v, fx.v, false, false);
+#else
+    fx.v[0] = 0.0; 
+    for (int k = 0; k < xs[0]->d.size(); k++)
+        fx.v[0] += xs[0]->v[k]; 
+#endif
+    return;
+}
+
+void Reduce::backward_impl(const vector<const Tensor*>& xs,
+    const Tensor& fx,
+    const Tensor& dEdf,
+    unsigned i,
+    Tensor& dEdxi) const {
+#if HAVE_CUDA
+    l2_norm_reducer(1, dEdf.v, dEdxi.v, false, true);
+#else
+    for (int k = 0; k < dEdxi.d.size(); k++)
+        dEdxi.v[k] += dEdf.v[0];
+#endif
+}
+
 void Sum::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
     const unsigned num_args = xs.size();
     if (num_args == 1) {
@@ -647,8 +673,7 @@ void SumBatches::backward_impl(const vector<const Tensor*>& xs,
 }
 
 size_t Average::aux_storage_size() const {
-    int sz = 1;
-    return sz* sizeof(cnn::real);
+    return sizeof(cnn::real);
 }
 
 void Average::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
@@ -679,16 +704,38 @@ void Average::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
 #endif
 }
 
+/**
+check if a 1/sz is allready computed and stored in GPU memory, 
+if so, use it. otherwise, need to compute it and put it in the back_off_mem
+*/
+#ifdef HAVE_CUDA
+cnn::real* pointer_to_one_over_size(int sz, cnn::real * back_off_mem)
+{
+    cnn::real *fdevptr = nullptr;
+    if (sz > MEM_PRE_ALLOCATED_CONSTS_NUMBERS + 1)
+    {
+        cnn::real nbr_samples = 1. / sz;
+        fdevptr = static_cast<cnn::real*>(back_off_mem);
+        CUDA_CHECK(cudaMemcpy(fdevptr, &nbr_samples, sizeof(cnn::real), cudaMemcpyHostToDevice));
+    }
+    else if (sz == 1)
+        fdevptr = kSCALAR_ONE;
+    else{
+        fdevptr = kSCALAR_ONE_OVER_INT[sz - 2];
+    }
+    return fdevptr;
+}
+#endif
+
 void Average::backward_impl(const vector<const Tensor*>& xs,
                      const Tensor& fx,
                      const Tensor& dEdf,
                      unsigned i,
                      Tensor& dEdxi) const {
-
 #if HAVE_CUDA
-    cnn::real fscale = 1. / xs.size();
-    cnn::real *fdevptr = static_cast<cnn::real*>(aux_mem);
-    CUDA_CHECK(cudaMemcpy(fdevptr, &fscale, sizeof(cnn::real), cudaMemcpyHostToDevice));
+    /// to speed-up, use pre-allocated const, instead of doing cpu to gpu memcpy of the const
+    cnn::real *fdevptr = pointer_to_one_over_size(xs.size(), static_cast<cnn::real*>(aux_mem));
+
     if (sizeof(cnn::real) == sizeof(float))
         CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), reinterpret_cast<float*>(fdevptr), reinterpret_cast<float*>(dEdf.v), 1, reinterpret_cast<float*>(dEdxi.v), 1));
     else if (sizeof(cnn::real) == sizeof(double))
@@ -937,38 +984,22 @@ void Concatenate::backward_impl(const vector<const Tensor*>& xs,
 #endif
 }
 
-#define MAX_CONCAT_COLS_ARGS 16384
-/// 4096
-size_t ConcatenateColumns::aux_storage_size() const {
-  return MAX_CONCAT_COLS_ARGS * sizeof(unsigned);
-}
-
 void ConcatenateColumns::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   unsigned c = 0;
-  assert(xs.size() < MAX_CONCAT_COLS_ARGS);
-  if (xs.size() >= MAX_CONCAT_COLS_ARGS)
-  {
-      cerr << "column size too large to " << xs.size() << endl;
-      throw("error : column size too large");
-  }
 
-  unsigned* pp = static_cast<unsigned*>(aux_mem);
+  acc_col_size.clear();
   for (unsigned i = 0; i < xs.size(); ++i) {
-#if HAVE_CUDA
-    CUDA_CHECK(cudaMemcpy(pp+i, &c, sizeof(unsigned), cudaMemcpyHostToDevice));
-    // CUBLAS matricies are column-major, so just copy the memory
     auto & xi = *xs[i];
-    const unsigned rows = xi.d.rows();
     const unsigned cols = xi.d.cols();
-    CUDA_CHECK(cudaMemcpyAsync(&fx.v[rows*c], &xi.v[0], sizeof(cnn::real) * rows * cols, cudaMemcpyDeviceToDevice));
-    c += cols;
+#if HAVE_CUDA
+    // CUBLAS matricies are column-major, so just copy the memory
+    const unsigned rows = xi.d.rows();
+    CUDA_CHECK(cudaMemcpyAsync(&fx.v[rows*c], xi.v, sizeof(cnn::real) * rows * cols, cudaMemcpyDeviceToDevice));
 #else
-      static_cast<unsigned*>(aux_mem)[i] = c;
-      auto xi = **xs[i];
-    int d = xi.cols();
-    (*fx).middleCols(c, d) = xi;
-    c += d;
+    (*fx).middleCols(c, cols) = **xs[i];
 #endif
+    c += cols;
+    acc_col_size.push_back(c);
   }
 }
 
@@ -978,12 +1009,11 @@ void ConcatenateColumns::backward_impl(const vector<const Tensor*>& xs,
                                     unsigned i,
                                     Tensor& dEdxi) const {
   unsigned* pp = static_cast<unsigned*>(aux_mem);
+  unsigned c = acc_col_size[i];
 #if HAVE_CUDA
   const unsigned rows = dEdxi.d.rows();
   const unsigned cols = dEdxi.d.cols();
-  unsigned c;
-  CUDA_CHECK(cudaMemcpy(&c, pp + i, sizeof(unsigned), cudaMemcpyDeviceToHost));
-  const unsigned begin = c*rows;
+  const unsigned begin = (c - cols)*rows;
   if (sizeof(cnn::real) == sizeof(float))
       CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows * cols, reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(&dEdf.v[begin]), 1, reinterpret_cast<float*>(dEdxi.v), 1));
   else if (sizeof(cnn::real) == sizeof(double))
@@ -991,8 +1021,7 @@ void ConcatenateColumns::backward_impl(const vector<const Tensor*>& xs,
 #else
   auto dEdx = *dEdxi;
   int d = dEdx.cols();
-  int c = static_cast<unsigned*>(aux_mem)[i];
-  dEdx += (*dEdf).middleCols(c, d);
+  dEdx += (*dEdf).middleCols(c - d, d);
 #endif
 }
 
@@ -1035,7 +1064,7 @@ void Hinge::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   const unsigned rows = x.rows();
   cnn::real y = 0;
   cnn::real* eloss = static_cast<cnn::real*>(aux_mem);
-  const real mlystar = margin - x(*pelement);
+  const cnn::real mlystar = margin - x(*pelement);
   for (unsigned i = 0; i < rows; ++i) {
     if (*pelement != i) {
       eloss[i] = max<cnn::real>(0.f, mlystar + x(i));
@@ -1099,7 +1128,7 @@ void MaxPooling1D::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) con
     unsigned from = i * width;
     unsigned to = from + width;
     if (to > x_rows) to = x_rows;
-    real best = x(from, 0);
+    cnn::real best = x(from, 0);
     unsigned bestr = from;
     for (unsigned r = from + 1; r < to; ++r) {
       if (x(r, 0) > best) {
@@ -1307,13 +1336,13 @@ void LogSoftmax::backward_impl(const vector<const Tensor*>& xs,
 }
 
 template <class T>
-EIGEN_STRONG_INLINE real logsumexp(const T& x, const vector<unsigned>& denom) {
-  real m = x(denom[0],0);
+EIGEN_STRONG_INLINE cnn::real logsumexp(const T& x, const vector<unsigned>& denom) {
+  cnn::real m = x(denom[0],0);
   for (auto i : denom) {
-    real r = x(i,0);
+    cnn::real r = x(i,0);
     if (r > m) m = r;
   }
-  real z = 0;
+  cnn::real z = 0;
   for (auto i : denom)
     z += expf(x(i,0) - m);
   return m + logf(z);
@@ -1329,8 +1358,8 @@ void RestrictedLogSoftmax::forward_impl(const vector<const Tensor*>& xs, Tensor&
   assert(denom.size() > 0);
   auto x = **xs[0];
   assert(x.cols() == 1);
-  const real logz = logsumexp(x, denom);
-  TensorTools::Constant(fx, -numeric_limits<real>::infinity());
+  const cnn::real logz = logsumexp(x, denom);
+  TensorTools::Constant(fx, -numeric_limits<cnn::real>::infinity());
   for (auto i : denom)
     (*fx)(i,0) = x(i,0) - logz;
   if (denom.size() == 1) (*fx)(denom.front(), 0) = 0;
@@ -1471,48 +1500,25 @@ inline void CUDAMatrixMultiply(const Tensor& l, const Tensor& r, Tensor& y, cons
   //         r.v, r.d.rows(),
   //         acc_scalar, y.v, y.d.rows()));
   // }
-  if(l.d.bd == 1) {
     // If the left side has one batch, multiply by columns
     // [x, z, b] = [x, y] * [y, z, b]
     // -> [x, z*b] = [x, y], [y, z*b]
 #ifdef USE_DOUBLE
-      CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
-          y.d.rows(), y.d.cols() * y.d.batch_elems(), l.d.cols(),
+   CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
+          y.d.rows(), y.d.cols(), l.d.cols(),
           kSCALAR_ONE,
           l.v, l.d.rows(),
           r.v, r.d.rows(),
           acc_scalar,
           y.v, y.d.rows()));
 #else
-      CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
-          y.d.rows(), y.d.cols() * y.d.batch_elems(), l.d.cols(),
+   CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
+          y.d.rows(), y.d.cols(), l.d.cols(),
           kSCALAR_ONE,
           l.v, l.d.rows(),
           r.v, r.d.rows(),
           acc_scalar, y.v, y.d.rows()));
 #endif
-  }
-  else {
-    // Otherwise, loop over the batches
-    assert(r.d.bd == 1 || r.d.bd == l.d.bd);
-    for(unsigned b = 0; b < l.d.bd; ++b) {
-#ifdef USE_DOUBLE
-        CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
-            y.d.rows(), y.d.cols(), l.d.cols(),
-            kSCALAR_ONE,
-            l.batch_ptr(b), l.d.rows(),
-            r.batch_ptr(b), r.d.rows(),
-            acc_scalar, y.batch_ptr(b), y.d.rows()));
-#else
-        CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
-            y.d.rows(), y.d.cols(), l.d.cols(),
-            kSCALAR_ONE,
-            l.batch_ptr(b), l.d.rows(),
-            r.batch_ptr(b), r.d.rows(),
-            acc_scalar, y.batch_ptr(b), y.d.rows()));
-#endif
-    }
-  }
 }
 #endif
 
@@ -1522,18 +1528,11 @@ void MatrixMultiply::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) c
   // fx = 0*fx + xs[0] * xs[1]
   CUDAMatrixMultiply(*xs[0], *xs[1], fx, kSCALAR_ZERO);
 #else
-  assert(fx.d.bd == max(xs[0]->d.bd, xs[1]->d.bd));
-  if(xs[0]->d.bd == 1) {
-    // If the left side has one batch, multiply by columns
-    // [x, z, b] = [x, y] * [y, z, b]
-    // -> [x, z*b] = [x, y], [y, z*b]
-    fx.colbatch_matrix().noalias() = **xs[0] * xs[1]->colbatch_matrix();
-  } else {
-    // Otherwise, loop over the batches
-    assert(xs[1]->d.bd == 1 || xs[1]->d.bd == xs[0]->d.bd);
-    for(unsigned b = 0; b < xs[0]->d.bd; ++b)
-      fx.batch_matrix(b).noalias() = xs[0]->batch_matrix(b) * xs[1]->batch_matrix(b);
-  }
+  assert(fx.d.bd == 1); 
+  // If the left side has one batch, multiply by columns
+  // [x, z, b] = [x, y] * [y, z, b]
+  // -> [x, z*b] = [x, y], [y, z*b]
+  fx.colbatch_matrix().noalias() = **xs[0] * xs[1]->colbatch_matrix();
 #endif
 }
 
@@ -1543,56 +1542,46 @@ void MatrixMultiply::backward_impl(const vector<const Tensor*>& xs,
                                 unsigned i,
                                 Tensor& dEdxi) const {
   assert(i < 2);
-  int max_b = max(xs[0]->d.bd, xs[1]->d.bd);
 #if HAVE_CUDA
   if (i == 0) {
-    for(int b = 0; b < max_b; ++b)
 #ifdef USE_DOUBLE
-        CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
+      CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
         dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
         kSCALAR_ONE,
-        dEdf.batch_ptr(b), dEdf.d.rows(),
-        xs[1]->batch_ptr(b), xs[1]->d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+        dEdf.v, dEdf.d.rows(),
+        xs[1]->v, xs[1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #else
-        CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
-        dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
-        kSCALAR_ONE,
-        dEdf.batch_ptr(b), dEdf.d.rows(),
-        xs[1]->batch_ptr(b), xs[1]->d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+      CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
+          dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
+          kSCALAR_ONE,
+          dEdf.v, dEdf.d.rows(),
+          xs[1]->v, xs[1]->d.rows(),
+          kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #endif
   }
   else {
-    // TODO: Fix this to share
-    for(int b = 0; b < max_b; ++b)
 #ifdef USE_DOUBLE
-        CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
+    CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
         dEdxi.d.rows(), dEdxi.d.cols(), xs[0]->d.rows(),
         kSCALAR_ONE,
-        xs[0]->batch_ptr(b), xs[0]->d.rows(),
-        dEdf.batch_ptr(b), dEdf.d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+        xs[0]->v, xs[0]->d.rows(),
+        dEdf.v, dEdf.d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #else
-        CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
+    CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
         dEdxi.d.rows(), dEdxi.d.cols(), xs[0]->d.rows(),
         kSCALAR_ONE,
-        xs[0]->batch_ptr(b), xs[0]->d.rows(),
-        dEdf.batch_ptr(b), dEdf.d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+        xs[0]->v, xs[0]->d.rows(),
+        dEdf.v, dEdf.d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #endif
   }
 #else
   if (i == 0) {
-    for(int b = 0; b < max_b; ++b)
-      dEdxi.batch_matrix(b).noalias() += dEdf.batch_matrix(b) * xs[1]->batch_matrix(b).transpose();
+    dEdxi.colbatch_matrix().noalias() += dEdf.colbatch_matrix() * xs[1]->colbatch_matrix().transpose();
   } else {
-    if(xs[0]->d.bd == 1) {
-      dEdxi.colbatch_matrix().noalias() += (**xs[0]).transpose() * dEdf.colbatch_matrix();
-    } else {
-      for(int b = 0; b < max_b; ++b)
-        dEdxi.batch_matrix(b).noalias() += xs[0]->batch_matrix(b).transpose() * dEdf.batch_matrix(b);
-    }
+    dEdxi.colbatch_matrix().noalias() += xs[0]->colbatch_matrix().transpose() * dEdf.colbatch_matrix();
   }
 #endif
 }
@@ -1677,22 +1666,11 @@ void AffineTransform::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) 
 #else
   assert(fx.d.bd == 1);
   // Add, using broadcasting or not
-  if(fx.d.bd > 1 && xs[0]->d.bd == 1) {
-    fx.rowcol_matrix().colwise() = xs[0]->vec();
-  } else {
-    for(unsigned b = 0; b < fx.d.bd; ++b)
-      fx.batch_matrix(b) = xs[0]->batch_matrix(b);
-  }
-
+  fx.colbatch_matrix().noalias() = xs[0]->colbatch_matrix();
+  
   // Multiply
   for (unsigned i = 1; i < xs.size(); i += 2) {
-    if(xs[i]->d.bd == 1) {
-      fx.colbatch_matrix().noalias() += **xs[i] * xs[i+1]->colbatch_matrix();
-    } else {
-      assert(xs[i+1]->d.bd == 1 || xs[i+1]->d.bd == xs[i]->d.bd);
-      for(unsigned b = 0; b < xs[i]->d.bd; ++b)
-        fx.batch_matrix(b).noalias() += xs[i]->batch_matrix(b) * xs[i+1]->batch_matrix(b);
-    }
+    fx.colbatch_matrix().noalias() += **xs[i] * xs[i+1]->colbatch_matrix();
   }
 #endif
 }
@@ -1712,63 +1690,47 @@ void AffineTransform::backward_impl(const vector<const Tensor*>& xs,
 #else
     assert(fx.d.bd == 1);
     // Add, using broadcasting or not
-    if(dEdxi.d.bd > 1 && dEdf.d.bd == 1) {
-      dEdxi.rowcol_matrix().colwise() += dEdf.vec();
-    } else {
-      for(unsigned b = 0; b < dEdxi.d.bd; ++b)
-        dEdxi.batch_matrix(b) += dEdf.batch_matrix(b);
-    }
+    dEdxi.colbatch_matrix().noalias() += dEdf.colbatch_matrix();
 #endif
   } else if (i % 2 == 1) { // left argument of matrix multiply
-    int max_b = max(dEdf.d.bd, xs[i+1]->d.bd);
 #if HAVE_CUDA
-    for(int b = 0; b < max_b; ++b)
 #ifdef USE_DOUBLE
-        CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
+    CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
         dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
         kSCALAR_ONE,
-        dEdf.batch_ptr(b), dEdf.d.rows(),
-        xs[i + 1]->batch_ptr(b), xs[i + 1]->d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+        dEdf.v, dEdf.d.rows(),
+        xs[i + 1]->v, xs[i + 1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #else
-        CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
+    CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
         dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
         kSCALAR_ONE,
-        dEdf.batch_ptr(b), dEdf.d.rows(),
-        xs[i + 1]->batch_ptr(b), xs[i + 1]->d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+        dEdf.v, dEdf.d.rows(),
+        xs[i + 1]->v, xs[i + 1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #endif
 #else
-    for(int b = 0; b < max_b; ++b)
-      dEdxi.batch_matrix(b).noalias() += dEdf.batch_matrix(b) * xs[i+1]->batch_matrix(b).transpose();
+    dEdxi.colbatch_matrix().noalias() += dEdf.colbatch_matrix() * xs[i+1]->colbatch_matrix().transpose();
 #endif
   } else {  // right argument of matrix multiply
-    int max_b = max(xs[i-1]->d.bd, dEdf.d.bd);
 #if HAVE_CUDA
-    // TODO: Add reverse
-    for(int b = 0; b < max_b; ++b)
 #ifdef USE_DOUBLE
-        CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
+    CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
         dEdxi.d.rows(), dEdxi.d.cols(), xs[i - 1]->d.rows(),
         kSCALAR_ONE,
-        xs[i - 1]->batch_ptr(b), xs[i - 1]->d.rows(),
-        dEdf.batch_ptr(b), xs[i - 1]->d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+        xs[i - 1]->v, xs[i - 1]->d.rows(),
+        dEdf.v, xs[i - 1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #else
     CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
-        dEdxi.d.rows(), dEdxi.d.cols(), xs[i-1]->d.rows(),
+        dEdxi.d.rows(), dEdxi.d.cols(), xs[i - 1]->d.rows(),
         kSCALAR_ONE,
-        xs[i-1]->batch_ptr(b), xs[i-1]->d.rows(),
-        dEdf.batch_ptr(b), xs[i-1]->d.rows(),
-        kSCALAR_ONE, dEdxi.batch_ptr(b), dEdxi.d.rows()));
+        xs[i - 1]->v, xs[i - 1]->d.rows(),
+        dEdf.v, xs[i - 1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #endif
 #else
-    if(xs[i-1]->d.bd == 1) {
-      dEdxi.colbatch_matrix().noalias() += (**xs[i-1]).transpose() * dEdf.colbatch_matrix();
-    } else {
-      for(int b = 0; b < max_b; ++b)
-        dEdxi.batch_matrix(b).noalias() += xs[i-1]->batch_matrix(b).transpose() * dEdf.batch_matrix(b);
-    }
+    dEdxi.colbatch_matrix().noalias() += (**xs[i-1]).transpose() * dEdf.colbatch_matrix();
 #endif
   }
 }
@@ -1945,7 +1907,7 @@ void SquaredEuclideanDistance::backward_impl(const vector<const Tensor*>& xs,
 #else
   auto x1 = **xs[0];
   auto x2 = **xs[1];
-  real scale = dEdf.v[0] * 2;
+  cnn::real scale = dEdf.v[0] * 2;
   if (i == 1) scale = -scale;
   *dEdxi += scale * (x1 - x2);
 #endif

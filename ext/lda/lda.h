@@ -13,6 +13,7 @@
 #include <map>
 #include <cnn/data-util.h>
 #include <cnn/dict.h>
+#include <cnn/math.h>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
 #include <boost/serialization/split_member.hpp>

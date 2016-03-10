@@ -168,7 +168,7 @@ struct InnerProduct3D_1D : public Node {
 // n_{i,j} ~ N(0,stddev)
 // y = x + n
 struct GaussianNoise : public Node {
-  explicit GaussianNoise(const std::initializer_list<VariableIndex>& a, real stddev) : Node(a), stddev(stddev) {}
+  explicit GaussianNoise(const std::initializer_list<VariableIndex>& a, cnn::real stddev) : Node(a), stddev(stddev) {}
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
   size_t aux_storage_size() const override;
@@ -178,12 +178,12 @@ struct GaussianNoise : public Node {
                   const Tensor& dEdf,
                   unsigned i,
                   Tensor& dEdxi) const override;
-  real stddev;
+  cnn::real stddev;
 };
 
 // y = dropout(x,p) where p specifies the dropout probability
 struct Dropout : public Node {
-  explicit Dropout(const std::initializer_list<VariableIndex>& a, real p) : Node(a), p(p) {}
+  explicit Dropout(const std::initializer_list<VariableIndex>& a, cnn::real p) : Node(a), p(p) {}
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
   size_t aux_storage_size() const override;
@@ -194,12 +194,12 @@ struct Dropout : public Node {
                 const Tensor& dEdf,
                 unsigned i,
                 Tensor& dEdxi) const override;
-  real p;
+  cnn::real p;
 };
 
 // y = block_dropout(x,p) where p specifies the probability for dropping-out the entire block
 struct BlockDropout : public Node {
-  explicit BlockDropout(const std::initializer_list<VariableIndex>& a, real p) : Node(a), dropout_probability(p) {}
+  explicit BlockDropout(const std::initializer_list<VariableIndex>& a, cnn::real p) : Node(a), dropout_probability(p) {}
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
   size_t aux_storage_size() const override;
@@ -209,13 +209,13 @@ struct BlockDropout : public Node {
                 const Tensor& dEdf,
                 unsigned i,
                 Tensor& dEdxi) const override;
-  real dropout_probability;
+  cnn::real dropout_probability;
 };
 
 // y = c + x_1
 // (c is a vector or matrix of the constant, usually 1, but can be configured)
 struct ConstantPlusX : public Node {
-  explicit ConstantPlusX(const std::initializer_list<VariableIndex>& a, real o) : Node(a), c(o) {}
+  explicit ConstantPlusX(const std::initializer_list<VariableIndex>& a, cnn::real o) : Node(a), c(o) {}
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
   void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
@@ -224,13 +224,13 @@ struct ConstantPlusX : public Node {
                   const Tensor& dEdf,
                   unsigned i,
                   Tensor& dEdxi) const override;
-  real c;
+  cnn::real c;
 };
 
 // y = c - x_1
 // (c is a vector or matrix of the constant, usually 1, but can be configured)
 struct ConstantMinusX : public Node {
-  explicit ConstantMinusX(const std::initializer_list<VariableIndex>& a, real o) : Node(a), c(o) {}
+  explicit ConstantMinusX(const std::initializer_list<VariableIndex>& a, cnn::real o) : Node(a), c(o) {}
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
   void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
@@ -239,7 +239,7 @@ struct ConstantMinusX : public Node {
                   const Tensor& dEdf,
                   unsigned i,
                   Tensor& dEdxi) const override;
-  real c;
+  cnn::real c;
 };
 
 // y = sqrt x_1
@@ -374,20 +374,20 @@ struct ConcatenateColumns : public Node {
     template <typename T> explicit ConcatenateColumns(const T& a) : Node(a) { aux_mem = nullptr; }
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
-  size_t aux_storage_size() const override;
   void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
   void backward_impl(const std::vector<const Tensor*>& xs,
                   const Tensor& fx,
                   const Tensor& dEdf,
                   unsigned i,
                   Tensor& dEdxi) const override;
+  mutable std::vector<unsigned> acc_col_size; /// accumulated column number of each concatenated columns
 };
 
 // x_1 is a scalar (or row vector)
 // x_2 is a scalar (or row vector)
 // y = max(0, margin - x_1 + x_2)
 struct PairwiseRankLoss : public Node {
-  explicit PairwiseRankLoss(const std::initializer_list<VariableIndex>& a, real m = 1.0) : Node(a), margin(m) {}
+  explicit PairwiseRankLoss(const std::initializer_list<VariableIndex>& a, cnn::real m = 1.0) : Node(a), margin(m) {}
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
   void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
@@ -396,14 +396,14 @@ struct PairwiseRankLoss : public Node {
                   const Tensor& dEdf,
                   unsigned i,
                   Tensor& dEdxi) const override;
-  real margin;
+  cnn::real margin;
 };
 
 // Let x be a vector-valued input, x_i represents the score of the ith element, then
 // y = \sum{i != element} max{0, margin - x_element + x_i}
 struct Hinge : public Node {
-  explicit Hinge(const std::initializer_list<VariableIndex>& a, unsigned e, real m = 1.0) : Node(a), element(e), pelement(&element), margin(m) {}
-  explicit Hinge(const std::initializer_list<VariableIndex>& a, const unsigned* pe, real m = 1.0) : Node(a), element(), pelement(pe), margin(m) {}
+  explicit Hinge(const std::initializer_list<VariableIndex>& a, unsigned e, cnn::real m = 1.0) : Node(a), element(e), pelement(&element), margin(m) {}
+  explicit Hinge(const std::initializer_list<VariableIndex>& a, const unsigned* pe, cnn::real m = 1.0) : Node(a), element(), pelement(pe), margin(m) {}
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
   size_t aux_storage_size() const override;
@@ -415,7 +415,7 @@ struct Hinge : public Node {
                   Tensor& dEdxi) const override;
   unsigned element;
   const unsigned* pelement;
-  real margin;
+  cnn::real margin;
 };
 
 // y = x_1
@@ -590,6 +590,19 @@ struct Sum : public Node {
                     Tensor& dEdxi) const override;
 };
 
+// y = \sum_i x_i into a scalar
+struct Reduce: public Node {
+    template <typename T> explicit Reduce(const T& a) : Node(a) {}
+    std::string as_string(const std::vector<std::string>& arg_names) const override;
+    Dim dim_forward(const std::vector<Dim>& xs) const override;
+    void forward_impl(const std::vector<const Tensor*>& xs, Tensor& fx) const override;
+    void backward_impl(const std::vector<const Tensor*>& xs,
+        const Tensor& fx,
+        const Tensor& dEdf,
+        unsigned i,
+        Tensor& dEdxi) const override;
+};
+
 // y = \sum_i x_i
 struct SumBatches : public Node {
   template <typename T> explicit SumBatches(const T& a) : Node(a) {}
@@ -606,7 +619,8 @@ struct SumBatches : public Node {
 
 // y = ( \sum_i x_i ) / |x|
 struct Average : public Node {
-  template <typename T> explicit Average(const T& a) : Node(a) {}
+  template <typename T> explicit Average(const T& a) : Node(a) {
+  }
   std::string as_string(const std::vector<std::string>& arg_names) const override;
   Dim dim_forward(const std::vector<Dim>& xs) const override;
   size_t aux_storage_size() const override;

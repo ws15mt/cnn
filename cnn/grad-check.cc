@@ -17,6 +17,8 @@ void CheckGrad(Model& m, ComputationGraph& g) {
   cnn::real alpha = GRADIENT_CHECK_PARAM_DELTA; /// change to this alpha, which then shows that the difference between numeric and error propagation is around 10e-5.
 
   cnn::real E = as_scalar(g.forward());
+  cnn::real threshold = pow(10.0, -GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL);
+
   g.backward();
 
   bool flag = false;
@@ -53,26 +55,21 @@ void CheckGrad(Model& m, ComputationGraph& g) {
       cnn::real E_right = as_scalar(g.forward());
       cnn::real g = (E_right - E_left) / (2*alpha);
 
-      cnn::real threshold;
       cnn::real grd;
 #if HAVE_CUDA
       cudaMemcpy(&grd, &p.g.v[i], sizeof(cnn::real), cudaMemcpyDeviceToHost);
 #else
       grd = p.g.v[i];
 #endif
-      threshold = (cnn::real)pow(10.0,
-          max((cnn::real)0.0, ceil(log10(min(fabs(g), fabs(grd))))) - (int)GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL);
-      cnn::real diff = fabs(g - grd);
-      bool wrong = (std::isnan(diff) || diff > threshold);
+      if (g == 0 && grd == 0)
+          continue;
       
-      if (diff > 0.2)
-      {
-          cerr << "too large error" << endl;
-
-      }
+      cnn::real rel_diff = (g - grd) / (std::max<cnn::real>(fabs(g), fabs(grd)));
+      bool wrong = (rel_diff > threshold);
+      
       if (wrong)
       {
-          flag = true; cerr << "***[" << diff << "] ";
+          flag = true; cerr << "*** relative difference [" << rel_diff * 100 << "%] ";
           cerr << grd << ' ' << g << endl;
       }
     }

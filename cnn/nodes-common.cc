@@ -276,6 +276,19 @@ Dim Sum::dim_forward(const vector<Dim>& xs) const {
   return d;
 }
 
+string Reduce::as_string(const vector<string>& arg_names) const {
+    ostringstream s;
+    s << arg_names[0];
+    for (unsigned i = 1; i < arg_names.size(); ++i)
+        s << " + " << arg_names[i];
+    return s.str();
+}
+
+Dim Reduce::dim_forward(const vector<Dim>& xs) const {
+    Dim d = { 1 };
+    return d;
+}
+
 string SumBatches::as_string(const vector<string>& arg_names) const {
   ostringstream s;
   s << "sum_batches( " << arg_names[0] << " )";

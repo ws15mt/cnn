@@ -14,8 +14,8 @@ typedef struct Expression{
   const Tensor& value() { return pg->get_value(i); }
 } ;
 
-Expression input(ComputationGraph& g, real s);
-Expression input(ComputationGraph& g, const real *ps);
+Expression input(ComputationGraph& g, cnn::real s);
+Expression input(ComputationGraph& g, const cnn::real *ps);
 Expression input(ComputationGraph& g, const Dim& d, const std::vector<cnn::real>& pdata);
 Expression input(ComputationGraph& g, const Dim& d, const std::vector<cnn::real>* pdata);
 Expression reference(ComputationGraph& g, const Dim& d, const cnn::real* pdata);
@@ -33,11 +33,11 @@ Expression zeroes(ComputationGraph& g, const Dim& d);
 
 Expression operator-(const Expression& x);
 Expression operator+(const Expression& x, const Expression& y);
-Expression operator+(const Expression& x, real y);
-Expression operator+(real x, const Expression& y);
+Expression operator+(const Expression& x, cnn::real y);
+Expression operator+(cnn::real x, const Expression& y);
 Expression operator-(const Expression& x, const Expression& y);
-Expression operator-(real x, const Expression& y);
-Expression operator-(const Expression& x, real y);
+Expression operator-(cnn::real x, const Expression& y);
+Expression operator-(const Expression& x, cnn::real y);
 Expression operator*(const Expression& x, const Expression& y);
 Expression operator*(const Expression& x, cnn::real y);
 inline Expression operator*(cnn::real y, const Expression& x) { return x * y; }
@@ -71,9 +71,9 @@ Expression softsign(const Expression& x);
 Expression pow(const Expression& x, const Expression& y);
 Expression min(const Expression& x, const Expression& y);
 Expression max(const Expression& x, const Expression& y);
-Expression noise(const Expression& x, real stddev);
-Expression dropout(const Expression& x, real p);
-Expression block_dropout(const Expression& x, real p);
+Expression noise(const Expression& x, cnn::real stddev);
+Expression dropout(const Expression& x, cnn::real p);
+Expression block_dropout(const Expression& x, cnn::real p);
 
 Expression reshape(const Expression& x, const Dim& d);
 Expression transpose(const Expression& x);
@@ -86,9 +86,13 @@ Expression squared_distance(const Expression& x, const Expression& y);
 Expression huber_distance(const Expression& x, const Expression& y, cnn::real c = 1.345f);
 Expression l1_distance(const Expression& x, const Expression& y);
 Expression binary_log_loss(const Expression& x, const Expression& y);
-Expression pairwise_rank_loss(const Expression& x, const Expression& y, real m=1.0);
+Expression pairwise_rank_loss(const Expression& x, const Expression& y, cnn::real m=1.0);
 Expression poisson_loss(const Expression& x, unsigned y);
 Expression poisson_loss(const Expression& x, const unsigned* py);
+
+// reduce to a scalar
+// to-do reduce to a vector given a dimension
+Expression reduce(const Expression& x); 
 
 // various convolutiony things
 Expression conv1d_narrow(const Expression& x, const Expression& f);

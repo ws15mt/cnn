@@ -14,6 +14,7 @@
 #include "cnn/expr-xtra.h"
 #include "cnn/data-util.h"
 #include "cnn/dnn.h"
+#include "cnn/math.h"
 //#include "cnn/decode.h"
 //#include "rl.h"
 #include "ext/dialogue/dialogue.h"
@@ -216,7 +217,7 @@ std::vector<int> AttentionWithIntention<Builder, Decoder>::beam_decode(const std
     while (it < tgt_len) {
         priority_queue<Hypothesis, vector<Hypothesis>, CompareHypothesis> new_chart;
         vec_vocab = org_vec_vocab;
-        real best_score = -numeric_limits<real>::infinity() + 100.;
+        cnn::real best_score = -numeric_limits<cnn::real>::infinity() + 100.;
 
         while(!chart.empty()) {
             Hypothesis hprev = chart.top();
@@ -226,7 +227,7 @@ std::vector<int> AttentionWithIntention<Builder, Decoder>::beam_decode(const std
             // find the top k best next words
             unsigned w = 0;
             auto dist = get_value(ydist, cg); // evaluates last expression, i.e., ydist
-            real mscore = log(*max_element(dist.begin(), dist.end())) + hprev.cost; 
+            cnn::real mscore = log(*max_element(dist.begin(), dist.end())) + hprev.cost; 
             if (mscore < best_score - beam_width)
             {
                 chart.pop();
@@ -238,7 +239,7 @@ std::vector<int> AttentionWithIntention<Builder, Decoder>::beam_decode(const std
             // add to chart
             size_t k = 0;
             for (auto vi : vec_vocab){
-                real score = hprev.cost + log(dist[vi]);
+                cnn::real score = hprev.cost + log(dist[vi]);
                 if (score >= best_score - beam_width)
                 {
                     Hypothesis hnew(builder.state(), vi, score, hprev);
@@ -3897,7 +3898,11 @@ public:
             i_input = concatenate({ i_obs, attention_output_for_this_turn.back() });
         }
 
+        if (verbose)
+            display_value(i_input, cg, "i_input = ");
         i_h_t = decoder.add_input(i_input);
+        if (verbose)
+            display_value(i_h_t, cg, "i_h_t = ");
 
         vector<Expression> alpha;
         vector<Expression> position = local_attention_to(cg, src_len, i_Wa_local, i_ba_local, i_va_local, i_h_t, nutt);
@@ -3908,7 +3913,7 @@ public:
             }
         }
 
-        vector<Expression> v_context_to_source = attention_using_bilinear_with_local_attention(v_src, src_len, i_Wa, i_h_t, hidden_dim[ENCODER_LAYER], nutt, alpha, i_scale, position);
+        vector<Expression> v_context_to_source = attention_using_bilinear_with_local_attention(v_src, src_len, i_Wa, i_h_t, hidden_dim[ALIGN_LAYER], nutt, alpha, i_scale, position);
         if (verbose)
         {
             size_t k = 0;
@@ -3919,7 +3924,9 @@ public:
 
         /// compute attention
         Expression i_combined_input_to_attention = concatenate({ i_h_t, concatenate_cols(v_context_to_source) });
+        if (verbose) display_value(i_combined_input_to_attention, cg, "i_combined_input_to_attention = ");
         i_h_attention_t = attention_layer.add_input(i_combined_input_to_attention);
+        if (verbose) display_value(i_h_attention_t, cg, "i_h_attention_t  = ");
 
         if (attention_output_for_this_turn.size() <= turnid)
             attention_output_for_this_turn.push_back(i_h_attention_t);
@@ -3961,7 +3968,7 @@ public:
             }
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_R * i_y_t;
-            Expression i_ydist = log_softmax(i_r_t);
+            Expression i_ydist = softmax(i_r_t);
 
             Expression x_r_t = reshape(i_ydist, { vocab_size * nutt });
 
@@ -3971,7 +3978,7 @@ public:
                 if (t < target_response[i].size() - 1)
                 {
                     /// only compute errors on with output labels
-                    this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
+                    this_errs[i].push_back(-log(pick(x_r_t, target_response[i][t + 1] + offset)));
                     tgt_words++;
                 }
             }
@@ -4020,7 +4027,7 @@ public:
             }
             Expression i_y_t = decoder_step(vobs, cg);
             Expression i_r_t = i_R * i_y_t;
-            Expression i_ydist = log_softmax(i_r_t);
+            Expression i_ydist = softmax(i_r_t);
 
             Expression x_r_t = reshape(i_ydist, { vocab_size * nutt });
 
@@ -4030,7 +4037,7 @@ public:
                 if (t < target_response[i].size() - 1)
                 {
                     /// only compute errors on with output labels
-                    this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
+                    this_errs[i].push_back(-log(pick(x_r_t, target_response[i][t + 1] + offset)));
                     tgt_words++;
                 }
             }
@@ -4384,7 +4391,7 @@ public:
             }
             Expression i_y_t = decoder_step(vobs, cg);
 
-            Expression i_ydist = log_softmax(i_y_t);
+            Expression i_ydist = softmax(i_y_t);
 
             Expression x_r_t = reshape(i_ydist, { vocab_size * nutt });
 
@@ -4394,7 +4401,7 @@ public:
                 if (t < target_response[i].size() - 1)
                 {
                     /// only compute errors on with output labels
-                    this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
+                    this_errs[i].push_back(-log(pick(x_r_t, target_response[i][t + 1] + offset)));
                     tgt_words++;
                 }
             }
@@ -4442,7 +4449,7 @@ public:
                     vobs.push_back(-1);
             }
             Expression i_y_t = decoder_step(vobs, cg);
-            Expression i_ydist = log_softmax(i_y_t);
+            Expression i_ydist = softmax(i_y_t);
 
             Expression x_r_t = reshape(i_ydist, { vocab_size * nutt });
 
@@ -4452,7 +4459,7 @@ public:
                 if (t < target_response[i].size() - 1)
                 {
                     /// only compute errors on with output labels
-                    this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
+                    this_errs[i].push_back(-log(pick(x_r_t, target_response[i][t + 1] + offset)));
                     tgt_words++;
                 }
             }

@@ -14,6 +14,11 @@ namespace gpu {
 /// for convlution networks
     void conv1dwide(const int n, const int m, const cnn::real* xs, const int k, const cnn::real *fx, cnn::real *fy);
     void conv1dwide_backward(const int i, const int n, const int m, const cnn::real* xs, const int k, const cnn::real *fx, const cnn::real* dEdf, cnn::real *dEdx);
+    void conv2dnarrow(const cnn::real* kscalar_one, const cnn::real* kscalar_zero,
+        const int xrow, const int xcol, const cnn::real* xs,
+        const int i_wkspace_sz, cnn::real* wkspace,
+        const int frow, const int fcol, const cnn::real *fx,
+        const int yrow, const int ycol, cnn::real *fy);
 
     /// add bias
     void addVectorToAllColumns(const int n, const cnn::real * xs, const int m, const cnn::real* fx, cnn::real *fy);
@@ -32,6 +37,8 @@ namespace gpu {
     void vcwise_quotient(int n, const cnn::real* x0, const cnn::real* x1, cnn::real* y);
     void vcwise_quotient_backward(int n, const cnn::real* dEdy, const cnn::real* x_other, cnn::real* dEdx);
     void vconstant_minusx(int n, cnn::real c, const cnn::real* x, cnn::real* y);
+    /// c should be zero if used as back-propagation of y = x - c, since dx += dy should be the gradient to x
+    void vconstant_minusx_backward(int n, cnn::real c, const cnn::real* x, cnn::real* y);
     void vconstant_multiplyx(int n, cnn::real c, const cnn::real* x, cnn::real* y);
     void vconstant_multiplyx_backward(int n, cnn::real c, const cnn::real* x, cnn::real* y);
     void vnegate(int n, const cnn::real* x, cnn::real* y);
@@ -48,6 +55,7 @@ namespace gpu {
     void vlogistic(int n, const cnn::real* x, cnn::real* y);
     void vlogistic_backward(int n, const cnn::real* fx, const cnn::real* dEdf, cnn::real* dEdx);
     void l2_norm_reducer(int n, const cnn::real* x0, cnn::real* y, bool square, bool accumulate);
+    void sqrt_of_l2_norm_reducer(int n, cnn::real* x0, cnn::real& res);
     void sqeucdist(int n, const cnn::real* x0, const cnn::real *x1, cnn::real* y);
     void sqeucdist_backward(int n, const cnn::real* dEdy, const cnn::real* x0, const cnn::real* x1, cnn::real* dEdx, int i);
     void pnlsoftmax(int n, int elem_idx, const cnn::real* x0, cnn::real* y, cnn::real* logz);
@@ -57,8 +65,14 @@ namespace gpu {
     void softmax(int row, int col, const cnn::real* x0, cnn::real* y);
     void softmax_backward(int row, int col, const cnn::real *fx, const cnn::real *dEdf, cnn::real *dEdx);
     void sgd_update(int n, const cnn::real* g, cnn::real* x, cnn::real scale, cnn::real lambda);
+    void sgd_update(int n, const cnn::real* g, cnn::real* x, cnn::real* scale, cnn::real* lambda);
     void sgd_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real * v, cnn::real scale, cnn::real lambda, cnn::real momentum);
-    void rmsprop_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real* v, cnn::real *r, cnn::real scale, cnn::real lambda, cnn::real momentum, cnn::real rho, cnn::real epsilon);
+    void rmsprop_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real* v, cnn::real *r, cnn::real scale, cnn::real lambda, cnn::real momentum, cnn::real rho, cnn::real epsilon, cnn::real grd_squared_norm);
+
+    void vector_sum(int rows, int cols, const cnn::real * a, cnn::real* c, const bool isColWise);
+    void vector_add_const(int rows, int cols, const cnn::real * a, int brow, int bcol, const cnn::real* b, cnn::real * c, bool isColWise);
+
+
 } // namespace gpu
 } // namespace cnn
 

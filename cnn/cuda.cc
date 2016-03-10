@@ -29,6 +29,19 @@ void Initialize_CUDNN()
     CHECK_CUDNN(cudnnCreate(&cudnn_handle));
 }
 
+void Initialize_Consts_And_Store_In_GPU()
+{
+    kSCALAR_ONE_OVER_INT.resize(MEM_PRE_ALLOCATED_CONSTS_NUMBERS);
+    for (int i = 0; i < MEM_PRE_ALLOCATED_CONSTS_NUMBERS; i++)
+    {
+        cnn::real flt = 1./(i+2);
+        cnn::real *flt_val; 
+        CUDA_CHECK(cudaMalloc(&flt_val, sizeof(cnn::real)));
+        CUDA_CHECK(cudaMemcpyAsync(flt_val, &flt, sizeof(cnn::real), cudaMemcpyHostToDevice));
+        kSCALAR_ONE_OVER_INT[i] = flt_val;
+    }
+}
+
 void Free_GPU()
 {
 #ifdef HAVE_CUDA
@@ -67,15 +80,17 @@ void Initialize_GPU(int& argc, char**& argv) {
   CUDA_CHECK(cudaSetDevice(selected));
   CUBLAS_CHECK(cublasCreate(&cublas_handle));
   CUBLAS_CHECK(cublasSetPointerMode(cublas_handle, CUBLAS_POINTER_MODE_DEVICE));
-  CUDA_CHECK(cudaMalloc(&kSCALAR_MINUSONE, sizeof(float)));
-  CUDA_CHECK(cudaMalloc(&kSCALAR_ONE, sizeof(float)));
-  CUDA_CHECK(cudaMalloc(&kSCALAR_ZERO, sizeof(float)));
-  float minusone = -1;
-  CUDA_CHECK(cudaMemcpyAsync(kSCALAR_MINUSONE, &minusone, sizeof(float), cudaMemcpyHostToDevice));
-  float one = 1;
-  CUDA_CHECK(cudaMemcpyAsync(kSCALAR_ONE, &one, sizeof(float), cudaMemcpyHostToDevice));
-  float zero = 0;
-  CUDA_CHECK(cudaMemcpyAsync(kSCALAR_ZERO, &zero, sizeof(float), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMalloc(&kSCALAR_MINUSONE, sizeof(cnn::real)));
+  CUDA_CHECK(cudaMalloc(&kSCALAR_ONE, sizeof(cnn::real)));
+  CUDA_CHECK(cudaMalloc(&kSCALAR_ZERO, sizeof(cnn::real)));
+  cnn::real minusone = -1;
+  CUDA_CHECK(cudaMemcpyAsync(kSCALAR_MINUSONE, &minusone, sizeof(cnn::real), cudaMemcpyHostToDevice));
+  cnn::real one = 1;
+  CUDA_CHECK(cudaMemcpyAsync(kSCALAR_ONE, &one, sizeof(cnn::real), cudaMemcpyHostToDevice));
+  cnn::real zero = 0;
+  CUDA_CHECK(cudaMemcpyAsync(kSCALAR_ZERO, &zero, sizeof(cnn::real), cudaMemcpyHostToDevice));
+
+  Initialize_Consts_And_Store_In_GPU();
 
   Initialize_CUDNN();
 }

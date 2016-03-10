@@ -15,9 +15,9 @@ using namespace std;
 
 namespace cnn {
     
-    #define ALIGN 6
     AlignedMemoryPool<ALIGN>* fxs = nullptr;
     AlignedMemoryPool<ALIGN>* dEdfs = nullptr;
+    AlignedMemoryPool<ALIGN>* mem_nodes= nullptr;   /// for nodes allocation/delocation. operation of new/delete of each node has been overwritten to use this memory pool for speed-up
     mt19937* rndeng = nullptr;
 
     char* getCmdOption(char ** begin, char ** end, const std::string & option)
@@ -72,6 +72,7 @@ namespace cnn {
 
         cerr << "Allocating memory...\n";
 		unsigned long num_mb = 512UL;
+        mem_nodes = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20), true);
         if (demo)
         {
             fxs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
@@ -100,6 +101,10 @@ namespace cnn {
         delete (rndeng); 
         delete (fxs);
         delete (dEdfs);
+        delete (mem_nodes);
+
+        for (auto p : kSCALAR_ONE_OVER_INT)
+            cnn_mm_free(p);
 
 #ifdef HAVE_CUDA
         Free_GPU();

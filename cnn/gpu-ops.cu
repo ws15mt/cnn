@@ -73,6 +73,11 @@ void vconstant_minusx(int n, cnn::real c, const cnn::real* x, cnn::real* y) {
     unaryExprKernel << <tb.first, tb.second >> >(n, x, y, FConstantMinus(c));
 }
 
+void vconstant_minusx_backward(int n, cnn::real c, const cnn::real* x, cnn::real* y) {
+    auto tb = SizeToBlockThreadPair(n);
+    accUnaryExprKernel << <tb.first, tb.second >> >(n, x, y, FConstantMinus(c));
+}
+
 void vconstant_multiplyx(int n, cnn::real c, const cnn::real* x, cnn::real* y) {
     auto tb = SizeToBlockThreadPair(n);
     unaryExprKernel << <tb.first, tb.second >> >(n, x, y, FConstantMultiply(c));
@@ -158,6 +163,11 @@ void sgd_update(int n, const cnn::real* g, cnn::real* x, cnn::real scale, cnn::r
     accBinaryExprKernel << <tb.first, tb.second >> >(n, x, g, x, FL2SGDUpdate(lambda, scale));
 }
 
+void sgd_update(int n, const cnn::real* g, cnn::real* x, cnn::real* scale, cnn::real* lambda) {
+    auto tb = SizeToBlockThreadPair(n);
+    accBinaryExprKernel << <tb.first, tb.second >> >(n, x, g, x, FL2SGDUpdatePtrArguments (lambda, scale));
+}
+
 void sgd_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real* v, cnn::real scale, cnn::real lambda, cnn::real momentum) {
     auto tb = SizeToBlockThreadPair(n);
     accTripletExprKernel << <tb.first, tb.second >> >(n, x, g, v, x, FL2SGDMomentumUpdate(lambda, scale, momentum));
@@ -166,10 +176,28 @@ void sgd_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real* v, 
 /** followed some examples of using thrust at
 https://github.com/OrangeOwlSolutions/Thrust/blob/master/Calculating_the_norm_of_arrays.cu
 */
+/// this is old code that computes gradient norm for every parameter
+/*
 void rmsprop_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real* v, cnn::real *r, cnn::real scale, cnn::real lambda, cnn::real momentum, cnn::real rho, cnn::real epsilon) {
     auto tb = SizeToBlockThreadPair(n);
+    /// it may be more efficient to compute in cpu and not do reduce in gpu, but my observation is not 
+    /// that case
     cnn::real squared_norm = thrust::transform_reduce(thrust::device_pointer_cast(g), thrust::device_pointer_cast(g + n), FSquare(), (cnn::real)0.0, thrust::plus<cnn::real>());
     *r = rho * (*r) + (1 - rho) * squared_norm;
+    cnn::real den = sqrt(*r + epsilon);
+    accTripletExprKernel << <tb.first, tb.second >> >(n, x, g, v, x, FL2SGDMomentumUpdate(lambda, scale / den, momentum));
+    //CUDA_CHECK(cudaFree(sqnorm));
+}
+*/
+
+/// this is a newer code that uses gradient norms computed elsewhere. 
+/// potential speed-up can be achieved to compute all of gradient norms in GPU and then transfer them to
+/// CPU in a bulk. 
+void rmsprop_momentum_update(int n, const cnn::real* g, cnn::real* x, cnn::real* v, cnn::real *r, cnn::real scale, cnn::real lambda, cnn::real momentum, cnn::real rho, cnn::real epsilon, cnn::real grd_squared_norm) {
+    auto tb = SizeToBlockThreadPair(n);
+    /// it may be more efficient to compute in cpu and not do reduce in gpu, but my observation is not 
+    /// that case
+    *r = rho * (*r) + (1 - rho) * grd_squared_norm;
     cnn::real den = sqrt(*r + epsilon);
     accTripletExprKernel << <tb.first, tb.second >> >(n, x, g, v, x, FL2SGDMomentumUpdate(lambda, scale / den, momentum));
     //CUDA_CHECK(cudaFree(sqnorm));
@@ -185,7 +213,15 @@ void l2_norm_reducer(int n, const cnn::real* x0, cnn::real* y, bool square, bool
   ker_l2_norm_reducer<<<tb.first,tb.second>>>(n, x0, y, square, accumulate);
 }
 
-void VectorSum(int rows, int cols, const cnn::real * a, cnn::real* c, const bool isColWise)
+void sqrt_of_l2_norm_reducer(int n, cnn::real* x0, cnn::real& res)
+{
+    thrust::device_ptr<cnn::real> dv_ptr = thrust::device_pointer_cast(x0);
+    FSquare unary_op;
+    thrust::plus<cnn::real> binary_op;
+    res = std::sqrt(thrust::transform_reduce(dv_ptr, dv_ptr + n, unary_op, 0.0, binary_op));
+}
+
+void vector_sum(int rows, int cols, const cnn::real * a, cnn::real* c, const bool isColWise)
 {
     assert(rows > 0 && cols > 0); // converting from size_t to int may cause overflow
 
@@ -205,14 +241,43 @@ void VectorSum(int rows, int cols, const cnn::real * a, cnn::real* c, const bool
     }
 
     cudaEventCreate(&done);
-    _vectorSum<cnn::real> << <blocksPerGrid, MAX_THREADS_PER_BLOCK, 0, cudaStreamDefault >> >(c, a, n, m, isColWise);
+    _vector_sum<cnn::real> << <blocksPerGrid, MAX_THREADS_PER_BLOCK, 0, cudaStreamDefault >> >(c, a, n, m, isColWise);
+    cudaEventRecord(done);
+    cudaEventSynchronize(done);
+    cudaEventDestroy(done);
+}
+
+void vector_add_const(int rows, int cols, const cnn::real * a, int brow, int bcol, const cnn::real* b, cnn::real * c, bool isColWise)
+{
+    assert(rows > 0 && cols > 0); // converting from size_t to int may cause overflow
+
+    int m = cols;
+    int n = rows;
+
+    if (brow != bcol && brow != 1)
+        cuda_exception("const dimension has to be a scalar");
+
+    cudaEvent_t done = nullptr;
+
+    int blocksPerGrid = 0;
+    if (isColWise) // col-wise
+    {
+        blocksPerGrid = (int)ceil(1.0 * m / MAX_THREADS_PER_BLOCK);
+    }
+    else
+    {
+        blocksPerGrid = (int)ceil(1.0 * n / MAX_THREADS_PER_BLOCK);
+    }
+
+    cudaEventCreate(&done);
+    _vector_add_const<cnn::real> << <blocksPerGrid, MAX_THREADS_PER_BLOCK, 0, cudaStreamDefault >> >(c, a, n, m, b, isColWise);
     cudaEventRecord(done);
     cudaEventSynchronize(done);
     cudaEventDestroy(done);
 }
 
 /// assume that a is a vector with col dimension
-void RowElementMultiplyWith(int arow, int acol, const cnn::real * a, int brow, int bcol, cnn::real * b)
+void row_element_multiply_with(int arow, int acol, const cnn::real * a, int brow, int bcol, cnn::real * b)
 {
     if (arow != 1 || acol != bcol)
     {
@@ -252,8 +317,8 @@ void logsoftmax(int row, int col, const cnn::real* x0, cnn::real* y)
 void logsoftmax_backward(int row, int col, const cnn::real *fx, const cnn::real *dEdf, cnn::real *dEdx, cnn::real * gpu_softmax, cnn::real *grd)
 {
     vexp(row * col, fx, gpu_softmax);
-    VectorSum(row, col, dEdf, grd, true); 
-    RowElementMultiplyWith(1, col, grd, row, col, gpu_softmax);
+    vector_sum(row, col, dEdf, grd, true);
+    row_element_multiply_with(1, col, grd, row, col, gpu_softmax);
 
     auto tb = SizeToBlockThreadPair(col * row);
     accBinaryExprKernel << <tb.first, tb.second >> >(col * row, dEdf, gpu_softmax, dEdx, FSubtract());
@@ -381,7 +446,78 @@ void pnlsoftmax_backward(int n, int elem_idx, const cnn::real* x0, const cnn::re
 }
 
 
-void conv1dwide(const int n, const int m, const cnn::real* xs, const int k, const cnn::real *fx, cnn::real *fy)
+/**
+conv1dnarrow using cuDNN, which is faster. however, cudnn is row-major as [n,c,h,w].
+we always assume column-major, 
+to accomodate to cudnn, n,c,h,w are interprated as 
+[ncols, 1, nrows, 1]
+can only do 1d convolution for each column
+
+# CUDNN/Caffe sizes for various arrays in column-major notation:
+conv x: (N,C,H,W): W,H=image size, C=channels, N=instances
+conv w: (K,C,Y,X): X,Y=filter size, C=input channels, K=output channels
+conv y: (N,K,H-Y+1,W-X+1)
+conv b: (1,K,1,1)
+*/
+void conv2dnarrow(const cnn::real* kscalar_one, const cnn::real* kscalar_zero,
+    const int xrow, const int xcol, const cnn::real* xs, 
+    const int i_wkspace_sz, cnn::real* wkspace, 
+    const int frow, const int fcol, const cnn::real *fx, 
+    const int yrow, const int ycol, cnn::real *fy)
+{
+    cudnnTensorDescriptor_t pInputDesc;
+    cudnnTensorDescriptor_t pOutputDesc;
+    cudnnFilterDescriptor_t pFilterDesc = nullptr;
+    cudnnConvolutionDescriptor_t pConvDesc = nullptr;
+    int n = 1; int c = 1; int h = xcol; int w = xrow;
+    int k_pFilter_in = 1; /// number of output feature maps
+    int c_pFilter_in = 1; /// number of input feature maps
+    int h_pFilter_in = fcol;
+    int w_pFilter_in = frow;
+    int n_out, c_out, h_out, w_out;
+
+    CHECK_CUDNN(cudnnCreateTensorDescriptor(&pInputDesc));
+    CHECK_CUDNN(cudnnCreateTensorDescriptor(&pOutputDesc));
+    CHECK_CUDNN(cudnnCreateFilterDescriptor(&pFilterDesc));
+    CHECK_CUDNN(cudnnCreateConvolutionDescriptor(&pConvDesc));
+
+    CHECK_CUDNN(cudnnSetTensor4dDescriptor(pInputDesc, CUDNN_TENSOR_NCHW, cudnnDataType, n, c, h, w));
+    CHECK_CUDNN(cudnnSetFilter4dDescriptor(pFilterDesc, cudnnDataType, k_pFilter_in, c_pFilter_in, h_pFilter_in, w_pFilter_in));
+    CHECK_CUDNN(cudnnSetConvolution2dDescriptor(pConvDesc, 0, 0, 1, 1, 1, 1, CUDNN_CONVOLUTION));
+
+    /// get the output layout
+    CHECK_CUDNN(cudnnGetConvolution2dForwardOutputDim(pConvDesc, pInputDesc, pFilterDesc, &n_out, &c_out, &h_out, &w_out));
+    assert(n_out * c_out * h_out * w_out == yrow * ycol);
+
+    CHECK_CUDNN(cudnnSetTensor4dDescriptor(pOutputDesc, CUDNN_TENSOR_NCHW, cudnnDataType, n_out, c_out, h_out, w_out));
+
+    size_t sz_wkspace;
+    bool   bNeedAllocateNewSpace = false;
+    cnn::real *tmp_work_space;
+    CHECK_CUDNN(cudnnGetConvolutionForwardWorkspaceSize(cudnn_handle, pInputDesc, pFilterDesc, pConvDesc, pOutputDesc, CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM, &sz_wkspace));
+    if (sz_wkspace < i_wkspace_sz)
+    {
+        tmp_work_space = wkspace;
+    }
+    else{
+        bNeedAllocateNewSpace = true;
+        CUDA_CHECK(cudaMalloc(&tmp_work_space, sz_wkspace));
+    }
+
+    CHECK_CUDNN(cudnnConvolutionForward(cudnn_handle, kscalar_one, pInputDesc, xs, pFilterDesc, fx,
+        pConvDesc, CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM, tmp_work_space, sz_wkspace, kscalar_zero, pOutputDesc, fy));
+
+    CHECK_CUDNN(cudnnDestroyTensorDescriptor(pInputDesc));
+    CHECK_CUDNN(cudnnDestroyTensorDescriptor(pOutputDesc));
+    CHECK_CUDNN(cudnnDestroyFilterDescriptor(pFilterDesc));
+    CHECK_CUDNN(cudnnDestroyConvolutionDescriptor(pConvDesc));
+
+    if (bNeedAllocateNewSpace)
+        CUDA_CHECK(cudaFree(tmp_work_space));
+}
+
+void conv1dwide(const int n, const int m, const cnn::real* xs, 
+    const int k, const cnn::real *fx, cnn::real *fy)
 {
 
     thrust::device_vector<cnn::real> dv((m + k) * n, 0.0);

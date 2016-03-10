@@ -167,6 +167,7 @@ struct Tensor {
 std::ostream& operator<<(std::ostream& os, const Tensor& t);
 cnn::real as_scalar(const Tensor& t);
 std::vector<cnn::real> as_vector(const Tensor& v);
+std::vector<cnn::real> as_vector(int nsize, const cnn::real* v);
 
 struct TensorTools {
   static void Constant(Tensor& d, cnn::real c);
@@ -183,13 +184,11 @@ struct TensorTools {
 
   static void SetElements(const Tensor& v, const std::vector<cnn::real>& vec);
   static void CopyElements(const Tensor& v, const Tensor& v_src);
-};
-cnn::real rand01();
-int rand0n(int n);
-cnn::real rand_normal();
-int rand0n_uniform(int n);
 
-#define LZERO -57.00
+  // copy elements in v_src into a memory pointed at v. the size of v is increased by the size of v_src
+  static void PushElementsToMemory(int& size, const int buf_size, cnn::real* v, const Tensor& v_src);
+
+};
 
 } // namespace cnn
 

@@ -24,11 +24,16 @@
 
 namespace cnn {
 
-extern AlignedMemoryPool<6>* fxs;
-extern AlignedMemoryPool<6>* dEdfs;
+extern AlignedMemoryPool<ALIGN>* fxs;
+extern AlignedMemoryPool<ALIGN>* dEdfs;
+extern AlignedMemoryPool<ALIGN>* mem_nodes;
 extern cnn::real* kSCALAR_MINUSONE;
 extern cnn::real* kSCALAR_ONE;
 extern cnn::real* kSCALAR_ZERO;
+
+/// some constants 
+/// [1/2,1/3,1/3, ..., 1/N]
+extern std::vector<cnn::real*> kSCALAR_ONE_OVER_INT;
 
 class ExecutionEngine;
 struct ParameterNodeBase;
@@ -196,6 +201,18 @@ struct Node {
                  // number of bytes you need from aux_storage_size(). Note:
                  // this memory will be on the CPU or GPU, depending on your computation
                  // backend
+
+public:
+    static void * operator new (size_t sz)
+    {
+        /// get from the memory pool
+        void *p = mem_nodes->allocate(sz);
+        return p;
+    }
+    static void operator delete (void* p)
+    {
+        mem_nodes->free();
+    }
 };
 
 template <class Function>
