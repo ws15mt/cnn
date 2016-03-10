@@ -14,6 +14,11 @@ namespace gpu {
 /// for convlution networks
     void conv1dwide(const int n, const int m, const cnn::real* xs, const int k, const cnn::real *fx, cnn::real *fy);
     void conv1dwide_backward(const int i, const int n, const int m, const cnn::real* xs, const int k, const cnn::real *fx, const cnn::real* dEdf, cnn::real *dEdx);
+    void conv2dnarrow(const cnn::real* kscalar_one, const cnn::real* kscalar_zero,
+        const int xrow, const int xcol, const cnn::real* xs,
+        const int i_wkspace_sz, cnn::real* wkspace,
+        const int frow, const int fcol, const cnn::real *fx,
+        const int yrow, const int ycol, cnn::real *fy);
 
     /// add bias
     void addVectorToAllColumns(const int n, const cnn::real * xs, const int m, const cnn::real* fx, cnn::real *fy);

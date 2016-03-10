@@ -446,7 +446,78 @@ void pnlsoftmax_backward(int n, int elem_idx, const cnn::real* x0, const cnn::re
 }
 
 
-void conv1dwide(const int n, const int m, const cnn::real* xs, const int k, const cnn::real *fx, cnn::real *fy)
+/**
+conv1dnarrow using cuDNN, which is faster. however, cudnn is row-major as [n,c,h,w].
+we always assume column-major, 
+to accomodate to cudnn, n,c,h,w are interprated as 
+[ncols, 1, nrows, 1]
+can only do 1d convolution for each column
+
+# CUDNN/Caffe sizes for various arrays in column-major notation:
+conv x: (N,C,H,W): W,H=image size, C=channels, N=instances
+conv w: (K,C,Y,X): X,Y=filter size, C=input channels, K=output channels
+conv y: (N,K,H-Y+1,W-X+1)
+conv b: (1,K,1,1)
+*/
+void conv2dnarrow(const cnn::real* kscalar_one, const cnn::real* kscalar_zero,
+    const int xrow, const int xcol, const cnn::real* xs, 
+    const int i_wkspace_sz, cnn::real* wkspace, 
+    const int frow, const int fcol, const cnn::real *fx, 
+    const int yrow, const int ycol, cnn::real *fy)
+{
+    cudnnTensorDescriptor_t pInputDesc;
+    cudnnTensorDescriptor_t pOutputDesc;
+    cudnnFilterDescriptor_t pFilterDesc = nullptr;
+    cudnnConvolutionDescriptor_t pConvDesc = nullptr;
+    int n = 1; int c = 1; int h = xcol; int w = xrow;
+    int k_pFilter_in = 1; /// number of output feature maps
+    int c_pFilter_in = 1; /// number of input feature maps
+    int h_pFilter_in = fcol;
+    int w_pFilter_in = frow;
+    int n_out, c_out, h_out, w_out;
+
+    CHECK_CUDNN(cudnnCreateTensorDescriptor(&pInputDesc));
+    CHECK_CUDNN(cudnnCreateTensorDescriptor(&pOutputDesc));
+    CHECK_CUDNN(cudnnCreateFilterDescriptor(&pFilterDesc));
+    CHECK_CUDNN(cudnnCreateConvolutionDescriptor(&pConvDesc));
+
+    CHECK_CUDNN(cudnnSetTensor4dDescriptor(pInputDesc, CUDNN_TENSOR_NCHW, cudnnDataType, n, c, h, w));
+    CHECK_CUDNN(cudnnSetFilter4dDescriptor(pFilterDesc, cudnnDataType, k_pFilter_in, c_pFilter_in, h_pFilter_in, w_pFilter_in));
+    CHECK_CUDNN(cudnnSetConvolution2dDescriptor(pConvDesc, 0, 0, 1, 1, 1, 1, CUDNN_CONVOLUTION));
+
+    /// get the output layout
+    CHECK_CUDNN(cudnnGetConvolution2dForwardOutputDim(pConvDesc, pInputDesc, pFilterDesc, &n_out, &c_out, &h_out, &w_out));
+    assert(n_out * c_out * h_out * w_out == yrow * ycol);
+
+    CHECK_CUDNN(cudnnSetTensor4dDescriptor(pOutputDesc, CUDNN_TENSOR_NCHW, cudnnDataType, n_out, c_out, h_out, w_out));
+
+    size_t sz_wkspace;
+    bool   bNeedAllocateNewSpace = false;
+    cnn::real *tmp_work_space;
+    CHECK_CUDNN(cudnnGetConvolutionForwardWorkspaceSize(cudnn_handle, pInputDesc, pFilterDesc, pConvDesc, pOutputDesc, CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM, &sz_wkspace));
+    if (sz_wkspace < i_wkspace_sz)
+    {
+        tmp_work_space = wkspace;
+    }
+    else{
+        bNeedAllocateNewSpace = true;
+        CUDA_CHECK(cudaMalloc(&tmp_work_space, sz_wkspace));
+    }
+
+    CHECK_CUDNN(cudnnConvolutionForward(cudnn_handle, kscalar_one, pInputDesc, xs, pFilterDesc, fx,
+        pConvDesc, CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM, tmp_work_space, sz_wkspace, kscalar_zero, pOutputDesc, fy));
+
+    CHECK_CUDNN(cudnnDestroyTensorDescriptor(pInputDesc));
+    CHECK_CUDNN(cudnnDestroyTensorDescriptor(pOutputDesc));
+    CHECK_CUDNN(cudnnDestroyFilterDescriptor(pFilterDesc));
+    CHECK_CUDNN(cudnnDestroyConvolutionDescriptor(pConvDesc));
+
+    if (bNeedAllocateNewSpace)
+        CUDA_CHECK(cudaFree(tmp_work_space));
+}
+
+void conv1dwide(const int n, const int m, const cnn::real* xs, 
+    const int k, const cnn::real *fx, cnn::real *fy)
 {
 
     thrust::device_vector<cnn::real> dv((m + k) * n, 0.0);
