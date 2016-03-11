@@ -619,7 +619,7 @@ int clustering_main_body(variables_map vm)
                 vm.count("charlevel") > 0);
             sd.Freeze(); // no new word types allowed
         }
-        ptrTrainer->get_tfidf(vm, training, sd);
+        ptrTrainer->get_idf(vm, training, sd);
     }
     
     if ((vm.count("train") > 0 && vm["epochsize"].as<int>() == -1) || vm.count("writedict") > 0 || vm.count("train-lda") > 0)
