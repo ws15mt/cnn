@@ -8,9 +8,10 @@
 #include <iostream>
 #include <stdexcept>
 #include <typeinfo>
-
+#include <cnn/macros.h>
 #include <boost/version.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/unordered_map.hpp>
 #if BOOST_VERSION >= 105600
 #include <boost/serialization/split_member.hpp>
 #include <boost/serialization/vector.hpp>
@@ -192,6 +193,11 @@ private:
     }
 #endif
 };
+
+/// these are for word, either string or its index, to its tfidf weight
+typedef boost::unordered::unordered_map<std::string, cnn::real> tWord2TfIdf;
+typedef boost::unordered::unordered_map<int, cnn::real> tWordid2TfIdf;
+
 
 } // namespace cnn
 
