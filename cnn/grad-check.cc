@@ -86,7 +86,8 @@ void CheckGrad(Model& m, ComputationGraph& g) {
       cerr << "OBJECT=" << j << endl;
       Tensor& v = p.values[j];
       Tensor& ag = p.grads[j];
-      for (size_t i = 0; i < ts; ++i) {
+      size_t sample_step = ts / 10;
+      for (size_t i = 0; i < ts; i+=sample_step) {
           cnn::real old, newv ;
 #if HAVE_CUDA
           cudaMemcpy(&old, &v.v[i], sizeof(cnn::real), cudaMemcpyDeviceToHost);
