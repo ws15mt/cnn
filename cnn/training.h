@@ -24,6 +24,7 @@ struct Trainer {
   @nutt: proportional to the number of utterances trained in parallel
   */
   cnn::real clip_gradients(cnn::real nutt = 1.0);
+  cnn::real clip_gradients(cnn::real samples, cnn::real pre_compued_grd_norm);
 
   // learning rates
   cnn::real eta0;

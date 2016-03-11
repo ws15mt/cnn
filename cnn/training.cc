@@ -17,15 +17,29 @@ Trainer::~Trainer() {}
 @scale : proportional to the number of samples trained in parallel 
 */
 cnn::real Trainer::clip_gradients(cnn::real samples) {
-  cnn::real gscale = 1;
-  if (clipping_enabled) {
-    cnn::real gg = model->gradient_l2_norm();
-    if (gg > clip_threshold * samples) {
-      ++clips;
-      gscale = (clip_threshold * samples) / gg;
+    cnn::real gscale = 1;
+    if (clipping_enabled) {
+        cnn::real gg = model->gradient_l2_norm();
+        cout << "gradient norm  = " << gg << " samples = " << samples << " gnorm/sample = " << gg / samples << endl;
+        if (gg > clip_threshold * samples) {
+            ++clips;
+            gscale = (clip_threshold * samples) / gg;
+        }
     }
-  }
-  return gscale;
+    return gscale;
+}
+
+cnn::real Trainer::clip_gradients(cnn::real samples, cnn::real pre_compued_grd_norm) {
+    cnn::real gscale = 1;
+    if (clipping_enabled) {
+        cnn::real gg = pre_compued_grd_norm;
+        cout << "gradient norm  = " << gg << " samples = " << samples << " gnorm/sample = " << gg / samples << endl;
+        if (gg > clip_threshold * samples) {
+            ++clips;
+            gscale = (clip_threshold * samples) / gg;
+        }
+    }
+    return gscale;
 }
 
 void SimpleSGDTrainer::update(cnn::real nutt, cnn::real scale) {
@@ -339,8 +353,15 @@ void RmsPropWithMomentumTrainer::update(cnn::real nutt, cnn::real scale) {
     vector<cnn::real> vlgrd_norm;
     compute_gradient_norm(model->parameters_list(), vpgrd_norm, model->lookup_parameters_list(), vlgrd_norm);
 
+    cnn::real gg = 0;
+    for (auto & p : vpgrd_norm)
+        gg += p;
+    for (auto & p : vlgrd_norm)
+        gg += p;
+    gg = sqrt(gg);
 
-    const cnn::real gscale = clip_gradients(nutt);
+    const cnn::real gscale = clip_gradients(nutt, gg);
+
     cnn::real nutt_scale = 1.0 / nutt;
     pi = 0;
     for (auto p : model->parameters_list()) {
