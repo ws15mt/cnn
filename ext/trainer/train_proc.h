@@ -213,6 +213,14 @@ public:
     void hierarchical_ngram_clustering(variables_map vm, const CorpusWithClassId& test, Dict& sd);
     int closest_class_id(vector<nGram>& pnGram, int this_cls, int nclsInEachCluster, const Sentence& obs, cnn::real& score, cnn::real interpolation_wgt);
 
+public:
+    /// compute tfidf weight for all words from training data
+    /// dictionary or word list is given 
+    void get_tfidf(variables_map vm, const Corpus &training, Dict& sd);
+protected:
+     std::vector<cnn::real> m_tfidf; /// the dictionary for saving tfidf
+    /// follwong the same inddex from a dictionary
+
 private:
     vector<cnn::real> ppl_hist;
 
@@ -1778,7 +1786,7 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
             dr.join(); /// make sure data is completely read
             training = dr.corpus();  /// copy the data from data thread to the data to be used in the main thread
             training_numturn2did = get_numturn2dialid(training);
-
+#define DEBUG
 #ifndef DEBUG
             ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
             boost::archive::text_oarchive oa(out);
@@ -1813,6 +1821,72 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
 
         trial++;
     }
+}
+
+template <class AM_t>
+void TrainProcess<AM_t>::get_tfidf(variables_map vm, const Corpus &training, Dict& sd)
+{
+    long l_total_terms = 0;
+    long l_total_nb_documents = 0;
+    tWordid2TfIdf tf;
+    tWordid2TfIdf idf;
+
+    for (auto & d : training)
+    {
+        for (auto &sp : d)
+        {
+            Sentence user = sp.first;
+            Sentence resp = sp.second;
+
+            l_total_terms += user.size();
+            l_total_terms += resp.size();
+
+            l_total_nb_documents += 2;
+
+            tWordid2TfIdf occurence; 
+            for (auto& u : user)
+            {
+                if (tf.find(u) == tf.end())
+                    tf[u] = 1;
+                else
+                    tf[u] = tf[u] + 1;
+                occurence[u] = 1;
+            }
+            for (auto& u : resp)
+            {
+                if (tf.find(u) == tf.end())
+                    tf[u] = 1;
+                else
+                    tf[u] = tf[u] + 1;
+                occurence[u] = 1;
+            }
+
+            tWordid2TfIdf::iterator iter;
+            for (iter = occurence.begin(); iter != occurence.end(); iter++)
+                idf[iter->first] += 1;
+        }
+    }
+
+    if (m_tfidf.size() == 0)
+        m_tfidf.resize(sd.size());
+    tWordid2TfIdf::iterator it;
+    for (it = tf.begin(); it != tf.end(); it ++)
+    {
+        cnn::real val = it->second / l_total_terms;
+        it->second = val;
+
+        cnn::real idf_val = idf[it->first];
+        idf_val = log(l_total_nb_documents / idf_val);
+
+        int id = it->first; 
+        m_tfidf[id] = val * idf_val; 
+    }
+
+    string fname = vm["get_tfidf"].as<string>();
+    ofstream on(fname);
+    boost::archive::text_oarchive oa(on);
+    oa << m_tfidf;
+
 }
 
 /**
