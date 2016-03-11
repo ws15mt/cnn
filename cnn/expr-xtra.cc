@@ -130,7 +130,7 @@ vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source,
 /// [<first sentence> <second sentence> ...]
 /// for example with two sentences with length N1 for the first sentence and length N2 for the second sentence
 /// [v_spk1_time0 v_spk1_time1 ... v_spk1_timeN1 | v_spk2_time0 v_spk2_time1 ... v_spk2_timeN2]
-vector<Expression> embedding_spkfirst(const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, unsigned feat_dim)
+vector<Expression> embedding_spkfirst(const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs)
 {
     size_t nutt = source.size();
 
