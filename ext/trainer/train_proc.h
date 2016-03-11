@@ -144,8 +144,8 @@ public:
     }
     ~TrainProcess()
     {
-        delete[] training_set_scores;
-        delete[] dev_set_scores;
+        delete training_set_scores;
+        delete dev_set_scores;
     }
 
     void prt_model_info(size_t LAYERS, size_t VOCAB_SIZE_SRC, const vector<unsigned>& dims, size_t nreplicate, size_t decoder_additiona_input_to, size_t mem_slots, cnn::real scale);
@@ -311,9 +311,11 @@ cnn::real TrainProcess<AM_t>::testPPL(Model &model, AM_t &am, Corpus &devel, Num
 {
     unsigned lines = 0;
 
-    ofstream of(out_file, ios::app);
-
     unsigned si = devel.size(); /// number of dialgoues in training
+    if (si == 0)
+        return LZERO;
+
+    ofstream of(out_file, ios::app);
 
     Timer iteration("completed in");
 
@@ -1765,14 +1767,6 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
 
         batch_train(model, am, training, devel, sgd, out_file, 1, nparallel, largest_cost, segmental_training, false, do_gradient_check, false, do_padding, kSRC_EOS);
 
-        if (fmod(trial , 20) == 0)
-        {
-            ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
-            boost::archive::text_oarchive oa(out);
-            oa << model;
-            out.close();
-        }
-
         dr.join(); /// synchroze data thread and main thread
         training = dr.corpus();
         training_numturn2did = get_numturn2dialid(training);
@@ -1785,30 +1779,36 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
             training = dr.corpus();  /// copy the data from data thread to the data to be used in the main thread
             training_numturn2did = get_numturn2dialid(training);
 
+#ifndef DEBUG
             ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
             boost::archive::text_oarchive oa(out);
             oa << model;
             out.close();
-
+#endif
             sgd.update_epoch();
 
-            cnn::real ddloss, ddchars_s, ddchars_t;
-            ddloss = testPPL(model, am, devel, devel_numturn2did, out_file + ".dev.log", segmental_training, ddchars_s, ddchars_t);
+#ifndef DEBUG
+            if (devel.size() > 0)
+            {
+                cnn::real ddloss, ddchars_s, ddchars_t;
+                ddloss = testPPL(model, am, devel, devel_numturn2did, out_file + ".dev.log", segmental_training, ddchars_s, ddchars_t);
 
-            ddloss = smoothed_ppl(ddloss);
-            if (ddloss < largest_dev_cost) {
-                /// save the model with the best performance on the dev set
-                largest_dev_cost = ddloss;
+                ddloss = smoothed_ppl(ddloss);
+                if (ddloss < largest_dev_cost) {
+                    /// save the model with the best performance on the dev set
+                    largest_dev_cost = ddloss;
 
-                ofstream out(out_file, ofstream::out);
-                boost::archive::text_oarchive oa(out);
-                oa << model;
-                out.close();
+                    ofstream out(out_file, ofstream::out);
+                    boost::archive::text_oarchive oa(out);
+                    oa << model;
+                    out.close();
+                }
+                else{
+                    sgd.eta0 *= 0.5; /// reduce learning rate
+                    sgd.eta *= 0.5; /// reduce learning rate
+                }
             }
-            else{
-                sgd.eta0 *= 0.5; /// reduce learning rate
-                sgd.eta *= 0.5; /// reduce learning rate
-            }
+#endif
         }
 
         trial++;
