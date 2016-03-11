@@ -64,12 +64,14 @@ void CheckGrad(Model& m, ComputationGraph& g) {
       if (g == 0 && grd == 0)
           continue;
       
-      cnn::real rel_diff = (g - grd) / (std::max<cnn::real>(fabs(g), fabs(grd)));
-      bool wrong = (rel_diff > threshold);
+      threshold = (cnn::real)pow(10.0,
+          max((cnn::real)0.0, ceil(log10(min(fabs(g), fabs(grd))))) - (int)GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL);
+      cnn::real diff = fabs(g - grd);
+      bool wrong = (std::isnan(diff) || diff > threshold);
       
       if (wrong)
       {
-          flag = true; cerr << "*** relative difference [" << rel_diff * 100 << "%] ";
+          flag = true; cerr << "*** difference [" << diff << "%] ";
           cerr << grd << ' ' << g << endl;
       }
     }
@@ -85,21 +87,46 @@ void CheckGrad(Model& m, ComputationGraph& g) {
       Tensor& v = p.values[j];
       Tensor& ag = p.grads[j];
       for (size_t i = 0; i < ts; ++i) {
-        cnn::real old = v.v[i];
-        v.v[i] = old - alpha;
+          cnn::real old, newv ;
+#if HAVE_CUDA
+          cudaMemcpy(&old, &v.v[i], sizeof(cnn::real), cudaMemcpyDeviceToHost);
+#else
+          old = v.v[i];
+#endif
+        newv = old - alpha;
+#if HAVE_CUDA
+        cudaMemcpy(&v.v[i], &newv, sizeof(cnn::real), cudaMemcpyHostToDevice);
+#else
+        v.v[i] = newv;
+#endif
         cnn::real E_left = as_scalar(g.forward());
 
-        v.v[i] = old + alpha;
+        newv = old + alpha;
+#if HAVE_CUDA
+        cudaMemcpy(&v.v[i], &newv, sizeof(cnn::real), cudaMemcpyHostToDevice);
+#else
+        v.v[i] = newv;
+#endif
         cnn::real E_right = as_scalar(g.forward());
         cnn::real g = (E_right - E_left) / (2 * alpha);
-        cnn::real f = fabs(g - ag.v[i]);
-        cnn::real m = max<cnn::real>(fabs(g), fabs(ag.v[i]));
-        if (f > 0.1) {
-          if (m > 0.f) f /= m;
-          if (f > 0.1) { flag = true; cerr << "*** "; }
+
+        cnn::real gv;
+#if HAVE_CUDA
+        cudaMemcpy(&gv, &ag.v[i], sizeof(cnn::real), cudaMemcpyDeviceToHost);
+#else
+        gv = ag.v[i];
+#endif
+        threshold = (cnn::real)pow(10.0,
+            max((cnn::real)0.0, ceil(log10(min(fabs(g), fabs(gv))))) - (int)GRADIENT_CHECK_DIGIT_SIGNIFICANT_LEVEL);
+        cnn::real diff = fabs(g - gv);
+        bool wrong = (std::isnan(diff) || diff > threshold);
+        if (wrong)
+        {
+            flag = true; cerr << "*** difference [" << diff << "%] ";
+            cerr << gv << ' ' << g << endl;
         }
-        if (flag) 
-            cerr << ag.v[i] << ' ' << g << endl;
+        if (flag)
+            cerr << gv << ' ' << g << endl;
       }
     }
   }

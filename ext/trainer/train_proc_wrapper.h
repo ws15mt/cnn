@@ -203,7 +203,7 @@ int main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_
     }
 
     /// read embedding if specified
-    if (vm["embeddingfn"].as<string>().size() > 0)
+    if (vm.count("embeddingfn") > 0)
     {
         map<int, vector<cnn::real>> vWordEmbedding;
         string emb_filename = vm["embeddingfn"].as<string>();
