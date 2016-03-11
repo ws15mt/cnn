@@ -592,7 +592,7 @@ int clustering_main_body(variables_map vm)
     Corpus training, devel, testcorpus;
     string line;
     cnn::real largest_dev_cost = 9e+99;
-    TrainProc  * ptrTrainer = nullptr;
+    TrainProc  * ptrTrainer = new TrainProc();
 
     if (vm.count("readdict"))
     {
@@ -610,6 +610,18 @@ int clustering_main_body(variables_map vm)
         sd.Freeze();
     }
 
+    if (vm.count("get_tfidf") > 0)
+    {
+        if (training.size() == 0)
+        {
+            cerr << "Reading training data from " << vm["train"].as<string>() << "...\n";
+            training = read_corpus(vm["train"].as<string>(), sd, kSRC_SOS, kSRC_EOS, vm["mbsize"].as<int>(), false,
+                vm.count("charlevel") > 0);
+            sd.Freeze(); // no new word types allowed
+        }
+        ptrTrainer->get_tfidf(vm, training, sd);
+    }
+    
     if ((vm.count("train") > 0 && vm["epochsize"].as<int>() == -1) || vm.count("writedict") > 0 || vm.count("train-lda") > 0)
     {
         cerr << "Reading training data from " << vm["train"].as<string>() << "...\n";
