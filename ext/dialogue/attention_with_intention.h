@@ -4191,6 +4191,8 @@ protected:
     Expression   i_emb2enc_b_all_words; /// the bias that is to be applied to every word
 
     Expression i_zero_emb; /// Expresison for embedding of zeros in the embedding space
+    vector<cnn::real> zero_emb; 
+
 public:
     AttMultiSource_LinearEncoder_WithMaxEntropyFeature(Model& model,
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
@@ -4202,8 +4204,8 @@ public:
         r_softmax_scale = 1.0;
 
         unsigned int align_dim = hidden_dim[ALIGN_LAYER];
-        p_Wa = model.add_parameters({ align_dim, hidden_dim[DECODER_LAYER] }, iscale, "p_Wa");
-        p_va = model.add_parameters({ align_dim }, iscale, "p_va");
+        if (p_Wa == nullptr) p_Wa = model.add_parameters({ align_dim, hidden_dim[DECODER_LAYER] }, iscale, "p_Wa");
+        if (p_va == nullptr) p_va = model.add_parameters({ align_dim }, iscale, "p_va");
         p_U  = model.add_parameters({ hidden_dim[ALIGN_LAYER], hidden_dim[ENCODER_LAYER] }, iscale, "p_U");
 
         /// bi-gram weight
@@ -4212,6 +4214,8 @@ public:
         /// embedding to encoding
         p_emb2enc = model.add_parameters({ hidden_dim[ENCODER_LAYER], hidden_dim[EMBEDDING_LAYER] });
         p_emb2enc_b = model.add_parameters({ hidden_dim[ENCODER_LAYER] });
+
+        zero_emb.resize(hidden_dim[EMBEDDING_LAYER], 0.0);
     }
 
     void start_new_single_instance(const std::vector<int> &prv_response, const std::vector<int> &src, ComputationGraph &cg)
@@ -4259,7 +4263,7 @@ public:
             i_enc_to_intention = parameter(cg, p_enc_to_intention);
 
             i_zero = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
-            i_zero_emb = input(cg, { (hidden_dim[EMBEDDING_LAYER]) }, &zero);
+            i_zero_emb = input(cg, { (hidden_dim[EMBEDDING_LAYER]) }, &zero_emb);
 
             attention_output_for_this_turn.clear();
 
