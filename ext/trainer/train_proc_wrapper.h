@@ -172,13 +172,16 @@ int main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_
     cerr << "%% Using " << flavour << " recurrent units" << endl;
 
     std::vector<unsigned> dims;
-    dims.resize(4);
+    dims.resize(5);
     if (!vm.count("hidden"))
         dims[ENCODER_LAYER] = HIDDEN_DIM;
     else
         dims[ENCODER_LAYER] = (unsigned)vm["hidden"].as<int>();
+    if (!vm.count("embeddingdim"))
+        dims[EMBEDDING_LAYER] = dims[ENCODER_LAYER];
+    else
+        dims[EMBEDDING_LAYER] = (unsigned)vm["embeddingdim"].as<int>();
     dims[DECODER_LAYER] = dims[ENCODER_LAYER]; /// if not specified, encoder and decoder have the same dimension
-
     if (!vm.count("align"))
         dims[ALIGN_LAYER] = ALIGN_DIM;
     else

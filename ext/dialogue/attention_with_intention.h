@@ -4184,6 +4184,13 @@ protected:
     vector<Expression> v_max_ent_obs; /// observation from max-ent feature
     Expression        i_max_ent_obs;
 
+    Parameters * p_emb2enc; /// embedding to encoding
+    Parameters * p_emb2enc_b; /// bias 
+    Expression   i_emb2enc;
+    Expression   i_emb2enc_b;           /// the bias that is to be applied to each sentence
+    Expression   i_emb2enc_b_all_words; /// the bias that is to be applied to every word
+
+    Expression i_zero_emb; /// Expresison for embedding of zeros in the embedding space
 public:
     AttMultiSource_LinearEncoder_WithMaxEntropyFeature(Model& model,
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
@@ -4202,6 +4209,9 @@ public:
         /// bi-gram weight
         p_max_ent = model.add_lookup_parameters(vocab_size_tgt, { vocab_size_tgt }, iscale);
 
+        /// embedding to encoding
+        p_emb2enc = model.add_parameters({ hidden_dim[ENCODER_LAYER], hidden_dim[EMBEDDING_LAYER] });
+        p_emb2enc_b = model.add_parameters({ hidden_dim[ENCODER_LAYER] });
     }
 
     void start_new_single_instance(const std::vector<int> &prv_response, const std::vector<int> &src, ComputationGraph &cg)
@@ -4249,6 +4259,7 @@ public:
             i_enc_to_intention = parameter(cg, p_enc_to_intention);
 
             i_zero = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
+            i_zero_emb = input(cg, { (hidden_dim[EMBEDDING_LAYER]) }, &zero);
 
             attention_output_for_this_turn.clear();
 
@@ -4257,6 +4268,9 @@ public:
 
             attention_layer.new_graph(cg);
             attention_layer.set_data_in_parallel(nutt);
+
+            i_emb2enc = parameter(cg, p_emb2enc);
+            i_emb2enc_b = concatenate_cols(vector<Expression>(nutt, parameter(cg, p_emb2enc_b)));
         }
 
         std::vector<Expression> source_embeddings;
@@ -4271,7 +4285,7 @@ public:
             /// get the raw encodeing from source
             unsigned int prvslen = 0;
             Expression prv_response_enc = concatenate_cols(average_embedding(prvslen, prv_response, cg, p_cs));
-            encoder_fwd.add_input(prv_response_enc);
+            encoder_fwd.add_input(i_emb2enc * prv_response_enc + i_emb2enc_b);
         }
 
         /// encode the source side input, with intial state from the previous response
@@ -4284,21 +4298,24 @@ public:
 
         /// the source sentence has to be approximately the same length
         src_len = each_sentence_length(source);
+        int nwords = 0; 
         for (auto p : src_len)
         {
             src_words += (p - 1);
+            nwords += p;
         }
 
         /// get the representation of inputs
         v_src = embedding_spkfirst(source, cg, p_cs); 
-        src = i_U * concatenate_cols(v_src);
+        i_emb2enc_b_all_words = concatenate_cols(vector<Expression>(nwords, parameter(cg, p_emb2enc_b)));
+        src = i_U * (i_emb2enc * concatenate_cols(v_src) + i_emb2enc_b_all_words);
 
         /// get the representation of inputs
         v_max_ent_obs = embedding_spkfirst(source, cg, p_max_ent);
         i_max_ent_obs = concatenate_cols(average_embedding(src_len, vocab_size_tgt, v_max_ent_obs));
 
         /// get the raw encodeing from source
-        src_fwd = concatenate_cols(average_embedding(src_len, hidden_dim[ENCODER_LAYER], v_src));
+        src_fwd = i_emb2enc * concatenate_cols(average_embedding(src_len, hidden_dim[EMBEDDING_LAYER], v_src)) + i_emb2enc_b;
 
         /// combine the previous response and the current input by adding the current input to the 
         /// encoder that is initialized from the state of the encoder for the previous response
@@ -4337,13 +4354,13 @@ public:
             if (p >= 0)
                 i_x_x = lookup(cg, p_cs, p);
             else
-                i_x_x = i_zero;
+                i_x_x = i_zero_emb;
             if (verbose)
                 display_value(i_x_x, cg, "i_x_x");
             v_x_t.push_back(i_x_x);
         }
 
-        Expression i_obs = concatenate_cols(v_x_t);
+        Expression i_obs = i_emb2enc * concatenate_cols(v_x_t) + i_emb2enc_b;
         Expression i_input;
         if (attention_output_for_this_turn.size() <= turnid)
         {
@@ -4361,7 +4378,7 @@ public:
         vector<Expression> v_context_to_source = attention_to_source(v_src, src_len, i_va, i_Wa, i_h_t, src, hidden_dim[ALIGN_LAYER], nutt, alpha, r_softmax_scale);
 
         /// compute response
-        Expression concatenated_src = concatenate_cols(v_context_to_source);
+        Expression concatenated_src = i_emb2enc * concatenate_cols(v_context_to_source) + i_emb2enc_b;
         Expression i_combined_input_to_attention = concatenate({ i_h_t, concatenated_src});
         i_h_attention_t = attention_layer.add_input(i_combined_input_to_attention);
 
