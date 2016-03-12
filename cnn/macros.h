@@ -2,7 +2,7 @@
 
 namespace cnn {
 
-#define USE_DOUBLE
+//#define USE_DOUBLE
 #ifdef USE_DOUBLE
 typedef double real;
 #else
