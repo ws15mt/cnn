@@ -173,30 +173,30 @@ int main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_
 
     std::vector<unsigned> dims;
     dims.resize(5);
-    if (!vm.count("hidden"))
+    if (vm.count("hidden") == 0)
         dims[ENCODER_LAYER] = HIDDEN_DIM;
     else
         dims[ENCODER_LAYER] = (unsigned)vm["hidden"].as<int>();
-    if (!vm.count("embeddingdim"))
+    if (vm.count("embeddingdim") == 0)
         dims[EMBEDDING_LAYER] = dims[ENCODER_LAYER];
     else
         dims[EMBEDDING_LAYER] = (unsigned)vm["embeddingdim"].as<int>();
     dims[DECODER_LAYER] = dims[ENCODER_LAYER]; /// if not specified, encoder and decoder have the same dimension
-    if (!vm.count("align"))
+    if (vm.count("align") == 0)
         dims[ALIGN_LAYER] = ALIGN_DIM;
     else
         dims[ALIGN_LAYER] = (unsigned)vm["align"].as<int>();
-    if (!vm.count("intentiondim"))
+    if (vm.count("intentiondim") == 0)
         dims[INTENTION_LAYER] = HIDDEN_DIM;
     else
         dims[INTENTION_LAYER] = (unsigned)vm["intentiondim"].as<int>();
 
-
     std::vector<unsigned int> layers;
-    layers.resize(4, LAYERS);
+    layers.resize(5, LAYERS);
     if (!vm.count("intentionlayers"))
         layers[INTENTION_LAYER] = vm["intentionlayers"].as<size_t>();
     rnn_t hred(model, layers, VOCAB_SIZE_SRC, VOCAB_SIZE_TGT, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
+
     prt_model_info<rnn_t, TrainProc>(LAYERS, VOCAB_SIZE_SRC, (const vector<unsigned>&) dims, nreplicate, decoder_additiona_input_to, mem_slots, vm["scale"].as<cnn::real>());
 
     /// read word class information
