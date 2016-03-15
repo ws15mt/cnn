@@ -3750,7 +3750,14 @@ public:
     {
         if (verbose)
             cout << "start AttMultiSource_LinearEncoder" << endl;
-        
+
+        if (hidden_dim[ENCODER_LAYER] != hidden_dim[EMBEDDING_LAYER] ||
+            hidden_dim[DECODER_LAYER] != hidden_dim[ENCODER_LAYER])
+        {
+            cout << "Warning: not the same dimension for encoder, decoder and embedding" << endl;
+            cout << "Warning: might be okay for derived class but if just using AttMultiSource_LinearEncoder can trigger runtime error later" << endl;
+        }
+
         p_Wa_local = model.add_parameters({ hidden_dim[ALIGN_LAYER], hidden_dim[DECODER_LAYER] }, iscale);
         p_ba_local = model.add_parameters({ hidden_dim[ALIGN_LAYER] }, iscale);
         p_va_local = model.add_parameters({ 1, hidden_dim[ALIGN_LAYER] }, iscale);
