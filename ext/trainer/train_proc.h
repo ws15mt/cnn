@@ -1797,7 +1797,6 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
             dr.join(); /// make sure data is completely read
             training = dr.corpus();  /// copy the data from data thread to the data to be used in the main thread
             training_numturn2did = get_numturn2dialid(training);
-//#define DEBUG
 #ifndef DEBUG
             ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
             boost::archive::text_oarchive oa(out);
