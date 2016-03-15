@@ -49,6 +49,7 @@ void Pow::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto x2 = xs[1]->v[0];
   (*fx).array() = x1.array().pow(x2);
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void Pow::backward_impl(const vector<const Tensor*>& xs,
@@ -83,11 +84,12 @@ void Min::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto y = *fx;
   auto x1 = **xs[0];
   auto x2 = **xs[1];
-  Tensor t(fx.d, static_cast<cnn::real*>(aux_mem));
+  Tensor t(fx.d, static_cast<cnn::real*>(aux_mem), xs[0]->m_device_id);
   auto u = *t;
   u = (x1.array() < x2.array()).matrix().cast<cnn::real>();
   y = x1.cwiseMin(x2);
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void Min::backward_impl(const vector<const Tensor*>& xs,
@@ -99,7 +101,7 @@ void Min::backward_impl(const vector<const Tensor*>& xs,
 #ifdef HAVE_CUDA
   throw std::runtime_error("Min not yet implemented for CUDA");
 #else
-  const Tensor t(dEdxi.d, static_cast<cnn::real*>(aux_mem));
+  const Tensor t(dEdxi.d, static_cast<cnn::real*>(aux_mem), xs[0]->m_device_id);
   if (i == 0) {
     *dEdxi += (*t).cwiseProduct(*dEdf);
   } else {
@@ -119,11 +121,12 @@ void Max::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto y = *fx;
   auto x1 = **xs[0];
   auto x2 = **xs[1];
-  Tensor t(fx.d, static_cast<cnn::real*>(aux_mem));
+  Tensor t(fx.d, static_cast<cnn::real*>(aux_mem), xs[0]->m_device_id);
   auto u = *t;
   u = (x1.array() > x2.array()).matrix().cast<cnn::real>();
   y = x1.cwiseMax(x2);
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void Max::backward_impl(const vector<const Tensor*>& xs,
@@ -135,7 +138,7 @@ void Max::backward_impl(const vector<const Tensor*>& xs,
 #ifdef HAVE_CUDA
   throw std::runtime_error("Max not yet implemented for CUDA");
 #else
-  const Tensor t(dEdxi.d, static_cast<cnn::real*>(aux_mem));
+  const Tensor t(dEdxi.d, static_cast<cnn::real*>(aux_mem), xs[0]->m_device_id);
   if (i == 0) {
     *dEdxi += (*t).cwiseProduct(*dEdf);
   } else {
@@ -152,6 +155,7 @@ void TraceOfProduct::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) c
   auto x2 = **xs[1];
   fx.v[0] = (x1 * x2.transpose()).trace();
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void TraceOfProduct::backward_impl(const vector<const Tensor*>& xs,
@@ -175,6 +179,7 @@ void ConstScalarMultiply::forward_impl(const vector<const Tensor*>& xs, Tensor& 
 #else
     *fx = (**xs[0]) * alpha;
 #endif
+    fx.m_device_id = xs[0]->m_device_id;
 }
 
 void ConstScalarMultiply::backward_impl(const vector<const Tensor*>& xs,
@@ -197,6 +202,7 @@ void DotProduct::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const
 #else
     *fx = (**xs[0]).transpose() * (**xs[1]);
 #endif
+    fx.m_device_id = xs[0]->m_device_id;
 }
 
 void DotProduct::backward_impl(const vector<const Tensor*>& xs,
@@ -233,6 +239,7 @@ void Transpose::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const 
       fx.batch_matrix(b).noalias() = xs[0]->batch_matrix(b).transpose();
 #endif
   }
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void Transpose::backward_impl(const vector<const Tensor*>& xs,
@@ -263,6 +270,7 @@ void Reshape::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
 #else
   fx.v = xs[0]->v;
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void Reshape::backward_impl(const vector<const Tensor*>& xs,
@@ -270,7 +278,7 @@ void Reshape::backward_impl(const vector<const Tensor*>& xs,
                             const Tensor& dEdf,
                             unsigned i,
                             Tensor& dEdxi) const {
-  const Tensor reshaped(dEdxi.d, dEdf.v);
+  const Tensor reshaped(dEdxi.d, dEdf.v, device_id);
 #ifdef HAVE_CUDA
   gpu::vconstant_multiplyx_backward(reshaped.d.size(), 1.0, reshaped.v, dEdxi.v); 
 #else
@@ -286,6 +294,7 @@ void SumColumns::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const
   } else {
     throw std::invalid_argument("two inputs in SumColumns::forward!");
   }
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void SumColumns::backward_impl(const vector<const Tensor*>& xs,
@@ -311,6 +320,7 @@ void KMHNGram::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
     for (unsigned k = 0; k < n; ++k)
       c_j += x.col(j + k);
   }
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void KMHNGram::backward_impl(const vector<const Tensor*>& xs,
@@ -333,11 +343,11 @@ void InnerProduct3D_1D::forward_impl(const vector<const Tensor*>& xs, Tensor& fx
   const unsigned k = b.rows();
   // the following reshape tensors into order 1 or 2 sizes
   // but they point to the same memory
-  Tensor ta({i*j,k}, xs[0]->v);
-  Tensor ty({i*j}, fx.v);
+  Tensor ta({i*j,k}, xs[0]->v, device_id);
+  Tensor ty({i*j}, fx.v, device_id);
   auto A = *ta;
   if (xs.size() == 3) {
-    Tensor tc({i*j}, xs[2]->v);
+      Tensor tc({ i*j }, xs[2]->v, device_id);
     auto c = *tc;
     // want to do A * b + c, but it triggers memory allocation
     (*ty) = c;
@@ -346,6 +356,7 @@ void InnerProduct3D_1D::forward_impl(const vector<const Tensor*>& xs, Tensor& fx
     assert(xs.size() == 2);
     (*ty).noalias() = A * b;
   }
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void InnerProduct3D_1D::backward_impl(const vector<const Tensor*>& xs,
@@ -358,12 +369,12 @@ void InnerProduct3D_1D::backward_impl(const vector<const Tensor*>& xs,
   const unsigned si = y.rows();
   const unsigned sj = y.cols();
   const unsigned sk = b.rows();
-  Tensor tdEdf({si*sj}, dEdf.v);
+  Tensor tdEdf({ si*sj }, dEdf.v, device_id);
   if (i == 0) { // 3-tensor
-    Tensor tdEdxi({si*sj, sk}, dEdxi.v);
+      Tensor tdEdxi({ si*sj, sk }, dEdxi.v, device_id);
     (*tdEdxi).noalias() += *tdEdf * (**xs[1]).transpose();
   } else if (i == 1) { // vector
-    Tensor ta({si*sj,sk}, xs[0]->v);
+      Tensor ta({ si*sj, sk }, xs[0]->v, device_id);
     (*dEdxi).noalias() += (*ta).transpose() * *tdEdf;
   } else { // matrix bias
     *dEdxi += *dEdf;
@@ -378,10 +389,11 @@ void GaussianNoise::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) co
 #ifdef HAVE_CUDA
   throw std::runtime_error("GaussianNoise not yet implemented for CUDA");
 #else
-  Tensor m(dim, (cnn::real*)aux_mem);
+    Tensor m(dim, (cnn::real*)aux_mem, xs[0]->m_device_id);
   TensorTools::RandomizeNormal(0, stddev, m);
   (*fx) = **xs[0] + *m;
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void GaussianNoise::backward_impl(const vector<const Tensor*>& xs,
@@ -404,10 +416,11 @@ void Dropout::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
 #ifdef HAVE_CUDA
   throw std::runtime_error("Dropout not yet implemented for CUDA");
 #else
-  Tensor m(dim, (cnn::real*)aux_mem);
+    Tensor m(dim, (cnn::real*)aux_mem, xs[0]->m_device_id);
   TensorTools::RandomBernoulli(m, (1.f-p), 1.f / (1.f-p));
   fx.vec() = xs[0]->vec().cwiseProduct(m.vec());
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void Dropout::backward_impl(const vector<const Tensor*>& xs,
@@ -418,7 +431,7 @@ void Dropout::backward_impl(const vector<const Tensor*>& xs,
 #ifdef HAVE_CUDA
   throw std::runtime_error("Pow not yet implemented for CUDA");
 #else
-  Tensor m(dim, (cnn::real*)aux_mem);
+    Tensor m(dim, (cnn::real*)aux_mem, xs[0]->m_device_id);
   dEdxi.vec() += dEdf.vec().cwiseProduct(m.vec());
 #endif
 }
@@ -442,6 +455,7 @@ void BlockDropout::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) con
   *(static_cast<cnn::real*>(aux_mem)) = block_multiplier;
   (*fx) = **xs[0] * block_multiplier;
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void BlockDropout::backward_impl(const vector<const Tensor*>& xs,
@@ -464,6 +478,7 @@ void ConstantPlusX::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) co
   auto x = **xs[0];
   *fx = x.unaryExpr(const_add_op<cnn::real>(c));
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void ConstantPlusX::backward_impl(const vector<const Tensor*>& xs,
@@ -481,6 +496,7 @@ void ConstantMinusX::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) c
   auto x = **xs[0];
   *fx = x.unaryExpr(const_minus_op<cnn::real>(c));
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void ConstantMinusX::backward_impl(const vector<const Tensor*>& xs,
@@ -527,8 +543,9 @@ void LogSumExp::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const 
   for (unsigned i = 0; i < xs.size(); ++i)
     static_cast<cnn::real*>(aux_mem)[i] = (**xs[i])(0,0);
   Dim r = {(unsigned int)xs.size()};
-  Tensor v(r, static_cast<cnn::real*>(aux_mem));
+  Tensor v(r, static_cast<cnn::real*>(aux_mem), device_id);
   fx.v[0] = logsumexp(*v);
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void LogSumExp::backward_impl(const vector<const Tensor*>& xs,
@@ -557,6 +574,7 @@ void Reduce::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
     for (int k = 0; k < xs[0]->d.size(); k++)
         fx.v[0] += xs[0]->v[k]; 
 #endif
+    fx.m_device_id = xs[0]->m_device_id;
     return;
 }
 
@@ -575,6 +593,7 @@ void Reduce::backward_impl(const vector<const Tensor*>& xs,
 
 void Sum::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
     const unsigned num_args = xs.size();
+    fx.m_device_id = xs[0]->m_device_id;
     if (num_args == 1) {
 #if HAVE_CUDA
         CUDA_CHECK(cudaMemcpy(fx.v, xs[0]->v, sizeof(cnn::real) * dim.size(), cudaMemcpyDeviceToDevice));
@@ -629,6 +648,7 @@ void Sum::backward_impl(const vector<const Tensor*>& xs,
 void SumBatches::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 1);
   unsigned num_args = xs[0]->d.bd;
+  fx.m_device_id = xs[0]->m_device_id;
 #if HAVE_CUDA
   TensorTools::Zero(fx);
   for (unsigned i = 0; i < num_args; ++i)
@@ -678,6 +698,7 @@ size_t Average::aux_storage_size() const {
 
 void Average::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   const unsigned num_args = xs.size();
+  fx.m_device_id = xs[0]->m_device_id;
 #if HAVE_CUDA
   TensorTools::Zero(fx);
   for (unsigned i = 0; i < num_args; ++i)
@@ -746,6 +767,7 @@ void Average::backward_impl(const vector<const Tensor*>& xs,
 };
 
 void Sqrt::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    fx.m_device_id = xs[0]->m_device_id;
 #ifdef HAVE_CUDA
   throw std::runtime_error("Sqrt not yet implemented for CUDA");
 #else
@@ -790,6 +812,7 @@ void Erf::backward_impl(const vector<const Tensor*>& xs,
 */
 
 void Tanh::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    fx.m_device_id = xs[0]->m_device_id;
 #if HAVE_CUDA
   gpu::vtanh(fx.d.size(), xs[0]->v, fx.v);
 #else
@@ -811,6 +834,7 @@ void Tanh::backward_impl(const vector<const Tensor*>& xs,
 }
 
 void Square::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    fx.m_device_id = xs[0]->m_device_id;
 #ifdef HAVE_CUDA
   throw std::runtime_error("Square not yet implemented for CUDA");
 #else
@@ -833,6 +857,7 @@ void Square::backward_impl(const vector<const Tensor*>& xs,
 }
 
 void Cube::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    fx.m_device_id = xs[0]->m_device_id;
 #ifdef HAVE_CUDA
   throw std::runtime_error("Square not yet implemented for CUDA");
 #else
@@ -856,6 +881,7 @@ void Cube::backward_impl(const vector<const Tensor*>& xs,
 }
 
 void Exp::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    fx.m_device_id = xs[0]->m_device_id;
 #if HAVE_CUDA
     gpu::vexp(xs[0]->d.size(), xs[0]->v, fx.v); 
 #else
@@ -902,6 +928,7 @@ void LogGamma::backward_impl(const vector<const Tensor*>& xs,
 */
 
 void Log::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    fx.m_device_id = xs[0]->m_device_id;
 #if HAVE_CUDA
   gpu::vlog(fx.d.size(), xs[0]->v, fx.v);
 #else
@@ -925,6 +952,7 @@ void Log::backward_impl(const vector<const Tensor*>& xs,
 
 void Concatenate::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   unsigned rows = 0;
+  fx.m_device_id = xs[0]->m_device_id;
   for (auto x : xs) rows += x->d.rows();
   // the following should use auxiliary memory
   src_row_indices.resize(xs.size());
@@ -987,6 +1015,7 @@ void Concatenate::backward_impl(const vector<const Tensor*>& xs,
 void ConcatenateColumns::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   unsigned c = 0;
 
+  fx.m_device_id = xs[0]->m_device_id;
   acc_col_size.clear();
   for (unsigned i = 0; i < xs.size(); ++i) {
     auto & xi = *xs[i];
@@ -1033,6 +1062,7 @@ void PairwiseRankLoss::forward_impl(const vector<const Tensor*>& xs, Tensor& fx)
   auto b = **xs[1];
   *fx = a.binaryExpr(b, FPairwiseRankLoss(margin));
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void PairwiseRankLoss::backward_impl(const vector<const Tensor*>& xs,
@@ -1057,6 +1087,7 @@ size_t Hinge::aux_storage_size() const {
 
 void Hinge::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 1);
+  fx.m_device_id = xs[0]->m_device_id;
 #ifdef HAVE_CUDA
   throw std::runtime_error("Hinge not yet implemented for CUDA");
 #else
@@ -1104,6 +1135,7 @@ void Hinge::backward_impl(const vector<const Tensor*>& xs,
 void Identity::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   fx.d = xs[0]->d;
   fx.v = xs[0]->v;
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void Identity::backward_impl(const vector<const Tensor*>& xs,
@@ -1116,6 +1148,7 @@ void Identity::backward_impl(const vector<const Tensor*>& xs,
 
 void MaxPooling1D::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   cerr << "FIX IMPL5\n"; abort();
+  fx.m_device_id = xs[0]->m_device_id;
 #if 0
   assert(xs.size() == 1);
   const Tensor& x = *xs.front();
@@ -1164,6 +1197,7 @@ void MaxPooling1D::backward_impl(const vector<const Tensor*>& xs,
 
 void Softmax::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
     assert(xs.size() == 1);
+    fx.m_device_id = xs[0]->m_device_id;
 #if HAVE_CUDA
     gpu::softmax(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v);
 #else
@@ -1299,6 +1333,7 @@ void LogSoftmax::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const
 #else
   logsoftmax<cnn::real>(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v, true);
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void LogSoftmax::backward_impl(const vector<const Tensor*>& xs,
@@ -1309,7 +1344,7 @@ void LogSoftmax::backward_impl(const vector<const Tensor*>& xs,
 {
     unsigned rows = dEdf.d.rows();
     unsigned cols = dEdf.d.cols();
-    Tensor softmax(fx.d, static_cast<cnn::real*>(aux_mem)+cols);
+    Tensor softmax(fx.d, static_cast<cnn::real*>(aux_mem)+cols, device_id);
     cnn::real* off_diag_sum = static_cast<cnn::real*>(aux_mem);
 
 #if HAVE_CUDA
@@ -1364,6 +1399,7 @@ void RestrictedLogSoftmax::forward_impl(const vector<const Tensor*>& xs, Tensor&
     (*fx)(i,0) = x(i,0) - logz;
   if (denom.size() == 1) (*fx)(denom.front(), 0) = 0;
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void RestrictedLogSoftmax::backward_impl(const vector<const Tensor*>& xs,
@@ -1393,6 +1429,7 @@ void PickElement::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) cons
   auto x = **xs[0];
   fx.v[0] = x(*pval);
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 // derivative is 0 in all dimensions except 1 for the selected element
@@ -1428,6 +1465,7 @@ void PickRange::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const 
 #else
     (*fx) = x.block(start, 0, end - start, 1);
 #endif
+    fx.m_device_id = xs[0]->m_device_id;
 }
 
 // derivative is 0 in all dimensions except the slice range
@@ -1466,6 +1504,7 @@ void ColumnSlices::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) con
 #else
     (*fx) = x.block(0, start_column, rows, end_column - start_column);
 #endif
+    fx.m_device_id = xs[0]->m_device_id;
 }
 
 // derivative is 0 in all dimensions except the slice range
@@ -1534,6 +1573,7 @@ void MatrixMultiply::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) c
   // -> [x, z*b] = [x, y], [y, z*b]
   fx.colbatch_matrix().noalias() = **xs[0] * xs[1]->colbatch_matrix();
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void MatrixMultiply::backward_impl(const vector<const Tensor*>& xs,
@@ -1595,6 +1635,7 @@ void CwiseQuotient::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) co
   auto x2 = **xs[1];
   *fx = x1.cwiseQuotient(x2);
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void CwiseQuotient::backward_impl(const vector<const Tensor*>& xs,
@@ -1626,6 +1667,7 @@ void CwiseMultiply::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) co
   auto x2 = **xs[1];
   *fx = x1.cwiseProduct(x2);
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void CwiseMultiply::backward_impl(const vector<const Tensor*>& xs,
@@ -1673,6 +1715,7 @@ void AffineTransform::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) 
     fx.colbatch_matrix().noalias() += **xs[i] * xs[i+1]->colbatch_matrix();
   }
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void AffineTransform::backward_impl(const vector<const Tensor*>& xs,
@@ -1743,6 +1786,7 @@ void Negate::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto x = **xs[0];
   *fx = -x;
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void Negate::backward_impl(const vector<const Tensor*>& xs,
@@ -1766,6 +1810,7 @@ void Rectify::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto x = **xs[0];
   *fx = x.unaryExpr(FRectify());
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void Rectify::backward_impl(const vector<const Tensor*>& xs,
@@ -1788,6 +1833,7 @@ void ExponentialLinearUnits::forward_impl(const vector<const Tensor*>& xs, Tenso
     auto x = **xs[0];
     *fx = x.unaryExpr(FExponentialLinearUnits(scale));
 #endif
+    fx.m_device_id = xs[0]->m_device_id;
 }
 
 void ExponentialLinearUnits::backward_impl(const vector<const Tensor*>& xs,
@@ -1816,6 +1862,7 @@ void HuberDistance::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) co
     dist += fhf(x.v[i] - y.v[i]);
   fx.v[0] = dist;
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void HuberDistance::backward_impl(const vector<const Tensor*>& xs,
@@ -1842,6 +1889,7 @@ void L1Distance::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const
   auto y = **xs[1];
   fx.v[0] = (x - y).lpNorm<1>();
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void L1Distance::backward_impl(const vector<const Tensor*>& xs,
@@ -1868,6 +1916,7 @@ void PoissonRegressionLoss::forward_impl(const vector<const Tensor*>& xs, Tensor
   const auto x = xs[0]->v[0];
   fx.v[0] = expf(x) + z - y * x;
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void PoissonRegressionLoss::backward_impl(const vector<const Tensor*>& xs,
@@ -1894,6 +1943,7 @@ void SquaredEuclideanDistance::forward_impl(const vector<const Tensor*>& xs, Ten
   auto x2 = **xs[1];
   fx.v[0] = (x1 - x2).squaredNorm();
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void SquaredEuclideanDistance::backward_impl(const vector<const Tensor*>& xs,
@@ -1921,6 +1971,7 @@ void LogisticSigmoid::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) 
   auto x = **xs[0];
   *fx = x.unaryExpr(scalar_logistic_sigmoid_op<cnn::real>());
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void LogisticSigmoid::backward_impl(const vector<const Tensor*>& xs,
@@ -1943,6 +1994,7 @@ void SoftSign::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto x = **xs[0];
   *fx = x.unaryExpr(FSoftSign());
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void SoftSign::backward_impl(const vector<const Tensor*>& xs,
@@ -1970,6 +2022,7 @@ void BinaryLogLoss::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) co
     dist += bll(x.v[i], y.v[i]);
   fx.v[0] = dist;
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void BinaryLogLoss::backward_impl(const vector<const Tensor*>& xs,
@@ -1996,11 +2049,16 @@ Dim Zeroes::dim_forward(const vector<Dim>& xs) const {
 
 void Zeroes::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 0);
+  if (fx.m_device_id < 0)
+      memset(fx.v, 0, dim.size() * sizeof(cnn::real));
+  else{
 #if HAVE_CUDA
-  cudaMemsetAsync(fx.v, 0, dim.size() * sizeof(cnn::real));
+      cudaMemsetAsync(fx.v, 0, dim.size() * sizeof(cnn::real));
 #else
-  memset(fx.v, 0, dim.size() * sizeof(cnn::real));
+      memset(fx.v, 0, dim.size() * sizeof(cnn::real));
 #endif
+  }
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 void Zeroes::backward_impl(const vector<const Tensor*>& xs,
