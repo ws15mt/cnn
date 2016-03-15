@@ -919,6 +919,8 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDia
             am.build_graph(prv_turn, turn, cg);
         }
 
+        if (verbose) cout << "after graph build" << endl;
+
         if (doGradientCheck 
             && turn_id > 3 // do gradient check after burn-in
             )
@@ -1073,7 +1075,8 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
     bool b_do_padding, int kEOS /// for padding if so use kEOS as the padding symbol
     )
 {
-    cout << "batch_train: "; 
+    if (verbose)
+        cout << "batch_train: "; 
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
     unsigned si = training.size(); /// number of dialgoues in training
@@ -1794,7 +1797,7 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
             dr.join(); /// make sure data is completely read
             training = dr.corpus();  /// copy the data from data thread to the data to be used in the main thread
             training_numturn2did = get_numturn2dialid(training);
-#define DEBUG
+//#define DEBUG
 #ifndef DEBUG
             ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
             boost::archive::text_oarchive oa(out);
