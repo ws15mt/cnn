@@ -14,6 +14,7 @@ cnn::real* kSCALAR_MINUSONE;
 cnn::real* kSCALAR_ONE;
 cnn::real* kSCALAR_ZERO;
 int n_hgs = 0;
+int device_id = CPUDEVICE;
 
 /// some constants 
 /// [1/2,1/3,1/3, ..., 1/N]
