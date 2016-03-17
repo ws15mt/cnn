@@ -276,9 +276,9 @@ void RmsPropTrainer::update(cnn::real nutt, cnn::real scale) {
 
 void RmsPropWithMomentumTrainer::compute_gradient_norm(
     std::vector<Parameters*> plist, std::vector<cnn::real>& vpgrd_norm,
-    std::vector<LookupParameters*> llist, std::vector<cnn::real>& vl_grd_norm) 
+    std::vector<LookupParameters*> llist, std::vector<cnn::real>& vl_grd_norm)
 {
-    vector<vector<cnn::real>> v_norm(2);
+    vector<cnn::real*> v_norm(2);
 
     /// get the number of parameters for parm and lookup_param
     vector<int> i_mdl_size(2, plist.size());
@@ -286,10 +286,21 @@ void RmsPropWithMomentumTrainer::compute_gradient_norm(
     for (auto p : llist) {
         for (auto i : p->non_zero_grads) i_mdl_size[1]++;
     }
-    
+
     for (int k = 0; k < 2; k++)
     {
-        v_norm[k].resize(i_mdl_size[k]);
+        cnn::real *tmp_ptr;
+#ifdef HAVE_CUDA
+        CUDA_CHECK(cudaMallocHost(&tmp_ptr, sizeof(cnn::real) * i_mdl_size[k]));
+#else
+        tmp_ptr = malloc(sizeof(cnn::real) * i_mdl_size[k]);
+#endif
+        if (tmp_ptr == nullptr)
+        {
+            cerr << "cannot allocate space" << endl;
+            runtime_error("cannot allocate space");
+        }
+        v_norm[k] = tmp_ptr;
     }
 #if HAVE_CUDA
     cnn::real * ptr_gnorm_param[2];
@@ -337,8 +348,16 @@ void RmsPropWithMomentumTrainer::compute_gradient_norm(
     }
 #endif
 
-    vpgrd_norm = v_norm[0];
-    vl_grd_norm = v_norm[1];
+    vpgrd_norm.resize(i_mdl_size[0]);
+    for (int i = 0; i < i_mdl_size[0]; i++)
+        vpgrd_norm[i] = v_norm[0][i];
+
+    vl_grd_norm.resize(i_mdl_size[1]);
+    for (int i = 0; i < i_mdl_size[1]; i++)
+        vl_grd_norm[i] = v_norm[1][i];
+
+    for (int i = 0; i < 2; i++)
+        cudaFreeHost(v_norm[i]);
 }
 
 void RmsPropWithMomentumTrainer::update(cnn::real nutt, cnn::real scale) {

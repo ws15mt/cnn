@@ -133,10 +133,11 @@ LookupParameters::LookupParameters(unsigned n, const Dim& d, cnn::real scale, st
   for (unsigned i = 0; i < n; ++i) {
     auto& v = values[i];
     v.d = d;
-    v.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN, b_cpu);
 #ifdef USE_CPU_FOR_LOOKUP_PARAM
+    v.v = (cnn::real*)cnn_mm_malloc_host(d.size() * sizeof(cnn::real), CNN_ALIGN);
     v.m_device_id= CPUDEVICE; /// for cpu
 #else
+    v.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
     v.m_device_id = device_id;
 #endif
 	if (scale == 1.0)
@@ -147,10 +148,11 @@ LookupParameters::LookupParameters(unsigned n, const Dim& d, cnn::real scale, st
 
     auto& g = grads[i];
     g.d = d;
-    g.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN, b_cpu);
 #ifdef USE_CPU_FOR_LOOKUP_PARAM
+    g.v = (cnn::real*)cnn_mm_malloc_host(d.size() * sizeof(cnn::real), CNN_ALIGN);
     g.m_device_id = CPUDEVICE; /// for cpu
 #else
+    g.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
     g.m_device_id = device_id;
 #endif
     TensorTools::Zero(g);
