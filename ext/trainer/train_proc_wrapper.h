@@ -20,6 +20,35 @@ void prt_model_info(size_t LAYERS, size_t VOCAB_SIZE_SRC, const vector<unsigned>
 }
 
 template<class rnn_t, class TrainProc>
+vector<unsigned> set_dims(variables_map vm)
+{
+    vector<unsigned> dims(7, 0);
+
+    if (vm.count("hidden") == 0)
+        dims[ENCODER_LAYER] = HIDDEN_DIM;
+    else
+        dims[ENCODER_LAYER] = (unsigned)vm["hidden"].as<int>();
+    if (vm.count("embeddingdim") == 0)
+        dims[EMBEDDING_LAYER] = dims[ENCODER_LAYER];
+    else
+        dims[EMBEDDING_LAYER] = (unsigned)vm["embeddingdim"].as<int>();
+    dims[DECODER_LAYER] = dims[ENCODER_LAYER]; /// if not specified, encoder and decoder have the same dimension
+    if (vm.count("align") == 0)
+        dims[ALIGN_LAYER] = ALIGN_DIM;
+    else
+        dims[ALIGN_LAYER] = (unsigned)vm["align"].as<int>();
+    if (vm.count("intentiondim") == 0)
+        dims[INTENTION_LAYER] = HIDDEN_DIM;
+    else
+        dims[INTENTION_LAYER] = (unsigned)vm["intentiondim"].as<int>();
+    if (vm.count("hashsize") > 0)
+        dims[HASHING_LAYER] = (unsigned)vm["hashsize"].as<int>();
+    if (vm.count("meorder") > 0)
+        dims[MEORDER_LAYER] = (unsigned)vm["meorder"].as<int>();
+    return dims;
+}
+
+template<class rnn_t, class TrainProc>
 Trainer* select_trainer(variables_map vm, Model* model)
 {
     Trainer* sgd = nullptr;
@@ -171,25 +200,7 @@ int main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_additiona_
 
     cerr << "%% Using " << flavour << " recurrent units" << endl;
 
-    std::vector<unsigned> dims;
-    dims.resize(5);
-    if (vm.count("hidden") == 0)
-        dims[ENCODER_LAYER] = HIDDEN_DIM;
-    else
-        dims[ENCODER_LAYER] = (unsigned)vm["hidden"].as<int>();
-    if (vm.count("embeddingdim") == 0)
-        dims[EMBEDDING_LAYER] = dims[ENCODER_LAYER];
-    else
-        dims[EMBEDDING_LAYER] = (unsigned)vm["embeddingdim"].as<int>();
-    dims[DECODER_LAYER] = dims[ENCODER_LAYER]; /// if not specified, encoder and decoder have the same dimension
-    if (vm.count("align") == 0)
-        dims[ALIGN_LAYER] = ALIGN_DIM;
-    else
-        dims[ALIGN_LAYER] = (unsigned)vm["align"].as<int>();
-    if (vm.count("intentiondim") == 0)
-        dims[INTENTION_LAYER] = HIDDEN_DIM;
-    else
-        dims[INTENTION_LAYER] = (unsigned)vm["intentiondim"].as<int>();
+    std::vector<unsigned> dims = set_dims<rnn_t, TrainProc>(vm);
 
     std::vector<unsigned int> layers;
     layers.resize(5, LAYERS);
@@ -458,23 +469,7 @@ int classification_main_body(variables_map vm, size_t nreplicate = 0, size_t dec
 
     cerr << "%% Using " << flavour << " recurrent units" << endl;
 
-    std::vector<unsigned> dims;
-    dims.resize(4);
-    if (!vm.count("hidden"))
-        dims[ENCODER_LAYER] = HIDDEN_DIM;
-    else
-        dims[ENCODER_LAYER] = (unsigned)vm["hidden"].as<int>();
-    dims[DECODER_LAYER] = dims[ENCODER_LAYER]; /// if not specified, encoder and decoder have the same dimension
-
-    if (!vm.count("align"))
-        dims[ALIGN_LAYER] = ALIGN_DIM;
-    else
-        dims[ALIGN_LAYER] = (unsigned)vm["align"].as<int>();
-    if (!vm.count("intentiondim"))
-        dims[INTENTION_LAYER] = HIDDEN_DIM;
-    else
-        dims[INTENTION_LAYER] = (unsigned)vm["intentiondim"].as<int>();
-
+    std::vector<unsigned> dims = set_dims<rnn_t, TrainProc>(vm);
 
     std::vector<unsigned int> layers;
     layers.resize(4, LAYERS);
@@ -890,23 +885,7 @@ int tuple_main_body(variables_map vm, size_t nreplicate = 0, size_t decoder_addi
 
     cerr << "%% Using " << flavour << " recurrent units" << endl;
 
-    std::vector<unsigned> dims;
-    dims.resize(4);
-    if (!vm.count("hidden"))
-        dims[ENCODER_LAYER] = HIDDEN_DIM;
-    else
-        dims[ENCODER_LAYER] = (unsigned)vm["hidden"].as<int>();
-    dims[DECODER_LAYER] = dims[ENCODER_LAYER]; /// if not specified, encoder and decoder have the same dimension
-
-    if (!vm.count("align"))
-        dims[ALIGN_LAYER] = ALIGN_DIM;
-    else
-        dims[ALIGN_LAYER] = (unsigned)vm["align"].as<int>();
-    if (!vm.count("intentiondim"))
-        dims[INTENTION_LAYER] = HIDDEN_DIM;
-    else
-        dims[INTENTION_LAYER] = (unsigned)vm["intentiondim"].as<int>();
-
+    std::vector<unsigned> dims = set_dims<rnn_t, TrainProc>(vm);
 
     std::vector<unsigned int> layers;
     layers.resize(4, LAYERS);
