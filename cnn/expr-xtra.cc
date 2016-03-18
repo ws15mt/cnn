@@ -8,6 +8,7 @@
 #include "cnn/dict.h"
 #include "cnn/expr.h"
 #include "cnn/expr-xtra.h"
+#include "cnn/data-util.h"
 
 using namespace cnn;
 using namespace std;
@@ -143,6 +144,31 @@ vector<Expression> embedding_spkfirst(const vector<vector<int>>& source, Computa
         vector<Expression> vm;
         for (int t = 0; t < source[k].size(); ++t) {
             vm.push_back(lookup(cg, p_cs, source[k][t]));
+        }
+        source_embeddings.push_back(concatenate_cols(vm));
+    }
+
+    return source_embeddings;
+}
+
+/// organise data in the following format
+/// [<first sentence> <second sentence> ...]
+/// for example with two sentences with length N1 for the first sentence and length N2 for the second sentence
+/// [v_spk1_time0_order1 v_spk1_time0_order2 ... v_spk1_time0_orderN, v_spk1_time1_order1 v_spk1_time1_order2 ... v_spk1_time1_orderN ... v_spk1_timeN1_order1 v_spk1_timeN1_order2 ... v_spk1_timeN1_orderN | v_spk2_time0_order1 v_spk2_time0_order2 ... v_spk2_time0_orderN, v_spk2_time1_order1 v_spk2_time1_order2 ... v_spk2_time1_orderN ... v_spk2_timeN1_order1 v_spk2_timeN1_order2 ... v_spk2_timeN1_orderN]
+vector<Expression> hash_embedding_spkfirst(const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, int direct_order, int hash_size)
+{
+    size_t nutt = source.size();
+
+    std::vector<Expression> source_embeddings;
+
+    Expression i_x_t;
+
+    for (size_t k = 0; k < nutt; k++)
+    {
+        vector<unsigned int> v_hash = hashing(source[k], direct_order, hash_size);
+        vector<Expression> vm;
+        for (auto p : v_hash){
+            vm.push_back(lookup(cg, p_cs, p));
         }
         source_embeddings.push_back(concatenate_cols(vm));
     }
