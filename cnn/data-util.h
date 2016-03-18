@@ -238,3 +238,12 @@ public:
     void join() { m_Thread.join(); }
     void detach() { m_Thread.detach();  }
 };
+
+/// for each sequence, return a hash with order direct_order
+/// this gives a vector with size of direct_order * obs.size()
+/// which consists of unigram, if direct_order == 1, 
+/// bigram if direct_order == 2, etc. 
+/// e.g., direct_order = 2, the output includes both unigram and bigram hashing
+vector<unsigned int> hashing(const vector<int> & obs, int direct_order, int hash_size);
+
+
