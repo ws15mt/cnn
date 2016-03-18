@@ -108,7 +108,9 @@ LookupParameters::~LookupParameters()
 #ifdef USE_CPU_FOR_LOOKUP_PARAM
         cnn_mm_free_host(g.v);
 #else
+#ifndef HAVE_CUDA
         cnn_mm_free(g.v);
+#endif
 #endif
     }
 
@@ -156,14 +158,20 @@ LookupParameters::LookupParameters(unsigned n, const Dim& d, cnn::real scale, st
 
     auto& g = grads[i];
     g.d = d;
+#ifdef HAVE_CUDA
 #ifdef USE_CPU_FOR_LOOKUP_PARAM
     g.v = (cnn::real*)cnn_mm_malloc_host(d.size() * sizeof(cnn::real), CNN_ALIGN);
     g.m_device_id = CPUDEVICE; /// for cpu
+    TensorTools::Zero(g);
+#else
+    /// no need to allocate space for grad, since grads for non-zero values are allocated on gpu
+    /// as needed when doing back-propagate
+#endif
 #else
     g.v = (cnn::real*)cnn_mm_malloc(d.size() * sizeof(cnn::real), CNN_ALIGN);
     g.m_device_id = device_id;
-#endif
     TensorTools::Zero(g);
+#endif
   }
 }
 
@@ -190,11 +198,7 @@ void LookupParameters::g_squared_l2norm(cnn::real* sqnorm) const {
 #ifdef HAVE_CUDA
     bool acc = false;
     for (auto i : non_zero_grads) {
-#ifdef USE_CPU_FOR_LOOKUP_PARAM
         gpu::l2_norm_reducer(grads_for_non_zero_grads.find(i)->second.d.size(), grads_for_non_zero_grads.find(i)->second.v, sqnorm, true, acc);
-#else
-        gpu::l2_norm_reducer(grads[i].d.size(), grads[i].v, sqnorm, true, acc);
-#endif
         acc = true;
     }
 #else
@@ -250,7 +254,6 @@ void LookupParameters::copy(const std::map<int, std::vector<cnn::real>> & param)
 void LookupParameters::accumulate_grad(unsigned index, const Tensor& d) {
   non_zero_grads.insert(index);
 #if HAVE_CUDA
-#ifdef USE_CPU_FOR_LOOKUP_PARAM
   if (grads_for_non_zero_grads.find(index) == grads_for_non_zero_grads.end()){
       cnn::real *g = (cnn::real*)cnn_mm_malloc(d.d.size() * sizeof(cnn::real), CNN_ALIGN);
       Tensor vv(d.d, g, device_id);
@@ -263,22 +266,23 @@ void LookupParameters::accumulate_grad(unsigned index, const Tensor& d) {
   else if (sizeof(cnn::real) == sizeof(double))
       CUBLAS_CHECK(cublasDaxpy(cublas_handle, d.d.size(), reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(d.v), 1, reinterpret_cast<double*>(grads_for_non_zero_grads[index].v), 1));
 #else
-  if (sizeof(cnn::real) == sizeof(float))
-      CUBLAS_CHECK(cublasSaxpy(cublas_handle, d.d.size(), reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(d.v), 1, reinterpret_cast<float*>(grads[index].v), 1));
-  else if (sizeof(cnn::real) == sizeof(double))
-      CUBLAS_CHECK(cublasDaxpy(cublas_handle, d.d.size(), reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(d.v), 1, reinterpret_cast<double*>(grads[index].v), 1)); 
-#endif
-#else
   *grads[index] += *d;
 #endif
 }
 
 void LookupParameters::clear() {
-  for (auto i : non_zero_grads)
-    TensorTools::Zero(grads[i]);
-  non_zero_grads.clear();
+#ifdef HAVE_CUDA 
+#ifdef USE_CPU_FOR_LOOKUP_PARAM
+    for (auto i : non_zero_grads)
+        TensorTools::Zero(grads[i]);
+#endif
+#else
+    for (auto i : non_zero_grads)
+        TensorTools::Zero(grads[i]);
+#endif
+    non_zero_grads.clear();
 
-  free_working_copies();
+    free_working_copies();
 }
 
 Model::~Model() {
