@@ -18,6 +18,8 @@ namespace cnn {
     AlignedMemoryPool<ALIGN>* fxs = nullptr;
     AlignedMemoryPool<ALIGN>* dEdfs = nullptr;
     AlignedMemoryPool<ALIGN>* mem_nodes= nullptr;   /// for nodes allocation/delocation. operation of new/delete of each node has been overwritten to use this memory pool for speed-up
+    AlignedMemoryPool<ALIGN>* glb_temp_gpu_mem = nullptr;
+    AlignedMemoryPool<ALIGN>* glb_temp_cpu_mem = nullptr;
     mt19937* rndeng = nullptr;
 
     char* getCmdOption(char ** begin, char ** end, const std::string & option)
@@ -73,6 +75,8 @@ namespace cnn {
         cerr << "Allocating memory...\n";
 		unsigned long num_mb = 512UL;
         mem_nodes = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20), true);
+        glb_temp_gpu_mem = new AlignedMemoryPool<ALIGN>(20000);
+        glb_temp_cpu_mem = new AlignedMemoryPool<ALIGN>(20000, true);
         if (demo)
         {
             fxs = new AlignedMemoryPool<ALIGN>(512UL * (1UL << 20));
@@ -102,6 +106,9 @@ namespace cnn {
         delete (fxs);
         delete (dEdfs);
         delete (mem_nodes);
+
+        delete (glb_temp_gpu_mem);
+        delete (glb_temp_cpu_mem);
 
         for (auto p : kSCALAR_ONE_OVER_INT)
             cnn_mm_free(p);

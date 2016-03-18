@@ -1439,3 +1439,29 @@ void DataReader::read_corpus(Dict& sd, int kSRC_SOS, int kSRC_EOS, long part_siz
         m_Corpus.push_back(diag);
     cerr << "from corpus " << m_Filename << ": " << lc << " lines, " << stoks << " & " << ttoks << " tokens (s & t), " << sd.size() << " & " << sd.size() << " types\n";
 }
+
+const unsigned int PRIMES[] = { 108641969, 116049371, 125925907, 133333309, 145678979, 175308587, 197530793, 234567803, 251851741, 264197411, 330864029, 399999781,
+407407183, 459258997, 479012069, 545678687, 560493491, 607407037, 629629243, 656789717, 716048933, 718518067, 725925469, 733332871, 753085943, 755555077,
+782715551, 790122953, 812345159, 814814293, 893826581, 923456189, 940740127, 953085797, 985184539, 990122807 };
+
+const unsigned int PRIMES_SIZE = sizeof(PRIMES) / sizeof(PRIMES[0]);
+
+vector<unsigned int> hashing(const vector<int>& obs, int direct_order, int hash_size)
+{
+    int a = 0;
+    vector<unsigned int> hash(direct_order * obs.size(), 0);
+
+    for (int k = 0; k < obs.size(); k++)
+    {
+        int offset = k * direct_order;
+        for (a = 0; a < direct_order; a++) {
+            int b = 0;
+            /// this performs convolution operation
+            hash[a + offset] = PRIMES[0] * PRIMES[1];
+            for (b = 0; b <= a; b++) hash[a + offset] += PRIMES[(a*PRIMES[b] + b) % PRIMES_SIZE] * (unsigned long long)((b+k>obs.size() - 1)?0:obs[b + k] + 1);	//update hash value based on words from the history
+            hash[a + offset] = hash[a + offset] % hash_size;
+        }
+    }
+
+    return hash;
+}

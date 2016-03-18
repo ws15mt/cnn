@@ -100,7 +100,10 @@ class AlignedMemoryPool {
   void* allocate(unsigned long n) {
     auto rounded_n = round_up_align(n);
     if (rounded_n + used > capacity)
-      return nullptr;
+    {
+        std::runtime_error("cannot allocate enough space");
+        return nullptr;
+    }
     void * res = static_cast<char*>(mem)+used;
     used += rounded_n;
     return res;

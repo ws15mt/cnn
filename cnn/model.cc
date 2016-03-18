@@ -96,12 +96,20 @@ void Parameters::clear() {
 
 LookupParameters::~LookupParameters()
 {
-    bool b_cpu = true;
     for (unsigned i = 0; i < values.size(); ++i) {
         auto& v = values[i];
-        cnn_mm_free(v.v, b_cpu);
+#ifdef USE_CPU_FOR_LOOKUP_PARAM
+        cnn_mm_free_host(v.v);
+#else
+        cnn_mm_free(v.v);
+#endif
+
         auto& g = grads[i];
-        cnn_mm_free(g.v, b_cpu);
+#ifdef USE_CPU_FOR_LOOKUP_PARAM
+        cnn_mm_free_host(g.v);
+#else
+        cnn_mm_free(g.v);
+#endif
     }
 
     free_working_copies();
@@ -254,8 +262,6 @@ void LookupParameters::accumulate_grad(unsigned index, const Tensor& d) {
       CUBLAS_CHECK(cublasSaxpy(cublas_handle, d.d.size(), reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(d.v), 1, reinterpret_cast<float*>(grads_for_non_zero_grads[index].v), 1));
   else if (sizeof(cnn::real) == sizeof(double))
       CUBLAS_CHECK(cublasDaxpy(cublas_handle, d.d.size(), reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(d.v), 1, reinterpret_cast<double*>(grads_for_non_zero_grads[index].v), 1));
-  /// copy the gradient to gradient on CPU
-  CUDA_CHECK(cudaMemcpy(grads[index].v, grads_for_non_zero_grads[index].v, sizeof(cnn::real)*d.d.size(), cudaMemcpyDeviceToHost));
 #else
   if (sizeof(cnn::real) == sizeof(float))
       CUBLAS_CHECK(cublasSaxpy(cublas_handle, d.d.size(), reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(d.v), 1, reinterpret_cast<float*>(grads[index].v), 1));
