@@ -19,6 +19,8 @@ typedef float real;
 #define DECODER_LAYER 2  
 #define ALIGN_LAYER 3
 #define EMBEDDING_LAYER 4
+#define HASHING_LAYER 5  /// passing hash table size
+#define MEORDER_LAYER 6   /// passing maximum entropy order
 
 #define INPUT_LAYER ENCODER_LAYER
 #define HIDDEN_LAYER INTENTION_LAYER
@@ -51,5 +53,5 @@ typedef float real;
 
 /// this is defined if having lookup table parameters stored in CPU, so that large model can still be used
 /// other parameters will be stored on CPU or GPU depending on the build
-#define USE_CPU_FOR_LOOKUP_PARAM
+//#define USE_CPU_FOR_LOOKUP_PARAM
 };

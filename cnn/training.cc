@@ -6,6 +6,9 @@ namespace cnn {
 
 using namespace std;
 
+extern AlignedMemoryPool<ALIGN>* glb_temp_gpu_mem;
+extern AlignedMemoryPool<ALIGN>* glb_temp_cpu_mem;
+
 template <class Derived>
 bool is_valid(const Eigen::MatrixBase<Derived>& x) {
   return ((x - x).array() == (x - x).array()).all();
@@ -62,11 +65,11 @@ void SimpleSGDTrainer::update(const std::vector<LookupParameters*> &lookup_param
   for (auto p : lookup_params) {
     for (auto i : p->non_zero_grads) {
 #if HAVE_CUDA
-#ifdef USE_CPU_FOR_LOOKUP_PARAM
       gpu::sgd_update(p->values_for_non_zero_grads[i].d.size(), p->grads_for_non_zero_grads[i].v, p->values_for_non_zero_grads[i].v, eta * scale * gscale * nutt_scale, lambda);
+#ifdef USE_CPU_FOR_LOOKUP_PARAM
       CUDA_CHECK(cudaMemcpyAsync(p->values[i].v, p->values_for_non_zero_grads[i].v, sizeof(cnn::real)*p->values_for_non_zero_grads[i].d.size(), cudaMemcpyDeviceToHost));
 #else
-      gpu::sgd_update(p->values[i].d.size(), p->grads[i].v, p->values[i].v, eta * scale * gscale * nutt_scale, lambda);
+      CUDA_CHECK(cudaMemcpyAsync(p->values[i].v, p->values_for_non_zero_grads[i].v, sizeof(cnn::real)*p->values_for_non_zero_grads[i].d.size(), cudaMemcpyDeviceToDevice));
 #endif
 #else
       auto reg = (*p->values[i]) * lambda;
@@ -279,7 +282,11 @@ void RmsPropWithMomentumTrainer::compute_gradient_norm(
     std::vector<LookupParameters*> llist, std::vector<cnn::real>& vl_grd_norm)
 {
     vector<cnn::real*> v_norm(2);
-
+#ifdef HAVE_CUDA
+    vector<cudaStream_t> cp_streams(2);
+    for (int k = 0; k < 2; k++)
+        CUDA_CHECK(cudaStreamCreate(&cp_streams[k]));
+#endif
     /// get the number of parameters for parm and lookup_param
     vector<int> i_mdl_size(2, plist.size());
     i_mdl_size[1] = 0;
@@ -291,9 +298,9 @@ void RmsPropWithMomentumTrainer::compute_gradient_norm(
     {
         cnn::real *tmp_ptr;
 #ifdef HAVE_CUDA
-        CUDA_CHECK(cudaMallocHost(&tmp_ptr, sizeof(cnn::real) * i_mdl_size[k]));
+        tmp_ptr = (cnn::real*) glb_temp_cpu_mem->allocate(sizeof(cnn::real)*i_mdl_size[k]);
 #else
-        tmp_ptr = malloc(sizeof(cnn::real) * i_mdl_size[k]);
+        tmp_ptr = (cnn::real*) malloc(sizeof(cnn::real) * i_mdl_size[k]);
 #endif
         if (tmp_ptr == nullptr)
         {
@@ -306,7 +313,8 @@ void RmsPropWithMomentumTrainer::compute_gradient_norm(
     cnn::real * ptr_gnorm_param[2];
     for (int k = 0; k < 2; k++)
     {
-        CUDA_CHECK(cudaMalloc(&ptr_gnorm_param[k], sizeof(cnn::real)*i_mdl_size[k]));
+        ptr_gnorm_param[k] = (cnn::real*) glb_temp_gpu_mem->allocate(sizeof(cnn::real)*i_mdl_size[k]);
+//        CUDA_CHECK(cudaMalloc(&ptr_gnorm_param[k], sizeof(cnn::real)*i_mdl_size[k]));
     }
 #endif
     int pi = 0;
@@ -320,15 +328,15 @@ void RmsPropWithMomentumTrainer::compute_gradient_norm(
         pi++;
     }
 
+#if HAVE_CUDA
+    cudaMemcpyAsync(&v_norm[0][0], ptr_gnorm_param[0], sizeof(cnn::real)*i_mdl_size[0], cudaMemcpyDeviceToHost, cp_streams[0]);
+#endif
+
     pi = 0;
     for (auto p : llist) {
         for (auto i : p->non_zero_grads) {
 #if HAVE_CUDA
-#ifdef USE_CPU_FOR_LOOKUP_PARAM
             gpu::l2_norm_reducer(p->grads_for_non_zero_grads[i].d.size(), p->grads_for_non_zero_grads[i].v, &ptr_gnorm_param[1][pi], true, false);
-#else
-            gpu::l2_norm_reducer(p->grads[i].d.size(), p->grads[i].v, &ptr_gnorm_param[1][pi], true, false);
-#endif
 #else
             cnn::real g2 = (*p->grads[i]).squaredNorm();
             v_norm[1][pi] = g2;
@@ -338,14 +346,16 @@ void RmsPropWithMomentumTrainer::compute_gradient_norm(
     }
 
 #if HAVE_CUDA
+    cudaMemcpyAsync(&v_norm[1][0], ptr_gnorm_param[1], sizeof(cnn::real)*i_mdl_size[1], cudaMemcpyDeviceToHost, cp_streams[1]);
+
     for (int k = 0; k < 2; k++)
     {
-        CUDA_CHECK(cudaMemcpy(&v_norm[k][0], ptr_gnorm_param[k], sizeof(cnn::real)*i_mdl_size[k], cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaStreamDestroy(cp_streams[k]));
     }
-    for (int k = 0; k < 2; k++)
-    {
-        CUDA_CHECK(cudaFree(ptr_gnorm_param[k]));
-    }
+
+    glb_temp_gpu_mem->free();
+    glb_temp_cpu_mem->free();
+    cp_streams.clear();
 #endif
 
     vpgrd_norm.resize(i_mdl_size[0]);
@@ -356,8 +366,6 @@ void RmsPropWithMomentumTrainer::compute_gradient_norm(
     for (int i = 0; i < i_mdl_size[1]; i++)
         vl_grd_norm[i] = v_norm[1][i];
 
-    for (int i = 0; i < 2; i++)
-        cudaFreeHost(v_norm[i]);
 }
 
 void RmsPropWithMomentumTrainer::update(cnn::real nutt, cnn::real scale) {
@@ -413,6 +421,31 @@ void RmsPropWithMomentumTrainer::update(cnn::real nutt, cnn::real scale) {
         p->clear();
     }
 
+#ifdef HAVE_CUDA
+    /// async copy the grads from GPU to host, 
+    /// to have time overlap, use multiple streams
+    int ss = 0;
+    for (auto p : model->lookup_parameters_list()) 
+        for (auto i : p->non_zero_grads) ss++;
+    vector<cudaStream_t> streams(ss); 
+
+    ss = 0;
+    for (auto p : model->lookup_parameters_list()) {
+        for (auto i : p->non_zero_grads) {
+            CUDA_CHECK(cudaStreamCreate(&streams[ss]));
+#ifdef USE_CPU_FOR_LOOKUP_PARAM
+            CUDA_CHECK(cudaMemcpyAsync(p->grads[i].v, p->grads_for_non_zero_grads[i].v, sizeof(cnn::real)*p->grads_for_non_zero_grads[i].d.size(), cudaMemcpyDeviceToHost, streams[ss++]));
+#else
+            CUDA_CHECK(cudaMemcpyAsync(p->grads[i].v, p->grads_for_non_zero_grads[i].v, sizeof(cnn::real)*p->grads_for_non_zero_grads[i].d.size(), cudaMemcpyDeviceToDevice, streams[ss++]));
+#endif
+        }
+    }
+
+    for (ss = 0; ss < streams.size(); ss++)
+        CUDA_CHECK(cudaStreamDestroy(streams[ss]));
+    streams.clear();
+#endif
+
     pi = 0;
     int li = 0; 
     for (auto p : model->lookup_parameters_list()) {
@@ -423,7 +456,6 @@ void RmsPropWithMomentumTrainer::update(cnn::real nutt, cnn::real scale) {
             cnn::real& d2 = hlgx[i];
 #if HAVE_CUDA
 #ifdef USE_CPU_FOR_LOOKUP_PARAM
-            CUDA_CHECK(cudaMemcpyAsync(p->grads[i].v, p->grads_for_non_zero_grads[i].v, sizeof(cnn::real)*p->grads_for_non_zero_grads[i].d.size(), cudaMemcpyDeviceToHost));
             auto reg = (*p->values[i]) * lambda;
             cnn::real g2 = vlgrd_norm[li];
             d2 = rho * d2 + (1.0 - rho) * g2;
