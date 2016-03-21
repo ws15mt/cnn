@@ -11,6 +11,7 @@
 #include "cnn/cnn-helper.h"
 #include "cnn/expr-xtra.h"
 #include "cnn/grad-check.h"
+#include "cnn/math.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
