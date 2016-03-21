@@ -2825,7 +2825,7 @@ public:
             hidden_dim(hidden_dim),
             rep_hidden(hidden_replicates)
     {
-        p_cs = model.add_lookup_parameters(vocab_size_src, { hidden_dim[ENCODER_LAYER] }, iscale, "p_cs");
+        p_cs = model.add_lookup_parameters(vocab_size_src, { hidden_dim[EMBEDDING_LAYER] }, iscale, "p_cs");
         p_R = model.add_parameters({ vocab_size_tgt, hidden_dim[DECODER_LAYER] }, iscale, "p_R");
         p_bias = model.add_parameters({ vocab_size_tgt }, iscale , "p_bias");
 
@@ -3750,7 +3750,14 @@ public:
     {
         if (verbose)
             cout << "start AttMultiSource_LinearEncoder" << endl;
-        
+
+        if (hidden_dim[ENCODER_LAYER] != hidden_dim[EMBEDDING_LAYER] ||
+            hidden_dim[DECODER_LAYER] != hidden_dim[ENCODER_LAYER])
+        {
+            cout << "Warning: not the same dimension for encoder, decoder and embedding" << endl;
+            cout << "Warning: might be okay for derived class but if just using AttMultiSource_LinearEncoder can trigger runtime error later" << endl;
+        }
+
         p_Wa_local = model.add_parameters({ hidden_dim[ALIGN_LAYER], hidden_dim[DECODER_LAYER] }, iscale);
         p_ba_local = model.add_parameters({ hidden_dim[ALIGN_LAYER] }, iscale);
         p_va_local = model.add_parameters({ 1, hidden_dim[ALIGN_LAYER] }, iscale);
@@ -4178,8 +4185,21 @@ Use attentional max-entropy features or direct features
 template <class Builder, class Decoder>
 class AttMultiSource_LinearEncoder_WithMaxEntropyFeature : public AttMultiSource_LinearEncoder <Builder, Decoder>{
 protected:
-    cnn::real r_interpolate_between_response_and_direct_feature; /// scale to 
     cnn::real r_softmax_scale; /// for attention softmax exponential scale
+    LookupParameters* p_max_ent; /// weight for max-entropy feature
+
+    vector<Expression> v_max_ent_obs; /// observation from max-ent feature
+    Expression        i_max_ent_obs;
+
+    Parameters * p_emb2enc; /// embedding to encoding
+    Parameters * p_emb2enc_b; /// bias 
+    Expression   i_emb2enc;
+    Expression   i_emb2enc_b;           /// the bias that is to be applied to each sentence
+    Expression   i_emb2enc_b_all_words; /// the bias that is to be applied to every word
+
+    Expression i_zero_emb; /// Expresison for embedding of zeros in the embedding space
+    vector<cnn::real> zero_emb; 
+
 public:
     AttMultiSource_LinearEncoder_WithMaxEntropyFeature(Model& model,
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
@@ -4188,13 +4208,21 @@ public:
         if (verbose)
             cout << "start AttMultiSource_LinearEncoder_WithMaxEntropyFeature" << endl;
 
-        r_interpolate_between_response_and_direct_feature = 0.7;
         r_softmax_scale = 1.0;
 
         unsigned int align_dim = hidden_dim[ALIGN_LAYER];
-        p_Wa = model.add_parameters({ align_dim, hidden_dim[DECODER_LAYER] }, iscale, "p_Wa");
-        p_va = model.add_parameters({ align_dim }, iscale, "p_va");
+        if (p_Wa == nullptr) p_Wa = model.add_parameters({ align_dim, hidden_dim[DECODER_LAYER] }, iscale, "p_Wa");
+        if (p_va == nullptr) p_va = model.add_parameters({ align_dim }, iscale, "p_va");
         p_U  = model.add_parameters({ hidden_dim[ALIGN_LAYER], hidden_dim[ENCODER_LAYER] }, iscale, "p_U");
+
+        /// bi-gram weight
+        p_max_ent = model.add_lookup_parameters(vocab_size_tgt, { vocab_size_tgt }, iscale);
+
+        /// embedding to encoding
+        p_emb2enc = model.add_parameters({ hidden_dim[ENCODER_LAYER], hidden_dim[EMBEDDING_LAYER] });
+        p_emb2enc_b = model.add_parameters({ hidden_dim[ENCODER_LAYER] });
+
+        zero_emb.resize(hidden_dim[EMBEDDING_LAYER], 0.0);
     }
 
     void start_new_single_instance(const std::vector<int> &prv_response, const std::vector<int> &src, ComputationGraph &cg)
@@ -4234,7 +4262,7 @@ public:
             combiner.set_data_in_parallel(nutt);
 
             i_R = parameter(cg, p_R); // hidden -> word rep parameter
-            i_bias = parameter(cg, p_bias);
+            i_bias = concatenate_cols(vector<Expression>(nutt, parameter(cg, p_bias)));
 
             i_U = parameter(cg, p_U);
 
@@ -4242,6 +4270,7 @@ public:
             i_enc_to_intention = parameter(cg, p_enc_to_intention);
 
             i_zero = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
+            i_zero_emb = input(cg, { (hidden_dim[EMBEDDING_LAYER]) }, &zero_emb);
 
             attention_output_for_this_turn.clear();
 
@@ -4250,6 +4279,9 @@ public:
 
             attention_layer.new_graph(cg);
             attention_layer.set_data_in_parallel(nutt);
+
+            i_emb2enc = parameter(cg, p_emb2enc);
+            i_emb2enc_b = concatenate_cols(vector<Expression>(nutt, parameter(cg, p_emb2enc_b)));
         }
 
         std::vector<Expression> source_embeddings;
@@ -4264,7 +4296,7 @@ public:
             /// get the raw encodeing from source
             unsigned int prvslen = 0;
             Expression prv_response_enc = concatenate_cols(average_embedding(prvslen, prv_response, cg, p_cs));
-            encoder_fwd.add_input(prv_response_enc);
+            encoder_fwd.add_input(i_emb2enc * prv_response_enc + i_emb2enc_b);
         }
 
         /// encode the source side input, with intial state from the previous response
@@ -4277,17 +4309,24 @@ public:
 
         /// the source sentence has to be approximately the same length
         src_len = each_sentence_length(source);
+        int nwords = 0; 
         for (auto p : src_len)
         {
             src_words += (p - 1);
+            nwords += p;
         }
 
         /// get the representation of inputs
-        v_src = embedding_spkfirst(source, cg, p_cs, hidden_dim[ENCODER_LAYER]); 
-        src = i_U * concatenate_cols(v_src);
+        v_src = embedding_spkfirst(source, cg, p_cs); 
+        i_emb2enc_b_all_words = concatenate_cols(vector<Expression>(nwords, parameter(cg, p_emb2enc_b)));
+        src = i_U * (i_emb2enc * concatenate_cols(v_src) + i_emb2enc_b_all_words);
+
+        /// get the representation of inputs
+        v_max_ent_obs = embedding_spkfirst(source, cg, p_max_ent);
+        i_max_ent_obs = concatenate_cols(average_embedding(src_len, vocab_size_tgt, v_max_ent_obs));
 
         /// get the raw encodeing from source
-        src_fwd = concatenate_cols(average_embedding(src_len, hidden_dim[ENCODER_LAYER], v_src));
+        src_fwd = i_emb2enc * concatenate_cols(average_embedding(src_len, hidden_dim[EMBEDDING_LAYER], v_src)) + i_emb2enc_b;
 
         /// combine the previous response and the current input by adding the current input to the 
         /// encoder that is initialized from the state of the encoder for the previous response
@@ -4326,13 +4365,13 @@ public:
             if (p >= 0)
                 i_x_x = lookup(cg, p_cs, p);
             else
-                i_x_x = i_zero;
+                i_x_x = i_zero_emb;
             if (verbose)
                 display_value(i_x_x, cg, "i_x_x");
             v_x_t.push_back(i_x_x);
         }
 
-        Expression i_obs = concatenate_cols(v_x_t);
+        Expression i_obs = i_emb2enc * concatenate_cols(v_x_t) + i_emb2enc_b;
         Expression i_input;
         if (attention_output_for_this_turn.size() <= turnid)
         {
@@ -4350,7 +4389,7 @@ public:
         vector<Expression> v_context_to_source = attention_to_source(v_src, src_len, i_va, i_Wa, i_h_t, src, hidden_dim[ALIGN_LAYER], nutt, alpha, r_softmax_scale);
 
         /// compute response
-        Expression concatenated_src = concatenate_cols(v_context_to_source);
+        Expression concatenated_src = i_emb2enc * concatenate_cols(v_context_to_source) + i_emb2enc_b;
         Expression i_combined_input_to_attention = concatenate({ i_h_t, concatenated_src});
         i_h_attention_t = attention_layer.add_input(i_combined_input_to_attention);
 
@@ -4360,9 +4399,10 @@ public:
             /// refresh the attention output for this turn
             attention_output_for_this_turn[turnid] = i_h_attention_t;
 
-        Expression i_output = i_R * (r_interpolate_between_response_and_direct_feature * i_h_attention_t + (1 - r_interpolate_between_response_and_direct_feature)* concatenated_src);
-
-        return i_output;
+        Expression i_output = i_R * i_h_attention_t;
+        Expression i_comb_max_entropy = i_output + i_max_ent_obs; 
+        
+        return i_comb_max_entropy + i_bias;
     }
 
     vector<Expression> build_graph(const std::vector<std::vector<int>> &current_user_input,
@@ -4584,28 +4624,53 @@ public:
 };
 
 /**
-Use global max-entropy and attentional direct features 
+Use attentional max-entropy features or direct features
 */
 template <class Builder, class Decoder>
-class AttMultiSource_LinearEncoder_WithMaxEntropyFeature_AndGlobalDirectFeature : public AttMultiSource_LinearEncoder_WithMaxEntropyFeature<Builder, Decoder>{
+class AttMultiSource_LinearEncoder_WithHashingMaxEntropyFeature : public AttMultiSource_LinearEncoder <Builder, Decoder>{
 protected:
-    LookupParameters* p_tgt_side_emb;  /// target side embedding
-    Parameters * p_global_me_weight;/// weight for global ME feature
-    Expression i_global_me_weight;
+    cnn::real r_softmax_scale; /// for attention softmax exponential scale
+    LookupParameters* p_max_ent; /// weight for max-entropy feature
 
-    Expression i_glb_me_feature;     /// computed global me feature
+    vector<Expression> v_max_ent_obs; /// observation from max-ent feature
+    Expression        i_max_ent_obs;
+    int m_hash_size; 
+    int m_direct_order; /// max-entropy feature order
+
+    Parameters * p_emb2enc; /// embedding to encoding
+    Parameters * p_emb2enc_b; /// bias 
+    Expression   i_emb2enc;
+    Expression   i_emb2enc_b;           /// the bias that is to be applied to each sentence
+    Expression   i_emb2enc_b_all_words; /// the bias that is to be applied to every word
+
+    Expression i_zero_emb; /// Expresison for embedding of zeros in the embedding space
+    vector<cnn::real> zero_emb;
 
 public:
-    AttMultiSource_LinearEncoder_WithMaxEntropyFeature_AndGlobalDirectFeature(Model& model,
+    AttMultiSource_LinearEncoder_WithHashingMaxEntropyFeature(Model& model,
         unsigned vocab_size_src, unsigned vocab_size_tgt, const vector<unsigned int>& layers,
-        const vector<unsigned>& hidden_dims, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0) :AttMultiSource_LinearEncoder_WithMaxEntropyFeature(model, vocab_size_src, vocab_size_tgt, layers, hidden_dims, hidden_replicates, additional_input, mem_slots, iscale)
+        const vector<unsigned>& hidden_dims, unsigned hidden_replicates, unsigned additional_input = 0, unsigned mem_slots = 0, cnn::real iscale = 1.0) :AttMultiSource_LinearEncoder(model, vocab_size_src, vocab_size_tgt, layers, hidden_dims, hidden_replicates, additional_input, mem_slots, iscale)
     {
         if (verbose)
-            cout << "start AttMultiSource_LinearEncoder_WithMaxEntropyFeature_AndGlobalDirectFeature" << endl;
+            cout << "start AttMultiSource_LinearEncoder_WithMaxEntropyFeature" << endl;
 
-        /// have bigram history to have trigram ME feature
-        p_tgt_side_emb = model.add_lookup_parameters(vocab_size_src, { hidden_dim[DECODER_LAYER] }, iscale);
-        p_global_me_weight = model.add_parameters({vocab_size_tgt, hidden_dim[DECODER_LAYER] }, iscale);
+        r_softmax_scale = 1.0;
+
+        unsigned int align_dim = hidden_dim[ALIGN_LAYER];
+        if (p_Wa == nullptr) p_Wa = model.add_parameters({ align_dim, hidden_dim[DECODER_LAYER] }, iscale, "p_Wa");
+        if (p_va == nullptr) p_va = model.add_parameters({ align_dim }, iscale, "p_va");
+        p_U = model.add_parameters({ hidden_dim[ALIGN_LAYER], hidden_dim[ENCODER_LAYER] }, iscale, "p_U");
+
+        /// bi-gram weight
+        m_hash_size = hidden_dims[HASHING_LAYER];
+        m_direct_order = hidden_dims[MEORDER_LAYER];
+        p_max_ent = model.add_lookup_parameters(m_hash_size, { vocab_size_tgt }, iscale);
+
+        /// embedding to encoding
+        p_emb2enc = model.add_parameters({ hidden_dim[ENCODER_LAYER], hidden_dim[EMBEDDING_LAYER] });
+        p_emb2enc_b = model.add_parameters({ hidden_dim[ENCODER_LAYER] });
+
+        zero_emb.resize(hidden_dim[EMBEDDING_LAYER], 0.0);
     }
 
     void start_new_single_instance(const std::vector<int> &prv_response, const std::vector<int> &src, ComputationGraph &cg)
@@ -4645,7 +4710,7 @@ public:
             combiner.set_data_in_parallel(nutt);
 
             i_R = parameter(cg, p_R); // hidden -> word rep parameter
-            i_bias = parameter(cg, p_bias);
+            i_bias = concatenate_cols(vector<Expression>(nutt, parameter(cg, p_bias)));
 
             i_U = parameter(cg, p_U);
 
@@ -4653,8 +4718,7 @@ public:
             i_enc_to_intention = parameter(cg, p_enc_to_intention);
 
             i_zero = input(cg, { (hidden_dim[DECODER_LAYER]) }, &zero);
-
-            i_global_me_weight = parameter(cg, p_global_me_weight);
+            i_zero_emb = input(cg, { (hidden_dim[EMBEDDING_LAYER]) }, &zero_emb);
 
             attention_output_for_this_turn.clear();
 
@@ -4663,6 +4727,9 @@ public:
 
             attention_layer.new_graph(cg);
             attention_layer.set_data_in_parallel(nutt);
+
+            i_emb2enc = parameter(cg, p_emb2enc);
+            i_emb2enc_b = concatenate_cols(vector<Expression>(nutt, parameter(cg, p_emb2enc_b)));
         }
 
         std::vector<Expression> source_embeddings;
@@ -4677,7 +4744,7 @@ public:
             /// get the raw encodeing from source
             unsigned int prvslen = 0;
             Expression prv_response_enc = concatenate_cols(average_embedding(prvslen, prv_response, cg, p_cs));
-            encoder_fwd.add_input(prv_response_enc);
+            encoder_fwd.add_input(i_emb2enc * prv_response_enc + i_emb2enc_b);
         }
 
         /// encode the source side input, with intial state from the previous response
@@ -4690,23 +4757,28 @@ public:
 
         /// the source sentence has to be approximately the same length
         src_len = each_sentence_length(source);
+        int nwords = 0;
         for (auto p : src_len)
         {
             src_words += (p - 1);
+            nwords += p;
         }
 
         /// get the representation of inputs
-        v_src = embedding_spkfirst(source, cg, p_cs, hidden_dim[ENCODER_LAYER]);
-        src = i_U * concatenate_cols(v_src);
+        v_src = embedding_spkfirst(source, cg, p_cs);
+        i_emb2enc_b_all_words = concatenate_cols(vector<Expression>(nwords, parameter(cg, p_emb2enc_b)));
+        src = i_U * (i_emb2enc * concatenate_cols(v_src) + i_emb2enc_b_all_words);
+
+        /// get the representation of inputs
+        v_max_ent_obs = hash_embedding_spkfirst(source, cg, p_max_ent, m_direct_order, m_hash_size);
+        /// expand to accomodate order
+        vector<unsigned> hash_len;
+        for (auto p : src_len)
+            hash_len.push_back(p * m_direct_order);
+        i_max_ent_obs = concatenate_cols(average_embedding(hash_len, vocab_size_tgt, v_max_ent_obs));
 
         /// get the raw encodeing from source
-        src_fwd = concatenate_cols(average_embedding(src_len, hidden_dim[ENCODER_LAYER], v_src));
-
-        ////// get the global ME feature  //////
-        /// first get the representation of inputs
-        vector<Expression> v_target_side_emb = embedding_spkfirst(source, cg, p_tgt_side_emb, hidden_dim[DECODER_LAYER]);
-        vector<Expression> v_ave_global_me_raw = average_embedding(src_len, hidden_dim[DECODER_LAYER], v_target_side_emb);
-        i_glb_me_feature = i_global_me_weight * concatenate_cols(v_ave_global_me_raw);
+        src_fwd = i_emb2enc * concatenate_cols(average_embedding(src_len, hidden_dim[EMBEDDING_LAYER], v_src)) + i_emb2enc_b;
 
         /// combine the previous response and the current input by adding the current input to the 
         /// encoder that is initialized from the state of the encoder for the previous response
@@ -4745,13 +4817,13 @@ public:
             if (p >= 0)
                 i_x_x = lookup(cg, p_cs, p);
             else
-                i_x_x = i_zero;
+                i_x_x = i_zero_emb;
             if (verbose)
                 display_value(i_x_x, cg, "i_x_x");
             v_x_t.push_back(i_x_x);
         }
 
-        Expression i_obs = concatenate_cols(v_x_t);
+        Expression i_obs = i_emb2enc * concatenate_cols(v_x_t) + i_emb2enc_b;
         Expression i_input;
         if (attention_output_for_this_turn.size() <= turnid)
         {
@@ -4769,7 +4841,7 @@ public:
         vector<Expression> v_context_to_source = attention_to_source(v_src, src_len, i_va, i_Wa, i_h_t, src, hidden_dim[ALIGN_LAYER], nutt, alpha, r_softmax_scale);
 
         /// compute response
-        Expression concatenated_src = concatenate_cols(v_context_to_source);
+        Expression concatenated_src = i_emb2enc * concatenate_cols(v_context_to_source) + i_emb2enc_b;
         Expression i_combined_input_to_attention = concatenate({ i_h_t, concatenated_src });
         i_h_attention_t = attention_layer.add_input(i_combined_input_to_attention);
 
@@ -4779,13 +4851,12 @@ public:
             /// refresh the attention output for this turn
             attention_output_for_this_turn[turnid] = i_h_attention_t;
 
-        cnn::real me_feature_weight = (1 - r_interpolate_between_response_and_direct_feature) / 2;
-        Expression i_output = i_R * (r_interpolate_between_response_and_direct_feature * i_h_attention_t 
-            + me_feature_weight * concatenated_src) 
-            + me_feature_weight * i_glb_me_feature;
+        Expression i_output = i_R * i_h_attention_t;
+        Expression i_comb_max_entropy = i_output + i_max_ent_obs;
 
-        return i_output;
+        return i_comb_max_entropy + i_bias;
     }
+
     vector<Expression> build_graph(const std::vector<std::vector<int>> &current_user_input,
         const std::vector<std::vector<int>>& target_response,
         ComputationGraph &cg)
@@ -4817,7 +4888,7 @@ public:
             }
             Expression i_y_t = decoder_step(vobs, cg);
 
-            Expression i_ydist = log_softmax(i_y_t);
+            Expression i_ydist = softmax(i_y_t);
 
             Expression x_r_t = reshape(i_ydist, { vocab_size * nutt });
 
@@ -4827,7 +4898,7 @@ public:
                 if (t < target_response[i].size() - 1)
                 {
                     /// only compute errors on with output labels
-                    this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
+                    this_errs[i].push_back(-log(pick(x_r_t, target_response[i][t + 1] + offset)));
                     tgt_words++;
                 }
             }
@@ -4875,7 +4946,7 @@ public:
                     vobs.push_back(-1);
             }
             Expression i_y_t = decoder_step(vobs, cg);
-            Expression i_ydist = log_softmax(i_y_t);
+            Expression i_ydist = softmax(i_y_t);
 
             Expression x_r_t = reshape(i_ydist, { vocab_size * nutt });
 
@@ -4885,7 +4956,7 @@ public:
                 if (t < target_response[i].size() - 1)
                 {
                     /// only compute errors on with output labels
-                    this_errs[i].push_back(-pick(x_r_t, target_response[i][t + 1] + offset));
+                    this_errs[i].push_back(-log(pick(x_r_t, target_response[i][t + 1] + offset)));
                     tgt_words++;
                 }
             }
@@ -5002,7 +5073,6 @@ public:
         turnid++;
         return target;
     }
-
 };
 
 /**
@@ -5119,7 +5189,7 @@ public:
         }
 
         /// get the representation of inputs
-        v_src = embedding_spkfirst(source, cg, p_cs, hidden_dim[ENCODER_LAYER]);
+        v_src = embedding_spkfirst(source, cg, p_cs);
         src = i_U * concatenate_cols(v_src);
 
         /// get the raw encodeing from source
@@ -5127,7 +5197,7 @@ public:
 
         ////// get the global ME feature  //////
         /// first get the representation of inputs
-        vector<Expression> v_target_side_emb = embedding_spkfirst(source, cg, p_tgt_side_emb, hidden_dim[DECODER_LAYER]);
+        vector<Expression> v_target_side_emb = embedding_spkfirst(source, cg, p_tgt_side_emb);
         vector<Expression> v_ave_global_me_raw = average_embedding(src_len, hidden_dim[DECODER_LAYER], v_target_side_emb);
         i_glb_me_feature = i_global_me_weight * concatenate_cols(v_ave_global_me_raw);
 
@@ -5202,10 +5272,9 @@ public:
             /// refresh the attention output for this turn
             attention_output_for_this_turn[turnid] = i_h_attention_t;
 
-        cnn::real me_feature_weight = (1 - r_interpolate_between_response_and_direct_feature) / 2;
-        Expression i_output = i_R * (r_interpolate_between_response_and_direct_feature * i_h_attention_t
-            + me_feature_weight * concatenated_src)
-            + me_feature_weight * i_glb_me_feature;
+        Expression i_output = i_R * i_h_attention_t
+            + concatenated_src
+            + i_glb_me_feature;
 
         return i_output;
     }

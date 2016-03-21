@@ -216,9 +216,17 @@ public:
 public:
     /// compute tfidf weight for all words from training data
     /// dictionary or word list is given 
-    void get_tfidf(variables_map vm, const Corpus &training, Dict& sd);
+    /// TF : Term Frequency, which measures how frequently a term occurs in a document.Since every document is different in length, it is possible that a term would appear much more times in long documents than shorter ones.Thus, the term frequency is often divided by the document length(aka.the total number of terms in the document) as a way of normalization :
+    /// TF(t, d) = (Number of times term t appears in a document d) / (Total number of terms in the document).
+    /// IDF : Inverse Document Frequency, which measures how important a term is.While computing TF, all terms are considered equally important.However it is known that certain terms, such as "is", "of", and "that", may appear a lot of times but have little importance.Thus we need to weigh down the frequent terms while scale up the rare ones, by computing the following :
+    /// IDF(t) = log_e(Total number of documents / Number of documents with term t in it).
+    
+    /// compute idf from training corpus, 
+    /// exact tfidf score of a term needs to be computed given a sentence
+    void get_idf(variables_map vm, const Corpus &training, Dict& sd);
 protected:
-     std::vector<cnn::real> m_tfidf; /// the dictionary for saving tfidf
+//    std::map<string, cnn::real> m_map_idf; /// the dictionary for saving tfidf
+    std::map<string, cnn::real> m_map_idf; /// the dictionary for saving tfidf
     /// follwong the same inddex from a dictionary
 
 private:
@@ -911,6 +919,8 @@ void TrainProcess<AM_t>::segmental_forward_backward(Model &model, AM_t &am, PDia
             am.build_graph(prv_turn, turn, cg);
         }
 
+        if (verbose) cout << "after graph build" << endl;
+
         if (doGradientCheck 
             && turn_id > 3 // do gradient check after burn-in
             )
@@ -1065,7 +1075,8 @@ void TrainProcess<AM_t>::batch_train(Model &model, AM_t &am, Corpus &training, C
     bool b_do_padding, int kEOS /// for padding if so use kEOS as the padding symbol
     )
 {
-    cout << "batch_train: "; 
+    if (verbose)
+        cout << "batch_train: "; 
     unsigned report_every_i = 50;
     unsigned dev_every_i_reports = 1000;
     unsigned si = training.size(); /// number of dialgoues in training
@@ -1786,7 +1797,7 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
             dr.join(); /// make sure data is completely read
             training = dr.corpus();  /// copy the data from data thread to the data to be used in the main thread
             training_numturn2did = get_numturn2dialid(training);
-#define DEBUG
+//#define DEBUG
 #ifndef DEBUG
             ofstream out(out_file + ".i" + boost::lexical_cast<string>(sgd.epoch), ofstream::out);
             boost::archive::text_oarchive oa(out);
@@ -1824,11 +1835,10 @@ void TrainProcess<AM_t>::split_data_batch_train(string train_filename, Model &mo
 }
 
 template <class AM_t>
-void TrainProcess<AM_t>::get_tfidf(variables_map vm, const Corpus &training, Dict& sd)
+void TrainProcess<AM_t>::get_idf(variables_map vm, const Corpus &training, Dict& sd)
 {
     long l_total_terms = 0;
     long l_total_nb_documents = 0;
-    tWordid2TfIdf tf;
     tWordid2TfIdf idf;
 
     for (auto & d : training)
@@ -1846,18 +1856,10 @@ void TrainProcess<AM_t>::get_tfidf(variables_map vm, const Corpus &training, Dic
             tWordid2TfIdf occurence; 
             for (auto& u : user)
             {
-                if (tf.find(u) == tf.end())
-                    tf[u] = 1;
-                else
-                    tf[u] = tf[u] + 1;
                 occurence[u] = 1;
             }
             for (auto& u : resp)
             {
-                if (tf.find(u) == tf.end())
-                    tf[u] = 1;
-                else
-                    tf[u] = tf[u] + 1;
                 occurence[u] = 1;
             }
 
@@ -1867,25 +1869,21 @@ void TrainProcess<AM_t>::get_tfidf(variables_map vm, const Corpus &training, Dic
         }
     }
 
-    if (m_tfidf.size() == 0)
-        m_tfidf.resize(sd.size());
     tWordid2TfIdf::iterator it;
-    for (it = tf.begin(); it != tf.end(); it ++)
+    for (it = idf.begin(); it != idf.end(); it++)
     {
-        cnn::real val = it->second / l_total_terms;
-        it->second = val;
-
-        cnn::real idf_val = idf[it->first];
+        cnn::real idf_val = it->second;
         idf_val = log(l_total_nb_documents / idf_val);
 
         int id = it->first; 
-        m_tfidf[id] = val * idf_val; 
+        cnn::real idfscore = idf_val;
+        m_map_idf[sd.Convert(id)] = idfscore;
     }
 
     string fname = vm["get_tfidf"].as<string>();
     ofstream on(fname);
     boost::archive::text_oarchive oa(on);
-    oa << m_tfidf;
+    oa << m_map_idf;
 
 }
 

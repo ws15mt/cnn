@@ -1,18 +1,17 @@
-#ifndef CNN_PARAMS_H_
-#define CNN_PARAMS_H_
+#pragma once
 
 #include <vector>
 #include <unordered_set>
 #include <string>
 #include <map>
+#include <unordered_map>
 
 #include <boost/serialization/split_member.hpp>
 #include <boost/serialization/vector.hpp>
 
 #include "cnn/tensor.h"
-
-#define CNN_ALIGN 64
-// 2^ALIGN = 2^6 = 64
+#include "cnn/cuda.h"
+#include "cnn/macros.h"
 
 namespace cnn {
 
@@ -83,11 +82,19 @@ struct LookupParameters : public ParametersBase {
   std::vector<Tensor> grads;
   // gradients are sparse, so track which components are nonzero
   std::unordered_set<unsigned> non_zero_grads;
+  // working memory for those values and gradient that are actively used, they can be in GPU, where
+  // main memory is in CPU
+  std::unordered_map<unsigned, Tensor> values_for_non_zero_grads;
+  std::unordered_map<unsigned, Tensor> grads_for_non_zero_grads;
   std::string name;
+
 private:
-  LookupParameters() {}
+  LookupParameters() { }
   ~LookupParameters();
   LookupParameters(unsigned n, const Dim& d, cnn::real scale, std::string nodename = "");
+
+  /// free working copies of grads and values
+  void free_working_copies();
 
   friend class boost::serialization::access;
   template<class Archive>
@@ -97,7 +104,9 @@ private:
     int nv = values.size();
     ar & nv;
     for (unsigned i = 0; i < values.size(); ++i)
-      ar & values[i];
+    {
+        ar & values[i];
+    }
   }
   template<class Archive>
   void load(Archive& ar, const unsigned int) {
@@ -107,7 +116,12 @@ private:
     ar & nv;
     assert(nv == (int)values.size());
     for (unsigned i = 0; i < values.size(); ++i)
-      ar & values[i];
+    {
+#ifdef USE_CPU_FOR_LOOKUP_PARAM
+        values[i].m_device_id = CPUDEVICE;
+#endif
+        ar & values[i];
+    }
   }
   BOOST_SERIALIZATION_SPLIT_MEMBER()
 };
@@ -178,4 +192,3 @@ void load_cnn_model(std::string filename, Model* model);
 
 } // namespace cnn
 
-#endif

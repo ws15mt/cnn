@@ -30,6 +30,7 @@ extern AlignedMemoryPool<ALIGN>* mem_nodes;
 extern cnn::real* kSCALAR_MINUSONE;
 extern cnn::real* kSCALAR_ONE;
 extern cnn::real* kSCALAR_ZERO;
+extern int device_id; 
 
 /// some constants 
 /// [1/2,1/3,1/3, ..., 1/N]

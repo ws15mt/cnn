@@ -110,7 +110,7 @@ public:
             throw("wrong dimension of encoder and decoder layer. they should be the same, as they use the same lookup table");
         }
 
-        p_cs = model.add_lookup_parameters(vocab_size_src, { hidden_dim[ENCODER_LAYER] }, iscale);
+        p_cs = model.add_lookup_parameters(vocab_size_src, { hidden_dim[EMBEDDING_LAYER] }, iscale);
         p_R = model.add_parameters({ vocab_size_tgt, hidden_dim[DECODER_LAYER] }, iscale);
         p_bias = model.add_parameters({ vocab_size_tgt}, iscale);
 

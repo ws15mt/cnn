@@ -78,6 +78,8 @@ void Initialize_GPU(int& argc, char**& argv) {
   }
   cerr << "[cnn] **USING DEVICE: " << selected << endl;
   CUDA_CHECK(cudaSetDevice(selected));
+  device_id = selected;
+
   CUBLAS_CHECK(cublasCreate(&cublas_handle));
   CUBLAS_CHECK(cublasSetPointerMode(cublas_handle, CUBLAS_POINTER_MODE_DEVICE));
   CUDA_CHECK(cudaMalloc(&kSCALAR_MINUSONE, sizeof(cnn::real)));

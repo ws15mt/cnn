@@ -84,6 +84,7 @@ const Tensor& SimpleExecutionEngine::incremental_forward(VariableIndex i) {
       nfxs[num_nodes_evaluated].d = node->dim;
       nfxs[num_nodes_evaluated].v = static_cast<cnn::real*>(fxs->allocate(node->dim.size() * sizeof(cnn::real)));
       if (nfxs[num_nodes_evaluated].v == nullptr) {
+        cerr << "no more memory space for forward computation. requested " << node->dim.size() << endl;
         cerr << "out of memory\n";
         abort();
       }
@@ -92,8 +93,9 @@ const Tensor& SimpleExecutionEngine::incremental_forward(VariableIndex i) {
       if (aux_size) {
         aux_mem = fxs->allocate(aux_size);
         if (!aux_mem) {
-          cerr << "aux out of memory\n";
-          abort();
+            cerr << "no more memory space for auxiliary memory for forward computation. requested " << aux_size << endl;
+            cerr << "aux out of memory\n";
+            abort();
         }
       }
       node->aux_mem = aux_mem;

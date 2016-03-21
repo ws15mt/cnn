@@ -43,7 +43,9 @@ vector<Expression> embedding(unsigned & slen, const vector<vector<int>>& source,
 
 /// organise data in the following format
 /// [v_spk1_time0 v_spk1_time1 ... v_spk1_timeN1 | v_spk2_time0 v_spk2_time1 ... v_spk2_timeN2]
-vector<Expression> embedding_spkfirst(const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, unsigned feat_dim);
+vector<Expression> embedding_spkfirst(const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs);
+
+vector<Expression> hash_embedding_spkfirst(const vector<vector<int>>& source, ComputationGraph& cg, LookupParameters* p_cs, int direct_order, int hash_size);
 
 /// return an expression for the time embedding weight
 typedef std::map<size_t, Expression> tExpression;

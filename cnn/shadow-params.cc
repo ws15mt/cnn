@@ -2,6 +2,7 @@
 #include "cnn/tensor.h"
 #include "cnn/aligned-mem-pool.h"
 #include "cnn/model.h"
+#include "cnn/cnn.h"
 
 using namespace std;
 
@@ -13,9 +14,19 @@ ShadowParameters::ShadowParameters(const Parameters& p) : h(p.values) {
 }
 
 ShadowLookupParameters::ShadowLookupParameters(const LookupParameters& lp) : h(lp.values) {
-  for (auto& t : h) {
-      t.v = (cnn::real*)cnn_mm_malloc(t.d.size() * sizeof(cnn::real), CNN_ALIGN);
-    TensorTools::Zero(t);
+#ifdef USE_CPU_FOR_LOOKUP_PARAM
+    bool busecpu = true;
+#else
+    bool busecpu = false;
+#endif
+    for (auto& t : h) {
+      t.v = (cnn::real*)cnn_mm_malloc(t.d.size() * sizeof(cnn::real), CNN_ALIGN, busecpu);
+#ifdef USE_CPU_FOR_LOOKUP_PARAM
+      t.m_device_id = CPUDEVICE; /// for cpu
+#else
+      t.m_device_id = device_id;
+#endif
+      TensorTools::Zero(t);
   }
 }
 
