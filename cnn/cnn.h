@@ -24,11 +24,17 @@
 
 namespace cnn {
 
-extern AlignedMemoryPool<6>* fxs;
-extern AlignedMemoryPool<6>* dEdfs;
-extern float* kSCALAR_MINUSONE;
-extern float* kSCALAR_ONE;
-extern float* kSCALAR_ZERO;
+extern AlignedMemoryPool<ALIGN>* fxs;
+extern AlignedMemoryPool<ALIGN>* dEdfs;
+extern AlignedMemoryPool<ALIGN>* mem_nodes;
+extern cnn::real* kSCALAR_MINUSONE;
+extern cnn::real* kSCALAR_ONE;
+extern cnn::real* kSCALAR_ZERO;
+extern int device_id; 
+
+/// some constants 
+/// [1/2,1/3,1/3, ..., 1/N]
+extern std::vector<cnn::real*> kSCALAR_ONE_OVER_INT;
 
 class ExecutionEngine;
 struct ParameterNodeBase;
@@ -51,20 +57,33 @@ struct ComputationGraph {
   // structures and make them available to the computation
   VariableIndex add_input(real s);  // add scalar
   VariableIndex add_input(const real* ps);  // add pointer to scalar
-  VariableIndex add_input(const Dim& d, const std::vector<float>* pdata);
+  VariableIndex add_input(const Dim& d, const std::vector<cnn::real>& pdata);
+  VariableIndex add_input(const Dim& d, const std::vector<cnn::real>* pdata);
+
+  // REFERENCES
+  // the computational network will pull references in from the user's data pointer
+  // structures and make them available to the computation
+  VariableIndex add_reference(const Dim& d, const cnn::real* pm);
+
 
   // PARAMETERS
   // parameters are things that are optimized. in contrast to a system like
   // Torch where computational modules may have their own parameters, in CNN
   // parameters are just parameters
   VariableIndex add_parameters(Parameters* p);
+  VariableIndex add_const_parameters(Parameters* p);
+
   // use pindex to point to a memory location where the index will live
   // that the caller owns
   VariableIndex add_lookup(LookupParameters* p, const unsigned* pindex);
   VariableIndex add_lookup(LookupParameters* p, unsigned index);
+  VariableIndex add_lookup(LookupParameters* p, const std::vector<unsigned>* pindices);
+  VariableIndex add_lookup(LookupParameters* p, const std::vector<unsigned>& indices);
   // just like add_lookup, but don't optimize the lookup parameters
   VariableIndex add_const_lookup(LookupParameters* p, const unsigned* pindex);
   VariableIndex add_const_lookup(LookupParameters* p, unsigned index);
+  VariableIndex add_const_lookup(LookupParameters* p, const std::vector<unsigned>* pindices);
+  VariableIndex add_const_lookup(LookupParameters* p, const std::vector<unsigned>& indices);
 
   // COMPUTATIONS
   template <class Function> inline VariableIndex add_function(const std::initializer_list<VariableIndex>& arguments);
@@ -88,10 +107,19 @@ struct ComputationGraph {
   // what is needed).
   const Tensor& get_value(VariableIndex i);
   const Tensor& get_value(const expr::Expression& e);
+  // get backward error for node at index i. 
+  const Tensor& get_error(VariableIndex i);
+
+  /// set value for a node given by the index i
+  void  set_value(const Tensor& t, VariableIndex i);
+  void  set_value(const Tensor& t, expr::Expression& e);
+
   // clears forward caches (for get_value etc).
   void invalidate();
   // computes backward gradients from the front-most evaluated node.
-  void backward();
+  void backward(cnn::real * initError = nullptr);
+  // computes backward gradients from node i (assuming it already been evaluated).
+  void backward(VariableIndex i);
 
   // debugging
   void PrintGraphviz() const;
@@ -99,9 +127,9 @@ struct ComputationGraph {
   // data
   std::vector<Node*> nodes;       // **stored in topological order**
   std::vector<VariableIndex> parameter_nodes; // nodes that contain parameters that can be updated (subset of nodes)
-  VariableIndex last_node_evaluated; // enables forward graphs to be evaluated incrementally
 
   ExecutionEngine* ee;  // handles the execution
+  void set_last_node_evaluated(VariableIndex idx);
  private:
   void set_dim_for_new_node(const VariableIndex& i);
 };
@@ -128,14 +156,29 @@ struct Node {
   virtual size_t aux_storage_size() const;
 
   // computation
+  virtual void forward_impl(const std::vector<const Tensor*>& xs,
+                            Tensor& fx) const = 0;
+  // accumulates the derivative of E with respect to the ith argument to f, that is, xs[i]
+  virtual void backward_impl(const std::vector<const Tensor*>& xs,
+                             const Tensor& fx,
+                             const Tensor& dEdf,
+                             unsigned i,
+                             Tensor& dEdxi) const = 0;
+
+  // whether this node supports computing multiple batches in one call.
+  // if true, forward and backward will be called once with a multi-batch tensor.
+  // if false, forward and backward will be called multiple times for each item.
+  virtual bool supports_multibatch() const { return false; }
+
+  // perform the forward/backward passes in one or multiple calls
   virtual void forward(const std::vector<const Tensor*>& xs,
-                       Tensor& fx) const = 0;
+                       Tensor& fx) const final;
   // accumulates the derivative of E with respect to the ith argument to f, that is, xs[i]
   virtual void backward(const std::vector<const Tensor*>& xs,
                         const Tensor& fx,
                         const Tensor& dEdf,
                         unsigned i,
-                        Tensor& dEdxi) const = 0;
+                        Tensor& dEdxi) const final;
 
   // number of arguments to the function
   inline unsigned arity() const { return args.size(); }
@@ -147,7 +190,7 @@ struct Node {
   Dim dim;  // will be .size() = 0 initially filled in by forward() -- TODO fix this
 
  protected:
-  Node() : args() {}
+     Node() : args() { aux_mem = nullptr; }
   explicit Node(const std::initializer_list<VariableIndex>& a) : args(a) {}
   template <typename T>
   explicit Node(const T&c) : args(c.begin(), c.end()) {}
@@ -159,6 +202,18 @@ struct Node {
                  // number of bytes you need from aux_storage_size(). Note:
                  // this memory will be on the CPU or GPU, depending on your computation
                  // backend
+
+public:
+    static void * operator new (size_t sz)
+    {
+        /// get from the memory pool
+        void *p = mem_nodes->allocate(sz);
+        return p;
+    }
+    static void operator delete (void* p)
+    {
+        mem_nodes->free();
+    }
 };
 
 template <class Function>

@@ -17,7 +17,7 @@ int main(int argc, char** argv) {
   cnn::Initialize(argc, argv);
 
   // parameters
-  const unsigned HIDDEN_SIZE = 8;
+  const long HIDDEN_SIZE = 8;
   Model m;
   SimpleSGDTrainer sgd(&m);
   //MomentumSGDTrainer sgd(&m);
@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
   Expression V = parameter(cg, m.add_parameters({1, HIDDEN_SIZE}));
   Expression a = parameter(cg, m.add_parameters({1}));
 
-  vector<float> x_values(2);  // set x_values to change the inputs to the network
+  vector<cnn::real> x_values(2);  // set x_values to change the inputs to the network
   Expression x = input(cg, {2}, &x_values);
   cnn::real y_value;  // set y_value to change the target output
   Expression y = input(cg, &y_value);
@@ -47,7 +47,7 @@ int main(int argc, char** argv) {
 
   // train the parameters
   for (unsigned iter = 0; iter < 2000; ++iter) {
-    double loss = 0;
+    cnn::real loss = 0;
     for (unsigned mi = 0; mi < 4; ++mi) {
       bool x1 = mi % 2;
       bool x2 = (mi / 2) % 2;

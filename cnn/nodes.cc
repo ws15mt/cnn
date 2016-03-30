@@ -2,14 +2,21 @@
 
 #include <limits>
 #include <cmath>
-
+#include <stdexcept>
+#include "cnn/macros.h"
+#include "cnn/simd-functors.h"
 #include "cnn/functors.h"
 #if HAVE_CUDA
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
 #include "cnn/cuda.h"
 #include "cnn/gpu-ops.h"
+using namespace cnn::gpu;
 #endif
 
+
 using namespace std;
+
 
 // notes on implementing differentiable components
 // 1) fx can be understood as a pointer to the (preallocated) location for the result
@@ -33,146 +40,253 @@ using namespace std;
 
 namespace cnn {
 
-size_t Min::aux_storage_size() const {
-  return dim.size() * sizeof(float);
+void Pow::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+  assert(xs.size() == 2);
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Pow not yet implemented for CUDA");
+#else
+  auto x1 = **xs[0];
+  auto x2 = xs[1]->v[0];
+  (*fx).array() = x1.array().pow(x2);
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void Min::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void Pow::backward_impl(const vector<const Tensor*>& xs,
+                        const Tensor& fx,
+                        const Tensor& dEdf,
+                        unsigned i,
+                        Tensor& dEdxi) const {
+  assert(xs.size() == 2);
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Pow not yet implemented for CUDA");
+#else
+  auto x1 = **xs[0];
+  auto x2 = xs[1]->v[0];
+  if (i == 0) {
+    *dEdxi += (x2 * x1.array().pow(x2 - 1).matrix()).cwiseProduct(*dEdf);
+  } else {
+    // y = a^x
+    // dy/dx = a^x * log(a)
+    (*dEdxi).noalias() += (*fx).cwiseProduct(x1.array().log().matrix()).transpose() * (*dEdf);
+  }
+#endif
+}
+
+size_t Min::aux_storage_size() const {
+  return dim.size() * sizeof(cnn::real);
+}
+
+void Min::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Min not yet implemented for CUDA");
+#else
   auto y = *fx;
   auto x1 = **xs[0];
   auto x2 = **xs[1];
-  Tensor t(fx.d, static_cast<float*>(aux_mem));
+  Tensor t(fx.d, static_cast<cnn::real*>(aux_mem), xs[0]->m_device_id);
   auto u = *t;
-  u = (x1.array() < x2.array()).matrix().cast<float>();
+  u = (x1.array() < x2.array()).matrix().cast<cnn::real>();
   y = x1.cwiseMin(x2);
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void Min::backward(const vector<const Tensor*>& xs,
+void Min::backward_impl(const vector<const Tensor*>& xs,
                    const Tensor& fx,
                    const Tensor& dEdf,
                    unsigned i,
                    Tensor& dEdxi) const {
   assert(i < 2);
-  const Tensor t(dEdxi.d, static_cast<float*>(aux_mem));
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Min not yet implemented for CUDA");
+#else
+  const Tensor t(dEdxi.d, static_cast<cnn::real*>(aux_mem), xs[0]->m_device_id);
   if (i == 0) {
     *dEdxi += (*t).cwiseProduct(*dEdf);
   } else {
     *dEdxi += (*t).binaryExpr(*dEdf, FMaxBackwardInv());
   }
+#endif
 }
 
 size_t Max::aux_storage_size() const {
-  return dim.size() * sizeof(float);
+  return dim.size() * sizeof(cnn::real);
 }
 
-void Max::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void Max::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Max not yet implemented for CUDA");
+#else
   auto y = *fx;
   auto x1 = **xs[0];
   auto x2 = **xs[1];
-  Tensor t(fx.d, static_cast<float*>(aux_mem));
+  Tensor t(fx.d, static_cast<cnn::real*>(aux_mem), xs[0]->m_device_id);
   auto u = *t;
-  u = (x1.array() > x2.array()).matrix().cast<float>();
+  u = (x1.array() > x2.array()).matrix().cast<cnn::real>();
   y = x1.cwiseMax(x2);
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void Max::backward(const vector<const Tensor*>& xs,
+void Max::backward_impl(const vector<const Tensor*>& xs,
                    const Tensor& fx,
                    const Tensor& dEdf,
                    unsigned i,
                    Tensor& dEdxi) const {
   assert(i < 2);
-  const Tensor t(dEdxi.d, static_cast<float*>(aux_mem));
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Max not yet implemented for CUDA");
+#else
+  const Tensor t(dEdxi.d, static_cast<cnn::real*>(aux_mem), xs[0]->m_device_id);
   if (i == 0) {
     *dEdxi += (*t).cwiseProduct(*dEdf);
   } else {
     *dEdxi += (*t).binaryExpr(*dEdf, FMaxBackwardInv());
   }
+#endif
 }
 
-void TraceOfProduct::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void TraceOfProduct::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("TraceOfProduct not yet implemented for CUDA");
+#else
   auto x1 = **xs[0];
   auto x2 = **xs[1];
   fx.v[0] = (x1 * x2.transpose()).trace();
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void TraceOfProduct::backward(const vector<const Tensor*>& xs,
+void TraceOfProduct::backward_impl(const vector<const Tensor*>& xs,
                               const Tensor& fx,
                               const Tensor& dEdf,
                               unsigned i,
                               Tensor& dEdxi) const {
   assert(i < 2);
-  const float d = dEdf.v[0];
+#ifdef HAVE_CUDA
+  throw std::runtime_error("TraceOfProduct not yet implemented for CUDA");
+#else
+  const cnn::real d = dEdf.v[0];
   auto xother = **xs[1 - i];
   *dEdxi += d * xother;
+#endif
 }
 
-void ConstScalarMultiply::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  *fx = (**xs[0]) * alpha;
+void ConstScalarMultiply::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#if HAVE_CUDA
+    gpu::vconstant_multiplyx(fx.d.size(), alpha, xs[0]->v, fx.v);
+#else
+    *fx = (**xs[0]) * alpha;
+#endif
+    fx.m_device_id = xs[0]->m_device_id;
 }
 
-void ConstScalarMultiply::backward(const vector<const Tensor*>& xs,
+void ConstScalarMultiply::backward_impl(const vector<const Tensor*>& xs,
                                    const Tensor& fx,
                                    const Tensor& dEdf,
                                    unsigned i,
-                                   Tensor& dEdxi) const {
-  assert(i == 0);
-  *dEdxi += *dEdf * alpha;
+                                   Tensor& dEdxi) const 
+{
+    assert(i == 0);
+#if HAVE_CUDA
+    gpu::vconstant_multiplyx_backward(fx.d.size(), alpha, dEdf.v, dEdxi.v);
+#else
+    *dEdxi += *dEdf * alpha;
+#endif
 }
 
-void DotProduct::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  *fx = (**xs[0]).transpose() * (**xs[1]);
+void DotProduct::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("DotProduct not yet implemented for CUDA");
+#else
+    *fx = (**xs[0]).transpose() * (**xs[1]);
+#endif
+    fx.m_device_id = xs[0]->m_device_id;
 }
 
-void DotProduct::backward(const vector<const Tensor*>& xs,
+void DotProduct::backward_impl(const vector<const Tensor*>& xs,
                           const Tensor& fx,
                           const Tensor& dEdf,
                           unsigned i,
                           Tensor& dEdxi) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("DotProduct not yet implemented for CUDA");
+#else
   (*dEdxi) += (dEdf.v[0]) * (**xs[1 - i]);
+#endif
 }
 
-void Transpose::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void Transpose::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   if (dim.rows() == 1 || dim.cols() == 1) {
-    fx.v = xs[0]->v;
-  } else {
 #if HAVE_CUDA
-    CUBLAS_CHECK(cublasSgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, fx.d.rows(), fx.d.cols(),
-                             kSCALAR_ONE, xs[0]->v, xs[0]->d.rows(), kSCALAR_ZERO, NULL, fx.d.rows(), fx.v, fx.d.rows()));
+      CUDA_CHECK(cudaMemcpy(fx.v, xs[0]->v, sizeof(cnn::real) * dim.size(), cudaMemcpyDeviceToDevice));
 #else
-    *fx = (**xs[0]).transpose();
+      fx.v = xs[0]->v;
 #endif
   }
+  else {
+#ifdef HAVE_CUDA
+#ifdef USE_DOUBLE
+      CUBLAS_CHECK(cublasDgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_T, fx.d.rows(), fx.d.cols(),
+          kSCALAR_ONE, xs[0]->v, xs[0]->d.rows(), kSCALAR_ZERO, xs[0]->v, xs[0]->d.rows(), fx.v, fx.d.rows()));
+#else
+      CUBLAS_CHECK(cublasSgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_T, fx.d.rows(), fx.d.cols(), 
+              kSCALAR_ONE, xs[0]->v, xs[0]->d.rows(), kSCALAR_ZERO, xs[0]->v, xs[0]->d.rows(), fx.v, fx.d.rows()));
+#endif
+#else
+    for(unsigned b = 0; b < xs[0]->d.bd; ++b)
+      fx.batch_matrix(b).noalias() = xs[0]->batch_matrix(b).transpose();
+#endif
+  }
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void Transpose::backward(const vector<const Tensor*>& xs,
+void Transpose::backward_impl(const vector<const Tensor*>& xs,
                             const Tensor& fx,
                             const Tensor& dEdf,
                             unsigned i,
                             Tensor& dEdxi) const {
 #if HAVE_CUDA
-  CUBLAS_CHECK(cublasSgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, dEdxi.d.rows(), dEdxi.d.cols(),
-                           kSCALAR_ONE, dEdf.v, dEdf.d.rows(), kSCALAR_ONE, dEdxi.v, dEdxi.d.rows(), dEdxi.v, dEdxi.d.rows()));
+  /// for usage of of cublassegeam see 
+  /// http://scikit-cuda.readthedocs.org/en/latest/generated/skcuda.cublas.cublasSgeam.html
+#ifdef USE_DOUBLE
+    CUBLAS_CHECK(cublasDgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, dEdxi.d.rows(), dEdxi.d.cols(),
+            kSCALAR_ONE, dEdf.v, dEdf.d.rows(), kSCALAR_ONE, dEdxi.v, dEdxi.d.rows(), dEdxi.v, dEdxi.d.rows()));
 #else
-  *dEdxi += (*dEdf).transpose();
+    CUBLAS_CHECK(cublasSgeam(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N, dEdxi.d.rows(), dEdxi.d.cols(),
+            kSCALAR_ONE, dEdf.v, dEdf.d.rows(), kSCALAR_ONE, dEdxi.v, dEdxi.d.rows(), dEdxi.v, dEdxi.d.rows()));
+#endif
+#else
+  for(unsigned b = 0; b < xs[0]->d.bd; ++b)
+    dEdxi.batch_matrix(b) += dEdf.batch_matrix(b).transpose();
 #endif
 }
 
-void Reshape::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  // just point to the input memory and change dimensions
-  // dimensions are handled by forward_dim
+void Reshape::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+  // BUG will be created if just point to the input memory and change dimensions
+#if HAVE_CUDA
+  CUDA_CHECK(cudaMemcpy(fx.v, xs[0]->v, sizeof(cnn::real) * dim.size(), cudaMemcpyDeviceToDevice));
+#else
   fx.v = xs[0]->v;
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void Reshape::backward(const vector<const Tensor*>& xs,
+void Reshape::backward_impl(const vector<const Tensor*>& xs,
                             const Tensor& fx,
                             const Tensor& dEdf,
                             unsigned i,
                             Tensor& dEdxi) const {
-  const Tensor reshaped(dEdxi.d, dEdf.v);
+  const Tensor reshaped(dEdxi.d, dEdf.v, device_id);
+#ifdef HAVE_CUDA
+  gpu::vconstant_multiplyx_backward(reshaped.d.size(), 1.0, reshaped.v, dEdxi.v); 
+#else
   *dEdxi += *reshaped;
+#endif
 }
 
-void SumColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void SumColumns::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto x = **xs[0];
   auto y = *fx;
   if (xs.size() == 1) {
@@ -180,9 +294,10 @@ void SumColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   } else {
     throw std::invalid_argument("two inputs in SumColumns::forward!");
   }
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void SumColumns::backward(const vector<const Tensor*>& xs,
+void SumColumns::backward_impl(const vector<const Tensor*>& xs,
                           const Tensor& fx,
                           const Tensor& dEdf,
                           unsigned i,
@@ -194,7 +309,7 @@ void SumColumns::backward(const vector<const Tensor*>& xs,
   out.colwise() += (*dEdf).col(0);
 }
 
-void KMHNGram::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void KMHNGram::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto x = **xs[0];
   const int new_cols = x.cols() - n + 1;
   assert(new_cols > 0);
@@ -205,9 +320,10 @@ void KMHNGram::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
     for (unsigned k = 0; k < n; ++k)
       c_j += x.col(j + k);
   }
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void KMHNGram::backward(const vector<const Tensor*>& xs,
+void KMHNGram::backward_impl(const vector<const Tensor*>& xs,
                         const Tensor& fx,
                         const Tensor& dEdf,
                         unsigned i,
@@ -219,19 +335,19 @@ void KMHNGram::backward(const vector<const Tensor*>& xs,
 }
 
 //   Y_ij = A_ijk * B_k (+ C_ij)
-void InnerProduct3D_1D::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void InnerProduct3D_1D::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto b = **xs[1];
   auto y = *fx;
-  const int i = y.rows();
-  const int j = y.cols();
-  const int k = b.rows();
+  const unsigned i = y.rows();
+  const unsigned j = y.cols();
+  const unsigned k = b.rows();
   // the following reshape tensors into order 1 or 2 sizes
   // but they point to the same memory
-  Tensor ta({i*j,k}, xs[0]->v);
-  Tensor ty({i*j}, fx.v);
+  Tensor ta({i*j,k}, xs[0]->v, device_id);
+  Tensor ty({i*j}, fx.v, device_id);
   auto A = *ta;
   if (xs.size() == 3) {
-    Tensor tc({i*j}, xs[2]->v);
+      Tensor tc({ i*j }, xs[2]->v, device_id);
     auto c = *tc;
     // want to do A * b + c, but it triggers memory allocation
     (*ty) = c;
@@ -240,24 +356,25 @@ void InnerProduct3D_1D::forward(const vector<const Tensor*>& xs, Tensor& fx) con
     assert(xs.size() == 2);
     (*ty).noalias() = A * b;
   }
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void InnerProduct3D_1D::backward(const vector<const Tensor*>& xs,
+void InnerProduct3D_1D::backward_impl(const vector<const Tensor*>& xs,
                      const Tensor& fx,
                      const Tensor& dEdf,
                      unsigned i,
                      Tensor& dEdxi) const {
   auto b = **xs[1];
   auto y = *fx;
-  const int si = y.rows();
-  const int sj = y.cols();
-  const int sk = b.rows();
-  Tensor tdEdf({si*sj}, dEdf.v);
+  const unsigned si = y.rows();
+  const unsigned sj = y.cols();
+  const unsigned sk = b.rows();
+  Tensor tdEdf({ si*sj }, dEdf.v, device_id);
   if (i == 0) { // 3-tensor
-    Tensor tdEdxi({si*sj, sk}, dEdxi.v);
+      Tensor tdEdxi({ si*sj, sk }, dEdxi.v, device_id);
     (*tdEdxi).noalias() += *tdEdf * (**xs[1]).transpose();
   } else if (i == 1) { // vector
-    Tensor ta({si*sj,sk}, xs[0]->v);
+      Tensor ta({ si*sj, sk }, xs[0]->v, device_id);
     (*dEdxi).noalias() += (*ta).transpose() * *tdEdf;
   } else { // matrix bias
     *dEdxi += *dEdf;
@@ -265,87 +382,239 @@ void InnerProduct3D_1D::backward(const vector<const Tensor*>& xs,
 }
 
 size_t GaussianNoise::aux_storage_size() const {
-  return dim.size() * sizeof(float);
+  return dim.size() * sizeof(cnn::real);
 }
 
-void GaussianNoise::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  Tensor m(dim, (float*)aux_mem);
+void GaussianNoise::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("GaussianNoise not yet implemented for CUDA");
+#else
+    Tensor m(dim, (cnn::real*)aux_mem, xs[0]->m_device_id);
   TensorTools::RandomizeNormal(0, stddev, m);
   (*fx) = **xs[0] + *m;
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void GaussianNoise::backward(const vector<const Tensor*>& xs,
+void GaussianNoise::backward_impl(const vector<const Tensor*>& xs,
                      const Tensor& fx,
                      const Tensor& dEdf,
                      unsigned i,
                      Tensor& dEdxi) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("GaussianNoise not yet implemented for CUDA");
+#else
   *dEdxi += *dEdf;
-};
+#endif
+}
 
 size_t Dropout::aux_storage_size() const {
-  return dim.size() * sizeof(float);
+  return dim.size() * sizeof(cnn::real);
 }
 
-void Dropout::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  Tensor m(dim, (float*)aux_mem);
+void Dropout::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Dropout not yet implemented for CUDA");
+#else
+    Tensor m(dim, (cnn::real*)aux_mem, xs[0]->m_device_id);
   TensorTools::RandomBernoulli(m, (1.f-p), 1.f / (1.f-p));
-  (*fx) = (**xs[0]).cwiseProduct(*m);
+  fx.vec() = xs[0]->vec().cwiseProduct(m.vec());
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void Dropout::backward(const vector<const Tensor*>& xs,
+void Dropout::backward_impl(const vector<const Tensor*>& xs,
                        const Tensor& fx,
                        const Tensor& dEdf,
                        unsigned i,
                        Tensor& dEdxi) const {
-  Tensor m(dim, (float*)aux_mem);
-  (*dEdxi) += (*dEdf).cwiseProduct(*m);
-};
-
-void ConstantPlusX::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  auto x = **xs[0];
-  *fx = x.unaryExpr(FConstantPlus(c));
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Pow not yet implemented for CUDA");
+#else
+    Tensor m(dim, (cnn::real*)aux_mem, xs[0]->m_device_id);
+  dEdxi.vec() += dEdf.vec().cwiseProduct(m.vec());
+#endif
 }
 
-void ConstantPlusX::backward(const vector<const Tensor*>& xs,
+size_t BlockDropout::aux_storage_size() const {
+  // we just need to remember whether this entire block is turned on (1.0) or off (0.0)
+  return 1 * sizeof(cnn::real);
+}
+
+void BlockDropout::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("BlockDropout not yet implemented for CUDA");
+#else
+  bernoulli_distribution distribution(1.0 - dropout_probability);
+  cnn::real block_multiplier = distribution(*rndeng)? 1.0 : 0.0;
+  block_multiplier = 
+    dropout_probability == 1.0? 0.0 : block_multiplier / (1.0 - dropout_probability);
+  if (dropout_probability > 1.0 || dropout_probability < 0.0) {
+    assert(false && "dropout probability must be in the range [0, 1]");
+  }
+  *(static_cast<cnn::real*>(aux_mem)) = block_multiplier;
+  (*fx) = **xs[0] * block_multiplier;
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
+}
+
+void BlockDropout::backward_impl(const vector<const Tensor*>& xs,
+                            const Tensor& fx,
+                            const Tensor& dEdf,
+                            unsigned i,
+                            Tensor& dEdxi) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("BlockDropout not yet implemented for CUDA");
+#else
+  cnn::real block_multiplier = *(static_cast<cnn::real*>(aux_mem));
+  (*dEdxi) += (*dEdf) * block_multiplier;
+#endif
+}
+
+void ConstantPlusX::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("ConstantPlusX not yet implemented for CUDA");
+#else
+  auto x = **xs[0];
+  *fx = x.unaryExpr(const_add_op<cnn::real>(c));
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
+}
+
+void ConstantPlusX::backward_impl(const vector<const Tensor*>& xs,
                      const Tensor& fx,
                      const Tensor& dEdf,
                      unsigned i,
                      Tensor& dEdxi) const {
   *dEdxi += *dEdf;
-};
+}
 
-
-void ConstantMinusX::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void ConstantMinusX::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
 #if HAVE_CUDA
   gpu::vconstant_minusx(fx.d.size(), c, xs[0]->v, fx.v);
 #else
   auto x = **xs[0];
-  *fx = x.unaryExpr(FConstantMinus(c));
+  *fx = x.unaryExpr(const_minus_op<cnn::real>(c));
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void ConstantMinusX::backward(const vector<const Tensor*>& xs,
-                     const Tensor& fx,
-                     const Tensor& dEdf,
-                     unsigned i,
-                     Tensor& dEdxi) const {
+void ConstantMinusX::backward_impl(const vector<const Tensor*>& xs,
+                              const Tensor& fx,
+                              const Tensor& dEdf,
+                              unsigned i,
+                              Tensor& dEdxi) const {
 #if HAVE_CUDA
   gpu::vnegate_backward(dEdxi.d.size(), dEdf.v, dEdxi.v);
 #else
   *dEdxi -= *dEdf;
 #endif
-};
+}
 
-void Sum::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+template <class T>
+EIGEN_STRONG_INLINE cnn::real logsumexp(const T& x) {
+  using std::exp;
+  using std::log;
+  const cnn::real m = x.maxCoeff();
+#if 1
+  // these are equivalent, but this can use vectorized arithmetic
+  cnn::real z = x.unaryExpr(const_add_op<cnn::real>(-m)).array().exp().matrix().sum();
+#else
+  cnn::real z = 0;
+  for (unsigned i = 0; i < x.rows(); ++i)
+    z += exp(x(i,0) - m);
+#endif
+  return m + log(z);
+}
+
+// this i need to do something better, but this is a work-around
+// if this is too small, just make it bigger
+#define MAX_LOG_SUM_EXP 65536
+size_t LogSumExp::aux_storage_size() const {
+  return MAX_LOG_SUM_EXP * sizeof(cnn::real);
+}
+
+void LogSumExp::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   const unsigned num_args = xs.size();
   if (num_args == 1) {
     fx.v = xs[0]->v;
     return;
   }
+  for (unsigned i = 0; i < xs.size(); ++i)
+    static_cast<cnn::real*>(aux_mem)[i] = (**xs[i])(0,0);
+  Dim r = {(unsigned int)xs.size()};
+  Tensor v(r, static_cast<cnn::real*>(aux_mem), device_id);
+  fx.v[0] = logsumexp(*v);
+  fx.m_device_id = xs[0]->m_device_id;
+}
+
+void LogSumExp::backward_impl(const vector<const Tensor*>& xs,
+                     const Tensor& fx,
+                     const Tensor& dEdf,
+                     unsigned i,
+                     Tensor& dEdxi) const {
+  if (xs.size() == 0) {
+    *dEdxi += *dEdf;
+    return;
+  }
+  // df/dx_i = 1/{sum_j exp(x_j)} * exp(x_i)}
+  //         = 1/{exp f(x)} * exp(x_i)
+  //         = exp(x_i - f(x))
+  auto d = *dEdxi;
+  d.array() += (**xs[i] - *fx).array().exp() * (*dEdf).array();
+}
+
+void Reduce::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    const unsigned num_args = xs.size();
+    assert(num_args == 1 && fx.d.cols() == 1);
 #if HAVE_CUDA
-  TensorTools::Zero(fx);
-  for (unsigned i = 0; i < num_args; ++i)
-    CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), kSCALAR_ONE, xs[i]->v, 1, fx.v, 1));
+    l2_norm_reducer(xs[0]->d.size(), xs[0]->v, fx.v, false, false);
+#else
+    fx.v[0] = 0.0; 
+    for (int k = 0; k < xs[0]->d.size(); k++)
+        fx.v[0] += xs[0]->v[k]; 
+#endif
+    fx.m_device_id = xs[0]->m_device_id;
+    return;
+}
+
+void Reduce::backward_impl(const vector<const Tensor*>& xs,
+    const Tensor& fx,
+    const Tensor& dEdf,
+    unsigned i,
+    Tensor& dEdxi) const {
+#if HAVE_CUDA
+    l2_norm_reducer(1, dEdf.v, dEdxi.v, false, true);
+#else
+    for (int k = 0; k < dEdxi.d.size(); k++)
+        dEdxi.v[k] += dEdf.v[0];
+#endif
+}
+
+void Sum::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    const unsigned num_args = xs.size();
+    fx.m_device_id = xs[0]->m_device_id;
+    if (num_args == 1) {
+#if HAVE_CUDA
+        CUDA_CHECK(cudaMemcpy(fx.v, xs[0]->v, sizeof(cnn::real) * dim.size(), cudaMemcpyDeviceToDevice));
+#else
+        fx.v = xs[0]->v;
+#endif
+        return;
+    }
+#if HAVE_CUDA
+    TensorTools::Zero(fx);
+    for (unsigned i = 0; i < num_args; ++i)
+    {
+        if (sizeof(cnn::real) == sizeof(float))
+        {
+            CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(xs[i]->v), 1, reinterpret_cast<float*>(fx.v), 1));
+        }
+        else if (sizeof(cnn::real) == sizeof(double))
+        {
+            CUBLAS_CHECK(cublasDaxpy(cublas_handle, fx.d.size(), reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(xs[i]->v), 1, reinterpret_cast<double*>(fx.v), 1));
+        }
+    }
 #else
   auto res = *fx;
   const unsigned remainder = num_args % 4;
@@ -360,25 +629,88 @@ void Sum::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
 #endif
 }
 
-void Sum::backward(const vector<const Tensor*>& xs,
+void Sum::backward_impl(const vector<const Tensor*>& xs,
                      const Tensor& fx,
                      const Tensor& dEdf,
                      unsigned i,
                      Tensor& dEdxi) const {
 
 #if HAVE_CUDA
-  CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), kSCALAR_ONE, dEdf.v, 1, dEdxi.v, 1));
+    if (sizeof(cnn::real) == sizeof(float))
+        CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(dEdf.v), 1, reinterpret_cast<float*>(dEdxi.v), 1));
+    else if (sizeof(cnn::real) == sizeof(double))
+        CUBLAS_CHECK(cublasDaxpy(cublas_handle, fx.d.size(), reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(dEdf.v), 1, reinterpret_cast<double*>(dEdxi.v), 1));
 #else
   *dEdxi += *dEdf;
 #endif
-};
+}
 
-void Average::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  const unsigned num_args = xs.size();
-  if (num_args == 1) {
-    fx.v = xs[0]->v;
-    return;
+void SumBatches::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+  assert(xs.size() == 1);
+  unsigned num_args = xs[0]->d.bd;
+  fx.m_device_id = xs[0]->m_device_id;
+#if HAVE_CUDA
+  TensorTools::Zero(fx);
+  for (unsigned i = 0; i < num_args; ++i)
+  {
+      if (sizeof(cnn::real) == sizeof(float))
+          CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(xs[0]->v + i * xs[0]->d.batch_size()), 1, reinterpret_cast<float*>(fx.v), 1));
+      else if (sizeof(cnn::real) == sizeof(double))
+          CUBLAS_CHECK(cublasDaxpy(cublas_handle, fx.d.size(), reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(xs[0]->v + i * xs[0]->d.batch_size()), 1, reinterpret_cast<double*>(fx.v), 1));
   }
+#else
+  auto res = *fx;
+  const unsigned remainder = num_args % 4;
+  switch (remainder) {
+    case 0: res.setZero(); break;
+    case 1: res = xs[0]->batch_matrix(0); break;
+    case 2: res = xs[0]->batch_matrix(0) + xs[0]->batch_matrix(1); break;
+    case 3: res = xs[0]->batch_matrix(0) + xs[0]->batch_matrix(1) + xs[0]->batch_matrix(2); break;
+  }
+  for (unsigned i = remainder; i < num_args; i += 4)
+    res += xs[0]->batch_matrix(i) + xs[0]->batch_matrix(i+1) + xs[0]->batch_matrix(i+2) + xs[0]->batch_matrix(i+3);
+#endif
+}
+
+void SumBatches::backward_impl(const vector<const Tensor*>& xs,
+                     const Tensor& fx,
+                     const Tensor& dEdf,
+                     unsigned i,
+                     Tensor& dEdxi) const {
+  assert(i == 0);
+#if HAVE_CUDA
+  for (unsigned i = 0; i < dEdxi.d.bd; ++i)
+  {
+      if (sizeof(cnn::real) == sizeof(float))
+          CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(dEdf.v), 1, reinterpret_cast<float*>(dEdxi.v) + i * dEdxi.d.batch_size(), 1));
+      else if (sizeof(cnn::real) == sizeof(double))
+          CUBLAS_CHECK(cublasDaxpy(cublas_handle, fx.d.size(), reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(dEdf.v), 1, reinterpret_cast<double*>(dEdxi.v) + i * dEdxi.d.batch_size(), 1));
+  }
+#else
+  for (unsigned i = 0; i < dEdxi.d.bd; ++i)
+    dEdxi.batch_matrix(i) += *dEdf;
+#endif
+}
+
+size_t Average::aux_storage_size() const {
+    return sizeof(cnn::real);
+}
+
+void Average::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+  const unsigned num_args = xs.size();
+  fx.m_device_id = xs[0]->m_device_id;
+#if HAVE_CUDA
+  TensorTools::Zero(fx);
+  for (unsigned i = 0; i < num_args; ++i)
+  {
+      if (sizeof(cnn::real) == sizeof(float))
+          CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(xs[i]->v), 1, reinterpret_cast<float*>(fx.v), 1));
+      else if (sizeof(cnn::real) == sizeof(double))
+          CUBLAS_CHECK(cublasDaxpy(cublas_handle, fx.d.size(), reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(xs[i]->v), 1, reinterpret_cast<double*>(fx.v), 1));
+  }
+  gpu::vconstant_multiplyx(fx.d.size(), 1. / num_args, fx.v, fx.v);
+
+#else
   auto res = *fx;
   const unsigned remainder = num_args % 4;
   switch (remainder) {
@@ -390,26 +722,106 @@ void Average::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   for (unsigned i = remainder; i < num_args; i += 4)
     res += **xs[i] + **xs[i+1] + **xs[i+2] + **xs[i+3];
   res /= num_args;
+#endif
 }
 
-void Average::backward(const vector<const Tensor*>& xs,
+/**
+check if a 1/sz is allready computed and stored in GPU memory, 
+if so, use it. otherwise, need to compute it and put it in the back_off_mem
+*/
+#ifdef HAVE_CUDA
+cnn::real* pointer_to_one_over_size(int sz, cnn::real * back_off_mem)
+{
+    cnn::real *fdevptr = nullptr;
+    if (sz > MEM_PRE_ALLOCATED_CONSTS_NUMBERS + 1)
+    {
+        cnn::real nbr_samples = 1. / sz;
+        fdevptr = static_cast<cnn::real*>(back_off_mem);
+        CUDA_CHECK(cudaMemcpy(fdevptr, &nbr_samples, sizeof(cnn::real), cudaMemcpyHostToDevice));
+    }
+    else if (sz == 1)
+        fdevptr = kSCALAR_ONE;
+    else{
+        fdevptr = kSCALAR_ONE_OVER_INT[sz - 2];
+    }
+    return fdevptr;
+}
+#endif
+
+void Average::backward_impl(const vector<const Tensor*>& xs,
                      const Tensor& fx,
                      const Tensor& dEdf,
                      unsigned i,
                      Tensor& dEdxi) const {
-  *dEdxi += (*dEdf / xs.size());
+#if HAVE_CUDA
+    /// to speed-up, use pre-allocated const, instead of doing cpu to gpu memcpy of the const
+    cnn::real *fdevptr = pointer_to_one_over_size(xs.size(), static_cast<cnn::real*>(aux_mem));
+
+    if (sizeof(cnn::real) == sizeof(float))
+        CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), reinterpret_cast<float*>(fdevptr), reinterpret_cast<float*>(dEdf.v), 1, reinterpret_cast<float*>(dEdxi.v), 1));
+    else if (sizeof(cnn::real) == sizeof(double))
+        CUBLAS_CHECK(cublasDaxpy(cublas_handle, fx.d.size(), reinterpret_cast<double*>(fdevptr), reinterpret_cast<double*>(dEdf.v), 1, reinterpret_cast<double*>(dEdxi.v), 1));
+#else
+    *dEdxi += (*dEdf / xs.size());
+#endif
 };
 
-void Tanh::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void Sqrt::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    fx.m_device_id = xs[0]->m_device_id;
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Sqrt not yet implemented for CUDA");
+#else
+  auto x = **xs[0];
+  (*fx) = x.cwiseSqrt();
+#endif
+}
+
+void Sqrt::backward_impl(const vector<const Tensor*>& xs,
+                        const Tensor& fx,
+                        const Tensor& dEdf,
+                        unsigned i,
+                        Tensor& dEdxi) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Sqrt not yet implemented for CUDA");
+#else
+  *dEdxi += (*fx).binaryExpr(*dEdf, FSqrtBackward());
+#endif
+}
+
+/*void Erf::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Erf not yet implemented for CUDA");
+#else
+  auto x = **xs[0];
+  (*fx).array() = x.array().erf();
+#endif
+}
+
+void Erf::backward_impl(const vector<const Tensor*>& xs,
+                        const Tensor& fx,
+                        const Tensor& dEdf,
+                        unsigned i,
+                        Tensor& dEdxi) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Erf not yet implemented for CUDA");
+#else
+  auto x = **xs[0];
+  *dEdxi += x.binaryExpr(*dEdf, scalar_erf_backward_op<cnn::real>());
+#endif
+}
+*/
+
+void Tanh::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    fx.m_device_id = xs[0]->m_device_id;
 #if HAVE_CUDA
   gpu::vtanh(fx.d.size(), xs[0]->v, fx.v);
 #else
   auto x = **xs[0];
-  *fx = x.unaryExpr(FTanh());
+  (*fx).array() = x.array().tanh();
 #endif
 }
 
-void Tanh::backward(const vector<const Tensor*>& xs,
+void Tanh::backward_impl(const vector<const Tensor*>& xs,
                       const Tensor& fx,
                       const Tensor& dEdf,
                       unsigned i,
@@ -417,65 +829,158 @@ void Tanh::backward(const vector<const Tensor*>& xs,
 #if HAVE_CUDA
   gpu::vtanh_backward(fx.d.size(), fx.v, dEdf.v, dEdxi.v);
 #else
-  *dEdxi += (*fx).binaryExpr(*dEdf, FTanhBackward());
+  *dEdxi += (*fx).binaryExpr(*dEdf, scalar_tanh_backward_op<cnn::real>());
 #endif
 }
 
-void Square::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void Square::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    fx.m_device_id = xs[0]->m_device_id;
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Square not yet implemented for CUDA");
+#else
   auto x = **xs[0];
-  *fx = x.cwiseProduct(x);
+  (*fx).array() = x.array().square();
+#endif
 }
 
-void Square::backward(const vector<const Tensor*>& xs,
+void Square::backward_impl(const vector<const Tensor*>& xs,
                         const Tensor& fx,
                         const Tensor& dEdf,
                         unsigned i,
                         Tensor& dEdxi) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Square not yet implemented for CUDA");
+#else
   auto x = **xs[0];
   *dEdxi += (*dEdf).cwiseProduct(x) * 2;
-};
-
-void Exp::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  auto x = **xs[0];
-  *fx = x.array().exp();
+#endif
 }
 
-void Exp::backward(const vector<const Tensor*>& xs,
+void Cube::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    fx.m_device_id = xs[0]->m_device_id;
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Square not yet implemented for CUDA");
+#else
+  auto x = **xs[0];
+  (*fx).array() = x.array().cube();
+#endif
+}
+
+void Cube::backward_impl(const vector<const Tensor*>& xs,
+                    const Tensor& fx,
+                    const Tensor& dEdf,
+                    unsigned i,
+                    Tensor& dEdxi) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Cube not yet implemented for CUDA");
+#else
+  auto x = **xs[0];
+//  *dEdxi += (*dEdf).cwiseProduct(x.cwiseProduct(x)) * 3;
+  (*dEdxi).array() += (*dEdf).array() * x.array().square() * 3;
+#endif
+}
+
+void Exp::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    fx.m_device_id = xs[0]->m_device_id;
+#if HAVE_CUDA
+    gpu::vexp(xs[0]->d.size(), xs[0]->v, fx.v); 
+#else
+    auto x = **xs[0];
+    *fx = x.array().exp();
+#endif
+}
+
+void Exp::backward_impl(const vector<const Tensor*>& xs,
                      const Tensor& fx,
                      const Tensor& dEdf,
                      unsigned i,
                      Tensor& dEdxi) const {
-  *dEdxi += (*dEdf).cwiseProduct(*fx);
+#if HAVE_CUDA
+    gpu::vcwise_product_backward(xs[0]->d.size(), fx.v, dEdf.v, dEdxi.v);
+#else
+    *dEdxi += (*dEdf).cwiseProduct(*fx);
+#endif
 }
 
-void Log::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+/* eigen speciffunctions.h is not working 
+   TO-DO: need to figure out why
+void LogGamma::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("LogGamma not yet implemented for CUDA");
+#else
   auto x = **xs[0];
-  *fx = x.array().log();
+  *fx = x.array().lgamma();
+#endif
 }
 
-void Log::backward(const vector<const Tensor*>& xs,
+void LogGamma::backward_impl(const vector<const Tensor*>& xs,
                      const Tensor& fx,
                      const Tensor& dEdf,
                      unsigned i,
                      Tensor& dEdxi) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("LogGamma not yet implemented for CUDA");
+#else
+  auto x = **xs[0];
+  *dEdxi += x.binaryExpr(*dEdf, FLogGammaBackward());
+#endif
+}
+*/
+
+void Log::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    fx.m_device_id = xs[0]->m_device_id;
+#if HAVE_CUDA
+  gpu::vlog(fx.d.size(), xs[0]->v, fx.v);
+#else
+    auto x = **xs[0];
+    *fx = x.array().log();
+#endif
+}
+
+void Log::backward_impl(const vector<const Tensor*>& xs,
+                     const Tensor& fx,
+                     const Tensor& dEdf,
+                     unsigned i,
+                     Tensor& dEdxi) const {
+#if HAVE_CUDA
+  gpu::vlog_backward(fx.d.size(), xs[0]->v, dEdf.v, dEdxi.v);
+#else
   auto x = **xs[0];
   *dEdxi += (*dEdf).cwiseQuotient(x);
+#endif
 }
 
-void Concatenate::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void Concatenate::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   unsigned rows = 0;
+  fx.m_device_id = xs[0]->m_device_id;
   for (auto x : xs) rows += x->d.rows();
   // the following should use auxiliary memory
   src_row_indices.resize(xs.size());
   unsigned ind = 0;
+  unsigned cols = xs[0]->d.cols();
+  unsigned total_rows = 0;
+  for (auto x : xs) {
+      if (x->d.cols() != cols)
+      {
+          cerr << "columns need to the same for Concatenate " << endl;
+          abort();
+      }
+      total_rows += x->d.rows();
+  }
+  
   unsigned k = 0;
   for (auto x : xs) {
     src_row_indices[k++] = ind;
     auto & xi = *x;
     const unsigned rows = xi.d.rows();
 #if HAVE_CUDA
-    assert(xi.d.cols() == 1); // this can be relaxed to the same everywhere
-    CUDA_CHECK(cudaMemcpyAsync(&fx.v[ind], &xi.v[0], sizeof(float) * rows, cudaMemcpyDeviceToDevice));
+    /// relaxed to support multiple columns!
+    int stt = ind;
+    for (int k = 0; k < cols; k++) /// not efficient, unfortunately
+    {
+        CUDA_CHECK(cudaMemcpyAsync(&fx.v[stt], &xi.v[k * rows], sizeof(cnn::real) * rows, cudaMemcpyDeviceToDevice));
+        stt += total_rows;
+    }
 #else
     (*fx).middleRows(ind, rows) = *xi;
 #endif
@@ -483,64 +988,73 @@ void Concatenate::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   }
 }
 
-void Concatenate::backward(const vector<const Tensor*>& xs,
+void Concatenate::backward_impl(const vector<const Tensor*>& xs,
                              const Tensor& fx,
                              const Tensor& dEdf,
                              unsigned i,
                              Tensor& dEdxi) const {
   assert(i < src_row_indices.size());
+  const unsigned total_rows = dEdf.d.rows();
+  const unsigned cols = dEdxi.d.cols();
   const unsigned rows = dEdxi.d.rows();
   const unsigned begin = src_row_indices[i];
 #if HAVE_CUDA
-  CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows, kSCALAR_ONE, &dEdf.v[begin], 1, dEdxi.v, 1));
+  /// not efficient unfortunately
+  for (size_t k = 0; k < cols; k++)
+  {
+      if (sizeof(cnn::real) == sizeof(float))
+          CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows, reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(&dEdf.v[begin + k * total_rows]), 1, reinterpret_cast<float*>(&dEdxi.v[k * rows]), 1));
+      if (sizeof(cnn::real) == sizeof(double))
+          CUBLAS_CHECK(cublasDaxpy(cublas_handle, rows, reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(&dEdf.v[begin + k * total_rows]), 1, reinterpret_cast<double*>(&dEdxi.v[k * rows]), 1));
+  }
 #else
   *dEdxi += (*dEdf).middleRows(begin, rows);
 #endif
 }
 
-#define MAX_CONCAT_COLS_ARGS 512
-size_t ConcatenateColumns::aux_storage_size() const {
-  return MAX_CONCAT_COLS_ARGS * sizeof(unsigned);
-}
-
-void ConcatenateColumns::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void ConcatenateColumns::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   unsigned c = 0;
-  assert(xs.size() < MAX_CONCAT_COLS_ARGS);
+
+  fx.m_device_id = xs[0]->m_device_id;
+  acc_col_size.clear();
   for (unsigned i = 0; i < xs.size(); ++i) {
-    static_cast<unsigned*>(aux_mem)[i] = c;
-#if HAVE_CUDA
-    assert(xs[i]->d.cols() == 1);
-    // CUBLAS matricies are column-major, so just copy the memory
     auto & xi = *xs[i];
+    const unsigned cols = xi.d.cols();
+#if HAVE_CUDA
+    // CUBLAS matricies are column-major, so just copy the memory
     const unsigned rows = xi.d.rows();
-    CUDA_CHECK(cudaMemcpyAsync(&fx.v[i*rows], &xi.v[0], sizeof(float) * rows, cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpyAsync(&fx.v[rows*c], xi.v, sizeof(cnn::real) * rows * cols, cudaMemcpyDeviceToDevice));
 #else
-    auto xi = **xs[i];
-    int d = xi.cols();
-    (*fx).middleCols(c, d) = xi;
-    c += d;
+    (*fx).middleCols(c, cols) = **xs[i];
 #endif
+    c += cols;
+    acc_col_size.push_back(c);
   }
 }
 
-void ConcatenateColumns::backward(const vector<const Tensor*>& xs,
+void ConcatenateColumns::backward_impl(const vector<const Tensor*>& xs,
                                     const Tensor& fx,
                                     const Tensor& dEdf,
                                     unsigned i,
                                     Tensor& dEdxi) const {
+  unsigned* pp = static_cast<unsigned*>(aux_mem);
+  unsigned c = acc_col_size[i];
 #if HAVE_CUDA
   const unsigned rows = dEdxi.d.rows();
-  const unsigned begin = i*rows;
-  CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows, kSCALAR_ONE, &dEdf.v[begin], 1, dEdxi.v, 1));
+  const unsigned cols = dEdxi.d.cols();
+  const unsigned begin = (c - cols)*rows;
+  if (sizeof(cnn::real) == sizeof(float))
+      CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows * cols, reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(&dEdf.v[begin]), 1, reinterpret_cast<float*>(dEdxi.v), 1));
+  else if (sizeof(cnn::real) == sizeof(double))
+      CUBLAS_CHECK(cublasDaxpy(cublas_handle, rows * cols, reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(&dEdf.v[begin]), 1, reinterpret_cast<double*>(dEdxi.v), 1));
 #else
   auto dEdx = *dEdxi;
   int d = dEdx.cols();
-  int c = static_cast<unsigned*>(aux_mem)[i];
-  dEdx += (*dEdf).middleCols(c, d);
+  dEdx += (*dEdf).middleCols(c - d, d);
 #endif
 }
 
-void PairwiseRankLoss::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void PairwiseRankLoss::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
 #if HAVE_CUDA
   gpu::vpairwise_rank_loss(fx.d.size(), margin, xs[0]->v, xs[1]->v, fx.v);
 #else
@@ -548,9 +1062,10 @@ void PairwiseRankLoss::forward(const vector<const Tensor*>& xs, Tensor& fx) cons
   auto b = **xs[1];
   *fx = a.binaryExpr(b, FPairwiseRankLoss(margin));
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void PairwiseRankLoss::backward(const vector<const Tensor*>& xs,
+void PairwiseRankLoss::backward_impl(const vector<const Tensor*>& xs,
                                 const Tensor& fx,
                                 const Tensor& dEdf,
                                 unsigned i,
@@ -567,37 +1082,45 @@ void PairwiseRankLoss::backward(const vector<const Tensor*>& xs,
 }
 
 size_t Hinge::aux_storage_size() const {
-  return dim.size() * sizeof(float);
+  return dim.size() * sizeof(cnn::real);
 }
 
-void Hinge::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void Hinge::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 1);
+  fx.m_device_id = xs[0]->m_device_id;
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Hinge not yet implemented for CUDA");
+#else
   auto x = **xs[0];
   const unsigned rows = x.rows();
-  float y = 0;
-  float* eloss = static_cast<float*>(aux_mem);
-  const real mlystar = margin - x(*pelement);
+  cnn::real y = 0;
+  cnn::real* eloss = static_cast<cnn::real*>(aux_mem);
+  const cnn::real mlystar = margin - x(*pelement);
   for (unsigned i = 0; i < rows; ++i) {
     if (*pelement != i) {
-      eloss[i] = max(0.f, mlystar + x(i));
+      eloss[i] = max<cnn::real>(0.f, mlystar + x(i));
       y += eloss[i];
     } else {
       eloss[i] = 0;
     }
   }
   fx.v[0] = y;
+#endif
 }
 
-void Hinge::backward(const vector<const Tensor*>& xs,
+void Hinge::backward_impl(const vector<const Tensor*>& xs,
                        const Tensor& fx,
                        const Tensor& dEdf,
                        unsigned i,
                        Tensor& dEdxi) const {
   assert(i == 0);
+#ifdef HAVE_CUDA
+  throw std::runtime_error("Hinge not yet implemented for CUDA");
+#else
   if (fx.v[0]) { // there was some loss
-    const float d = dEdf.v[0];
+    const cnn::real d = dEdf.v[0];
     const unsigned rows = dEdxi.d.rows();
-    const float* eloss = static_cast<const float*>(aux_mem);
+    const cnn::real* eloss = static_cast<const cnn::real*>(aux_mem);
     unsigned tne = 0;  // total number of errors
     for (unsigned i = 0; i < rows; ++i)
       if (eloss[i] > 0) {
@@ -606,14 +1129,16 @@ void Hinge::backward(const vector<const Tensor*>& xs,
       }
     (*dEdxi)(*pelement) -= d * tne;
   }
+#endif
 }
 
-void Identity::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void Identity::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   fx.d = xs[0]->d;
   fx.v = xs[0]->v;
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void Identity::backward(const vector<const Tensor*>& xs,
+void Identity::backward_impl(const vector<const Tensor*>& xs,
                   const Tensor& fx,
                   const Tensor& dEdf,
                   unsigned i,
@@ -621,226 +1146,437 @@ void Identity::backward(const vector<const Tensor*>& xs,
   *dEdxi += *dEdf;
 }
 
-template <class T>
-EIGEN_STRONG_INLINE float logsumexp(const T& x) {
-  const float m = x.maxCoeff();
-  float z = 0;
-  for (unsigned i = 0; i < x.rows(); ++i)
-    z += CNN_EXPF(x(i,0) - m);
-  return m + logf(z);
-}
-
-void Softmax::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  if (xs[0]->d.cols() == 1) {
-#if HAVE_CUDA
-    gpu::softmax(xs[0]->d.size(), xs[0]->v, fx.v);
-#else
-    auto x = **xs[0];
-    *fx = x.unaryExpr(FSoftmaxNormalize(logsumexp(x)));
-#endif
-  } else {
-    cerr << "SoftmaxForward not implemented for multiple columns\n";
-    abort();
-  }
-}
-
-void Softmax::backward(const vector<const Tensor*>& xs,
-                            const Tensor& fx,
-                            const Tensor& dEdf,
-                            unsigned i,
-                            Tensor& dEdxi) const {
-#if HAVE_CUDA
-  gpu::softmax_backward(fx.d.size(), fx.v, dEdf.v, dEdxi.v);
-#else
-  float off_diag_sum = -(*fx).cwiseProduct(*dEdf).sum();
-  *dEdxi += (*fx).binaryExpr(*dEdf, FSoftmaxBackward(off_diag_sum));
-#endif
-}
-
-void PickNegLogSoftmax::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  if (xs[0]->d.cols() == 1) {
-    logz = (float*)fxs->allocate(sizeof(float));
-#if HAVE_CUDA
-    gpu::pnlsoftmax(xs[0]->d.size(), *pval, xs[0]->v, fx.v, logz);
-#else
-    auto x = **xs[0];
-    *logz = logsumexp(x);
-    fx.v[0] = *logz - x(*pval);
-#endif
-  } else {
-    cerr << "SoftmaxForward not implemented for multiple columns\n";
-    abort();
-  }
-}
-
-void PickNegLogSoftmax::backward(const vector<const Tensor*>& xs,
-                            const Tensor& fx,
-                            const Tensor& dEdf,
-                            unsigned i,
-                            Tensor& dEdxi) const {
-  if (xs[0]->d.cols() == 1) {
-    const auto elem = *pval;
-#if HAVE_CUDA
-    gpu::pnlsoftmax_backward(dEdxi.d.size(), elem, xs[0]->v, dEdf.v, logz, dEdxi.v);
-#else
-    const float err = dEdf.v[0];
-    auto x = **xs[0];
-    // logz is computed in the forward pass and cached
-    *dEdxi += x.unaryExpr(FNegLogSoftmaxBackward(*logz, err));
-    (*dEdxi)(elem) -= err;
-#endif
-  } else {
-    cerr << "PickNegLogSoftmax not implemented for multiple columns\n";
-    abort();
-  }
-}
-
-void LogSoftmax::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void MaxPooling1D::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+  cerr << "FIX IMPL5\n"; abort();
+  fx.m_device_id = xs[0]->m_device_id;
+#if 0
   assert(xs.size() == 1);
+  const Tensor& x = *xs.front();
+  const unsigned x_rows = x.rows();
+  assert(x.cols() == 1);
+  const unsigned fx_rows = x_rows / width;
+  ind.resize(fx_rows);
+  Tensor fx = Zero(Dim(fx_rows, 1));
+  for (unsigned i = 0; i < fx_rows; ++i) {
+    unsigned from = i * width;
+    unsigned to = from + width;
+    if (to > x_rows) to = x_rows;
+    cnn::real best = x(from, 0);
+    unsigned bestr = from;
+    for (unsigned r = from + 1; r < to; ++r) {
+      if (x(r, 0) > best) {
+        best = x(r,0);
+        bestr = r;
+      }
+    }
+    ind[i] = bestr;
+    fx(i, 0) = best;
+  }
+  return fx;
+#endif
+}
+
+void MaxPooling1D::backward_impl(const vector<const Tensor*>& xs,
+                  const Tensor& fx,
+                  const Tensor& dEdf,
+                  unsigned i,
+                  Tensor& dEdxi) const {
+  cerr << "FIX IMPL6\n"; abort();
+#if 0
+  const Tensor& x = *xs.front();
+  const unsigned x_rows = x.rows();
+  Tensor dEdx = Zero(Dim(x_rows, 1));
+  const unsigned fx_rows = x_rows / width;
+  assert(fx_rows == ind.size());
+  assert(fx_rows == dEdf.rows());
+  for (unsigned i = 0; i < fx_rows; ++i)
+    dEdx(ind[i], 0) = dEdf(i, 0);
+  return dEdx;
+#endif
+}
+
+void Softmax::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    assert(xs.size() == 1);
+    fx.m_device_id = xs[0]->m_device_id;
+#if HAVE_CUDA
+    gpu::softmax(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v);
+#else
+    softmax<cnn::real>(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v, true);
+#endif
+}
+
+void Softmax::backward_impl(const vector<const Tensor*>& xs,
+                            const Tensor& fx,
+                            const Tensor& dEdf,
+                            unsigned i,
+                            Tensor& dEdxi) const {
+#if HAVE_CUDA 
+    gpu::softmax_backward(fx.d.rows(), fx.d.cols(), fx.v, dEdf.v, dEdxi.v);
+#else
+    vector<cnn::real> off_diag_sum(fx.d.cols());
+    int rows = fx.d.rows();
+
+#pragma omp parallel for
+    for (int k = 0; k < fx.d.cols(); k++)
+    {
+        off_diag_sum[k] = 0;
+        for (unsigned r = 0; r < rows; r++)
+            off_diag_sum[k] += fx.v[IDX2C(r, k, rows)] * dEdf.v[IDX2C(r, k, rows)];
+
+        /// row-element-wise multiplication
+        for (unsigned r = 0; r < rows; r++)
+        {
+            cnn::real d = dEdf.v[IDX2C(r, k, rows)]; 
+            cnn::real t = fx.v[IDX2C(r, k, rows)];
+            dEdxi.v[IDX2C(r, k, rows)] += (d - off_diag_sum[k]) * t;
+        }
+    }
+#endif
+}
+
+/*
+void PickNegLogSoftmax::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   if (xs[0]->d.cols() == 1) {
-    auto x = **xs[0];
-    *fx = x.unaryExpr(FLogSoftmaxNormalize(logsumexp(x)));
+    logz = (cnn::real*)fxs->allocate(sizeof(cnn::real)*fx.d.batch_elems());
+#if HAVE_CUDA
+    if(pval) {
+      gpu::pnlsoftmax(xs[0]->d.size(), *pval, xs[0]->v, fx.v, logz);
+    } else {
+      // TODO: It'd be nice to have a kernel that did all batches at once
+      assert(pvals);
+      assert(pvals->size() == fx.d.batch_elems());
+      for(unsigned b = 0; b < pvals->size(); ++b)
+        gpu::pnlsoftmax(xs[0]->d.batch_size(), (*pvals)[b], xs[0]->batch_ptr(b), fx.v+b, logz+b);
+    }
+#else
+    if(pval) {
+      auto x = **xs[0];
+      *logz = logsumexp(x);
+      fx.v[0] = *logz - x(*pval);
+    } else {
+      assert(pvals);
+      assert(pvals->size() == fx.d.batch_elems());
+      for(unsigned b = 0; b < pvals->size(); ++b) {
+        auto x = xs[0]->batch_matrix(b);
+        logz[b] = logsumexp(x);
+        fx.v[b] = logz[b] - x((*pvals)[b]);
+      }
+    }
+#endif
   } else {
-    cerr << "LogSoftmaxForward not implemented for multiple columns\n";
-    abort();
+    throw std::runtime_error("PickNegLogSoftmax::forward not yet implemented for multiple columns");
   }
 }
 
-void LogSoftmax::backward(const vector<const Tensor*>& xs,
+there is probably a bug in using batch implementation
+when runing on rnnlm2_cls, using pickenglogsoftmax actually get 0 PPL at epoch 4 and then crash, and that is impossible. 
+when switching back to logsoftmax and do pick operation later, the results look reasonable with training PPL decreased to 40~50 at epoch 9. 
+*/
+/** comment the following out
+void PickNegLogSoftmax::backward_impl(const vector<const Tensor*>& xs,
+                            const Tensor& fx,
+                            const Tensor& dEdf,
+                            unsigned i,
+                            Tensor& dEdxi) const {
+  if (xs[0]->d.cols() == 1) {
+#if HAVE_CUDA
+    if(pval) {
+      const auto elem = *pval;
+      gpu::pnlsoftmax_backward(dEdxi.d.size(), elem, xs[0]->v, dEdf.v, logz, dEdxi.v);
+    } else {
+      assert(pvals);
+      assert(pvals->size() == fx.d.batch_elems()); 
+      // TODO: Again, it would be nice to do this with a single kernel
+      for(unsigned b = 0; b < pvals->size(); ++b) {
+        const auto elem = (*pvals)[b];
+        gpu::pnlsoftmax_backward(dEdxi.d.batch_size(), elem, xs[0]->batch_ptr(b), dEdf.v+b, logz+b, dEdxi.batch_ptr(b));
+      }
+    }
+#else
+    if(pval) {
+      const auto elem = *pval;
+      const cnn::real err = dEdf.v[0];
+      auto x = **xs[0];
+      // logz is computed in the forward pass and cached
+      *dEdxi += x.unaryExpr(FNegLogSoftmaxBackward(*logz, err));
+      //*dEdxi += x.unaryExpr(scalar_nlsoftmax_backward_op<cnn::real>(*logz, err));
+      (*dEdxi)(elem) -= err;
+    } else {
+      assert(pvals);
+      assert(pvals->size() == fx.d.batch_elems()); 
+      for(unsigned b = 0; b < pvals->size(); ++b) {
+        const auto elem = (*pvals)[b];
+        const cnn::real err = dEdf.v[b];
+        auto x = xs[0]->batch_matrix(b);
+        auto dEdxi_mat = dEdxi.batch_matrix(b);
+        dEdxi_mat += x.unaryExpr(FNegLogSoftmaxBackward(logz[b], err));
+        //dEdxi_mat += x.unaryExpr(scalar_nlsoftmax_backward_op<cnn::real>(logz[b], err));
+        dEdxi_mat(elem) -= err;
+      }
+    }
+#endif
+  } else {
+    throw std::runtime_error("PickNegLogSoftmax::backward not yet implemented for multiple columns");
+  }
+}
+*/
+
+size_t LogSoftmax::aux_storage_size() const {
+    /// save space for softmax and a vector of nutt 
+    int sz = dim.size() + dim.cols();
+    return sz* sizeof(cnn::real);
+}
+
+void LogSoftmax::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#if HAVE_CUDA
+  gpu::logsoftmax(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v);
+#else
+  logsoftmax<cnn::real>(xs[0]->d.rows(), xs[0]->d.cols(), xs[0]->v, fx.v, true);
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
+}
+
+void LogSoftmax::backward_impl(const vector<const Tensor*>& xs,
                           const Tensor& fx,
                           const Tensor& dEdf,
                           unsigned i,
-                          Tensor& dEdxi) const {
-  if (xs[0]->d.cols() == 1) {
-    float off_diag_sum = -(*fx).binaryExpr(*dEdf, FWeightedError()).sum();
-    *dEdxi += (*fx).binaryExpr(*dEdf, FLogSoftmaxBackward(off_diag_sum));
-  } else {
-    cerr << "LogSoftmaxBackward not implemented for multiple columns\n";
-    abort();
-  }
+                          Tensor& dEdxi) const 
+{
+    unsigned rows = dEdf.d.rows();
+    unsigned cols = dEdf.d.cols();
+    Tensor softmax(fx.d, static_cast<cnn::real*>(aux_mem)+cols, device_id);
+    cnn::real* off_diag_sum = static_cast<cnn::real*>(aux_mem);
+
+#if HAVE_CUDA
+    gpu::logsoftmax_backward(xs[0]->d.rows(), xs[0]->d.cols(), fx.v, dEdf.v, dEdxi.v, softmax.v, off_diag_sum);
+#else
+
+    (*softmax).array() = (*fx).array().exp();
+
+#pragma omp parallel for
+    for (int k = 0; k < cols; k++)
+    {
+        off_diag_sum[k] = 0;
+        for (unsigned r = 0; r < rows; r ++)
+            off_diag_sum[k] += dEdf.v[IDX2C(r,k, rows)];
+
+        /// row-element-wise multiplication
+        for (unsigned r = 0; r < rows; r++)
+        {
+            softmax.v[IDX2C(r, k, rows)] *= off_diag_sum[k];
+            dEdxi.v[IDX2C(r, k, rows)] += (dEdf.v[IDX2C(r, k, rows)] - softmax.v[IDX2C(r, k, rows)]);
+        }
+    }
+#endif
 }
 
 template <class T>
-EIGEN_STRONG_INLINE real logsumexp(const T& x, const vector<unsigned>& denom) {
-  real m = x(denom[0],0);
+EIGEN_STRONG_INLINE cnn::real logsumexp(const T& x, const vector<unsigned>& denom) {
+  cnn::real m = x(denom[0],0);
   for (auto i : denom) {
-    real r = x(i,0);
+    cnn::real r = x(i,0);
     if (r > m) m = r;
   }
-  real z = 0;
+  cnn::real z = 0;
   for (auto i : denom)
-    z += CNN_EXPF(x(i,0) - m);
+    z += expf(x(i,0) - m);
   return m + logf(z);
 }
 
-void RestrictedLogSoftmax::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void RestrictedLogSoftmax::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("RestrictedLogSoftmax not yet implemented for CUDA");
+#else
   // TODO create auxiliary mask with -infty's
   // and do usual LogSoftmax stuff
   assert(xs.size() == 1);
   assert(denom.size() > 0);
   auto x = **xs[0];
   assert(x.cols() == 1);
-  const real logz = logsumexp(x, denom);
-  TensorTools::Constant(fx, -numeric_limits<real>::infinity());
+  const cnn::real logz = logsumexp(x, denom);
+  TensorTools::Constant(fx, -numeric_limits<cnn::real>::infinity());
   for (auto i : denom)
     (*fx)(i,0) = x(i,0) - logz;
   if (denom.size() == 1) (*fx)(denom.front(), 0) = 0;
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void RestrictedLogSoftmax::backward(const vector<const Tensor*>& xs,
+void RestrictedLogSoftmax::backward_impl(const vector<const Tensor*>& xs,
                             const Tensor& fx,
                             const Tensor& dEdf,
                             unsigned i,
                             Tensor& dEdxi) const {
   assert(i == 0);
-  float z = 0;
+#ifdef HAVE_CUDA
+  throw std::runtime_error("RestrictedLogSoftmax not yet implemented for CUDA");
+#else
+  cnn::real z = 0;
   for (auto ind : denom)
     z += (*dEdf)(ind, 0);
   for (auto ind : denom)
-    (*dEdxi)(ind, 0) += (*dEdf)(ind, 0) - CNN_EXPF((*fx)(ind, 0)) * z;
+    (*dEdxi)(ind, 0) += (*dEdf)(ind, 0) - expf((*fx)(ind, 0)) * z;
+#endif
 }
 
 // x_1 is a vector
 // y = (x_1)_{*pval}
-void PickElement::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void PickElement::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 1);
+#if HAVE_CUDA
+  CUDA_CHECK(cudaMemcpyAsync(&fx.v[0], &xs[0]->v[*pval], sizeof(cnn::real), cudaMemcpyDeviceToDevice));
+#else
   auto x = **xs[0];
   fx.v[0] = x(*pval);
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
 // derivative is 0 in all dimensions except 1 for the selected element
-void PickElement::backward(const vector<const Tensor*>& xs,
+void PickElement::backward_impl(const vector<const Tensor*>& xs,
                     const Tensor& fx,
                     const Tensor& dEdf,
                     unsigned i,
                     Tensor& dEdxi) const {
   assert(i == 0);
+#if HAVE_CUDA
+  if (sizeof(cnn::real) == sizeof(float))
+      CUBLAS_CHECK(cublasSaxpy(cublas_handle, 1, reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(dEdf.v), 1, reinterpret_cast<float*>(&dEdxi.v[*pval]), 1));
+  else if (sizeof(cnn::real) == sizeof(double))
+      CUBLAS_CHECK(cublasDaxpy(cublas_handle, 1, reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(dEdf.v), 1, reinterpret_cast<double*>(&dEdxi.v[*pval]), 1));
+#else
   (*dEdxi)(*pval) += dEdf.v[0];
+#endif
 }
 
 // x_1 is a vector
 // y = (x_1)[start:end]
 // slice of vector from index start (inclusive) to index end (exclusive)
-void PickRange::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  assert(xs.size() == 1);
-  auto x = **xs[0];
-  assert(x.cols() == 1);
-  assert(start >= 0);
-  assert(end <= x.rows());
-  assert(start < end);
-  assert(int(fx.d.rows()) == int(end-start));
+void PickRange::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    assert(xs.size() == 1);
+    auto x = **xs[0];
+    assert(x.cols() == 1);
+    assert(start >= 0);
+    assert(end <= x.rows());
+    assert(start < end);
+    assert(int(fx.d.rows()) == int(end - start));
 #if HAVE_CUDA
-  CUDA_CHECK(cudaMemcpyAsync(&fx.v[0], &xs[0]->v[start], sizeof(float) * (end-start), cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(cudaMemcpyAsync(&fx.v[0], &xs[0]->v[start], sizeof(cnn::real) * (end-start), cudaMemcpyDeviceToDevice));
 #else
-  (*fx) = x.block(start, 0, end-start, 1);
+    (*fx) = x.block(start, 0, end - start, 1);
 #endif
+    fx.m_device_id = xs[0]->m_device_id;
 }
 
 // derivative is 0 in all dimensions except the slice range
-void PickRange::backward(const vector<const Tensor*>& xs,
-                    const Tensor& fx,
-                    const Tensor& dEdf,
-                    unsigned i,
-                    Tensor& dEdxi) const {
-  assert(i == 0);
-  assert(int(dEdf.d.rows()) == int(end-start));
-  assert(dEdf.d.cols() == 1);
+void PickRange::backward_impl(const vector<const Tensor*>& xs,
+    const Tensor& fx,
+    const Tensor& dEdf,
+    unsigned i,
+    Tensor& dEdxi) const {
+    assert(i == 0);
+    assert(int(dEdf.d.rows()) == int(end - start));
+    assert(dEdf.d.cols() == 1);
 #if HAVE_CUDA
-  CUBLAS_CHECK(cublasSaxpy(cublas_handle, end-start, kSCALAR_ONE, dEdf.v, 1, &dEdxi.v[start], 1));
+    if (sizeof(cnn::real) == sizeof(float))
+        CUBLAS_CHECK(cublasSaxpy(cublas_handle, end - start, reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(dEdf.v), 1, reinterpret_cast<float*>(&dEdxi.v[start]), 1));
+    else if (sizeof(cnn::real) == sizeof(double))
+        CUBLAS_CHECK(cublasDaxpy(cublas_handle, end - start, reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(dEdf.v), 1, reinterpret_cast<double*>(&dEdxi.v[start]), 1));
 #else
-  (*dEdxi).block(start, 0, end-start, 1) += (*dEdf);
+    (*dEdxi).block(start, 0, end - start, 1) += (*dEdf);
+#endif
+}
+
+// x_1 is a matrix
+// y = x_1[start_column: start_column + rows * (end_column - start_column)]
+// (start_column inclusive, end_column exclusive)
+void ColumnSlices::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    assert(xs.size() == 1);
+    auto x = **xs[0];
+    assert(x.cols() >= 1);
+    assert(start_column >= 0);
+    assert(rows <= x.rows());
+    assert(start_column < end_column);
+    assert(int(fx.d.rows()) == int(rows));
+#if HAVE_CUDA
+    int start = start_column*rows;
+    CUDA_CHECK(cudaMemcpyAsync(&fx.v[0], &xs[0]->v[start], sizeof(cnn::real) * rows * (end_column - start_column), cudaMemcpyDeviceToDevice));
+#else
+    (*fx) = x.block(0, start_column, rows, end_column - start_column);
+#endif
+    fx.m_device_id = xs[0]->m_device_id;
+}
+
+// derivative is 0 in all dimensions except the slice range
+void ColumnSlices::backward_impl(const vector<const Tensor*>& xs,
+    const Tensor& fx,
+    const Tensor& dEdf,
+    unsigned i,
+    Tensor& dEdxi) const {
+    assert(i == 0);
+    assert(int(dEdf.d.rows()) == int(rows));
+    assert(dEdf.d.cols() == end_column - start_column);
+#if HAVE_CUDA
+    if (sizeof(cnn::real) == sizeof(float))
+        CUBLAS_CHECK(cublasSaxpy(cublas_handle, rows * (end_column - start_column), reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(dEdf.v), 1, reinterpret_cast<float*>(&dEdxi.v[rows * start_column]), 1));
+    else if (sizeof(cnn::real) == sizeof(double))
+        CUBLAS_CHECK(cublasDaxpy(cublas_handle, rows * (end_column - start_column), reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(dEdf.v), 1, reinterpret_cast<double*>(&dEdxi.v[rows * start_column]), 1));
+#else
+    (*dEdxi).block(0, start_column, rows, end_column -start_column) += (*dEdf);
 #endif
 }
 
 #if HAVE_CUDA
-inline void CUDAMatrixMultiply(const Tensor& l, const Tensor& r, Tensor& y, const float* acc_scalar) {
-  if (r.d.ndims() == 1 || r.d.cols() == 1) {
-    CUBLAS_CHECK(cublasSgemv(cublas_handle, CUBLAS_OP_N, l.d.rows(), l.d.cols(),
-               kSCALAR_ONE, l.v, l.d.rows(), r.v, 1, acc_scalar, y.v, 1));
-  } else {
-    CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
+inline void CUDAMatrixMultiply(const Tensor& l, const Tensor& r, Tensor& y, const cnn::real* acc_scalar) {
+  // if (r.d.ndims() == 1 || r.d.cols() == 1) {
+  //   CUBLAS_CHECK(cublasSgemv(cublas_handle, CUBLAS_OP_N, l.d.rows(), l.d.cols(),
+  //              kSCALAR_ONE, l.v, l.d.rows(), r.v, 1, acc_scalar, y.v, 1));
+  // } else {
+  //   CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
+  //         y.d.rows(), y.d.cols(), l.d.cols(),
+  //         kSCALAR_ONE,
+  //         l.v, l.d.rows(),
+  //         r.v, r.d.rows(),
+  //         acc_scalar, y.v, y.d.rows()));
+  // }
+    // If the left side has one batch, multiply by columns
+    // [x, z, b] = [x, y] * [y, z, b]
+    // -> [x, z*b] = [x, y], [y, z*b]
+#ifdef USE_DOUBLE
+   CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
+          y.d.rows(), y.d.cols(), l.d.cols(),
+          kSCALAR_ONE,
+          l.v, l.d.rows(),
+          r.v, r.d.rows(),
+          acc_scalar,
+          y.v, y.d.rows()));
+#else
+   CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_N,
           y.d.rows(), y.d.cols(), l.d.cols(),
           kSCALAR_ONE,
           l.v, l.d.rows(),
           r.v, r.d.rows(),
           acc_scalar, y.v, y.d.rows()));
-  }
+#endif
 }
 #endif
 
-void MatrixMultiply::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void MatrixMultiply::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 2);
 #if HAVE_CUDA
   // fx = 0*fx + xs[0] * xs[1]
   CUDAMatrixMultiply(*xs[0], *xs[1], fx, kSCALAR_ZERO);
 #else
-  auto x1 = **xs[0];
-  auto x2 = **xs[1];
-  *fx = x1 * x2;
+  assert(fx.d.bd == 1); 
+  // If the left side has one batch, multiply by columns
+  // [x, z, b] = [x, y] * [y, z, b]
+  // -> [x, z*b] = [x, y], [y, z*b]
+  fx.colbatch_matrix().noalias() = **xs[0] * xs[1]->colbatch_matrix();
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void MatrixMultiply::backward(const vector<const Tensor*>& xs,
+void MatrixMultiply::backward_impl(const vector<const Tensor*>& xs,
                                 const Tensor& fx,
                                 const Tensor& dEdf,
                                 unsigned i,
@@ -848,42 +1584,69 @@ void MatrixMultiply::backward(const vector<const Tensor*>& xs,
   assert(i < 2);
 #if HAVE_CUDA
   if (i == 0) {
-    CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
+#ifdef USE_DOUBLE
+      CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
+        dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
+        kSCALAR_ONE,
+        dEdf.v, dEdf.d.rows(),
+        xs[1]->v, xs[1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
+#else
+      CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
           dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
           kSCALAR_ONE,
           dEdf.v, dEdf.d.rows(),
           xs[1]->v, xs[1]->d.rows(),
           kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
-  } else {
+#endif
+  }
+  else {
+#ifdef USE_DOUBLE
+    CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
+        dEdxi.d.rows(), dEdxi.d.cols(), xs[0]->d.rows(),
+        kSCALAR_ONE,
+        xs[0]->v, xs[0]->d.rows(),
+        dEdf.v, dEdf.d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
+#else
     CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
-          dEdxi.d.rows(), dEdxi.d.cols(), xs[0]->d.rows(),
-          kSCALAR_ONE,
-          xs[0]->v, xs[0]->d.rows(),
-          dEdf.v, xs[0]->d.rows(),
-          kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
+        dEdxi.d.rows(), dEdxi.d.cols(), xs[0]->d.rows(),
+        kSCALAR_ONE,
+        xs[0]->v, xs[0]->d.rows(),
+        dEdf.v, dEdf.d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
+#endif
   }
 #else
   if (i == 0) {
-    (*dEdxi).noalias() += *dEdf * (**xs[1]).transpose();
+    dEdxi.colbatch_matrix().noalias() += dEdf.colbatch_matrix() * xs[1]->colbatch_matrix().transpose();
   } else {
-    (*dEdxi).noalias() += (**xs[0]).transpose() * *dEdf;
+    dEdxi.colbatch_matrix().noalias() += xs[0]->colbatch_matrix().transpose() * dEdf.colbatch_matrix();
   }
 #endif
 }
 
-void CwiseQuotient::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void CwiseQuotient::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 2);
+#ifdef HAVE_CUDA
+  throw std::runtime_error("CwiseQuotient::forward not yet implemented for CUDA");
+#else
   auto x1 = **xs[0];
   auto x2 = **xs[1];
   *fx = x1.cwiseQuotient(x2);
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void CwiseQuotient::backward(const vector<const Tensor*>& xs,
+void CwiseQuotient::backward_impl(const vector<const Tensor*>& xs,
                              const Tensor& fx,
                              const Tensor& dEdf,
                              unsigned i,
                              Tensor& dEdxi) const {
   assert(i < 2);
+#ifdef HAVE_CUDA
+  throw std::runtime_error("CwiseQuotient::backward not yet implemented for CUDA");
+#else
   if (i == 0) {
     auto x2 = **xs[1];
     *dEdxi += (*dEdf).cwiseQuotient(x2);
@@ -892,9 +1655,10 @@ void CwiseQuotient::backward(const vector<const Tensor*>& xs,
     auto x2 = **xs[1];
     *dEdxi -= (*dEdf).cwiseQuotient(x2.cwiseProduct(x2)).cwiseProduct(x1);
   }
+#endif
 }
 
-void CwiseMultiply::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void CwiseMultiply::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 2);
 #if HAVE_CUDA
   gpu::vcwise_product(fx.d.size(), xs[0]->v, xs[1]->v, fx.v);
@@ -903,9 +1667,10 @@ void CwiseMultiply::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto x2 = **xs[1];
   *fx = x1.cwiseProduct(x2);
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void CwiseMultiply::backward(const vector<const Tensor*>& xs,
+void CwiseMultiply::backward_impl(const vector<const Tensor*>& xs,
                              const Tensor& fx,
                              const Tensor& dEdf,
                              unsigned i,
@@ -928,26 +1693,32 @@ void CwiseMultiply::backward(const vector<const Tensor*>& xs,
   }
 }
 
-void AffineTransform::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void AffineTransform::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() % 2 == 1);
-  if (xs.size() == 1) {
-    fx.v = xs[0]->v;
-    return;
-  } else {
 #if HAVE_CUDA
-    for (unsigned i = 1; i < xs.size(); i += 2)
-      // fx = (acc_sclar)*fx + xs[0] * xs[1]
-      CUDAMatrixMultiply(*xs[i], *xs[i + 1], fx, (i == 1) ? kSCALAR_ZERO : kSCALAR_ONE);
-    CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), kSCALAR_ONE, xs[0]->v, 1, fx.v, 1));
+  for (unsigned i = 1; i < xs.size(); i += 2)
+    // fx = (acc_sclar)*fx + xs[0] * xs[1]
+    CUDAMatrixMultiply(*xs[i], *xs[i + 1], fx, (i == 1) ? kSCALAR_ZERO : kSCALAR_ONE);
+  assert(fx.d.bd == 1);
+  assert(xs[0]->d.bd == 1);
+  if (sizeof(cnn::real) == sizeof(float))
+      CUBLAS_CHECK(cublasSaxpy(cublas_handle, fx.d.size(), reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(xs[0]->v), 1, reinterpret_cast<float*>(fx.v), 1));
+  else if (sizeof(cnn::real) == sizeof(double))
+      CUBLAS_CHECK(cublasDaxpy(cublas_handle, fx.d.size(), reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(xs[0]->v), 1, reinterpret_cast<double*>(fx.v), 1));
 #else
-    (*fx) = **xs[0];
-    for (unsigned i = 1; i < xs.size(); i += 2)
-      (*fx).noalias() += (**xs[i]) * (**xs[i + 1]);
-#endif
+  assert(fx.d.bd == 1);
+  // Add, using broadcasting or not
+  fx.colbatch_matrix().noalias() = xs[0]->colbatch_matrix();
+  
+  // Multiply
+  for (unsigned i = 1; i < xs.size(); i += 2) {
+    fx.colbatch_matrix().noalias() += **xs[i] * xs[i+1]->colbatch_matrix();
   }
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void AffineTransform::backward(const vector<const Tensor*>& xs,
+void AffineTransform::backward_impl(const vector<const Tensor*>& xs,
                                const Tensor& fx,
                                const Tensor& dEdf,
                                unsigned i,
@@ -955,36 +1726,59 @@ void AffineTransform::backward(const vector<const Tensor*>& xs,
   assert(i < xs.size());
   if (i == 0) { // bias term
 #if HAVE_CUDA
-    CUBLAS_CHECK(cublasSaxpy(cublas_handle, dEdxi.d.size(), kSCALAR_ONE, dEdf.v, 1, dEdxi.v, 1));
+    if (sizeof(cnn::real) == sizeof(float))
+        CUBLAS_CHECK(cublasSaxpy(cublas_handle, dEdxi.d.size(), reinterpret_cast<float*>(kSCALAR_ONE), reinterpret_cast<float*>(dEdf.v), 1, reinterpret_cast<float*>(dEdxi.v), 1));
+    else if (sizeof(cnn::real) == sizeof(double))
+        CUBLAS_CHECK(cublasDaxpy(cublas_handle, dEdxi.d.size(), reinterpret_cast<double*>(kSCALAR_ONE), reinterpret_cast<double*>(dEdf.v), 1, reinterpret_cast<double*>(dEdxi.v), 1));
 #else
-    *dEdxi += *dEdf;
+    assert(fx.d.bd == 1);
+    // Add, using broadcasting or not
+    dEdxi.colbatch_matrix().noalias() += dEdf.colbatch_matrix();
 #endif
   } else if (i % 2 == 1) { // left argument of matrix multiply
 #if HAVE_CUDA
-    CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
-          dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
-          kSCALAR_ONE,
-          dEdf.v, dEdf.d.rows(),
-          xs[i+1]->v, xs[i+1]->d.rows(),
-          kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
+#ifdef USE_DOUBLE
+    CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
+        dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
+        kSCALAR_ONE,
+        dEdf.v, dEdf.d.rows(),
+        xs[i + 1]->v, xs[i + 1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #else
-    (*dEdxi).noalias() += *dEdf * (**xs[i+1]).transpose();
+    CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_N, CUBLAS_OP_T,
+        dEdxi.d.rows(), dEdxi.d.cols(), dEdf.d.cols(),
+        kSCALAR_ONE,
+        dEdf.v, dEdf.d.rows(),
+        xs[i + 1]->v, xs[i + 1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
+#endif
+#else
+    dEdxi.colbatch_matrix().noalias() += dEdf.colbatch_matrix() * xs[i+1]->colbatch_matrix().transpose();
 #endif
   } else {  // right argument of matrix multiply
 #if HAVE_CUDA
-    CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
-          dEdxi.d.rows(), dEdxi.d.cols(), xs[i-1]->d.rows(),
-          kSCALAR_ONE,
-          xs[i-1]->v, xs[i-1]->d.rows(),
-          dEdf.v, xs[i-1]->d.rows(),
-          kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
+#ifdef USE_DOUBLE
+    CUBLAS_CHECK(cublasDgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
+        dEdxi.d.rows(), dEdxi.d.cols(), xs[i - 1]->d.rows(),
+        kSCALAR_ONE,
+        xs[i - 1]->v, xs[i - 1]->d.rows(),
+        dEdf.v, xs[i - 1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
 #else
-    (*dEdxi).noalias() += (**xs[i-1]).transpose() * *dEdf;
+    CUBLAS_CHECK(cublasSgemm(cublas_handle, CUBLAS_OP_T, CUBLAS_OP_N,
+        dEdxi.d.rows(), dEdxi.d.cols(), xs[i - 1]->d.rows(),
+        kSCALAR_ONE,
+        xs[i - 1]->v, xs[i - 1]->d.rows(),
+        dEdf.v, xs[i - 1]->d.rows(),
+        kSCALAR_ONE, dEdxi.v, dEdxi.d.rows()));
+#endif
+#else
+    dEdxi.colbatch_matrix().noalias() += (**xs[i-1]).transpose() * dEdf.colbatch_matrix();
 #endif
   }
 }
 
-void Negate::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void Negate::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 1);
 #if HAVE_CUDA
   gpu::vnegate(fx.d.size(), xs[0]->v, fx.v);
@@ -992,9 +1786,10 @@ void Negate::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto x = **xs[0];
   *fx = -x;
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void Negate::backward(const vector<const Tensor*>& xs,
+void Negate::backward_impl(const vector<const Tensor*>& xs,
                       const Tensor& fx,
                       const Tensor& dEdf,
                       unsigned i,
@@ -1007,7 +1802,7 @@ void Negate::backward(const vector<const Tensor*>& xs,
 #endif
 }
 
-void Rectify::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void Rectify::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 1);
 #if HAVE_CUDA
   gpu::vrelu(fx.d.size(), xs[0]->v, fx.v);
@@ -1015,9 +1810,10 @@ void Rectify::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
   auto x = **xs[0];
   *fx = x.unaryExpr(FRectify());
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void Rectify::backward(const vector<const Tensor*>& xs,
+void Rectify::backward_impl(const vector<const Tensor*>& xs,
                          const Tensor& fx,
                          const Tensor& dEdf,
                          unsigned i,
@@ -1029,66 +1825,116 @@ void Rectify::backward(const vector<const Tensor*>& xs,
 #endif
 }
 
-void HuberDistance::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void ExponentialLinearUnits::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+    assert(xs.size() == 1);
+#if HAVE_CUDA
+    gpu::vexponential_linear_units(fx.d.size(), xs[0]->v, scale, fx.v);
+#else
+    auto x = **xs[0];
+    *fx = x.unaryExpr(FExponentialLinearUnits(scale));
+#endif
+    fx.m_device_id = xs[0]->m_device_id;
+}
+
+void ExponentialLinearUnits::backward_impl(const vector<const Tensor*>& xs,
+    const Tensor& fx,
+    const Tensor& dEdf,
+    unsigned i,
+    Tensor& dEdxi) const {
+#if HAVE_CUDA
+    gpu::vexponential_linear_units_backward(fx.d.size(), fx.v, dEdf.v, scale, dEdxi.v);
+#else
+    *dEdxi += (*fx).binaryExpr(*dEdf, FExponentialLinearUnitsBackward(scale));
+#endif
+}
+
+void HuberDistance::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 2);
+#ifdef HAVE_CUDA
+  throw std::runtime_error("HuberDistance not yet implemented for CUDA");
+#else
   auto x = *xs[0];
   auto y = *xs[1];
   const FHuberForward fhf(d);
   const size_t s = x.d.size();
-  float dist = 0;
+  cnn::real dist = 0;
   for (size_t i = 0; i < s; ++i)
     dist += fhf(x.v[i] - y.v[i]);
   fx.v[0] = dist;
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void HuberDistance::backward(const vector<const Tensor*>& xs,
+void HuberDistance::backward_impl(const vector<const Tensor*>& xs,
                           const Tensor& fx,
                           const Tensor& dEdf,
                           unsigned i,
                           Tensor& dEdxi) const {
   assert(i < 2);
+#ifdef HAVE_CUDA
+  throw std::runtime_error("HuberDistance not yet implemented for CUDA");
+#else
   auto x = **xs[i];
   auto y = **xs[1-i];
   *dEdxi += (x - y).unaryExpr(FHuberBackward(d, dEdf.v[0]));
+#endif
 }
 
-void L1Distance::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void L1Distance::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 2);
+#ifdef HAVE_CUDA
+  throw std::runtime_error("L1Distance not yet implemented for CUDA");
+#else
   auto x = **xs[0];
   auto y = **xs[1];
   fx.v[0] = (x - y).lpNorm<1>();
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void L1Distance::backward(const vector<const Tensor*>& xs,
+void L1Distance::backward_impl(const vector<const Tensor*>& xs,
                           const Tensor& fx,
                           const Tensor& dEdf,
                           unsigned i,
                           Tensor& dEdxi) const {
   assert(i < 2);
+#ifdef HAVE_CUDA
+  throw std::runtime_error("L1Distance not yet implemented for CUDA");
+#else
   auto x = **xs[i];
   auto y = **xs[1-i];
   *dEdxi += (x - y).unaryExpr(FL1Backward(dEdf.v[0]));
+#endif
 }
 
-void PoissonRegressionLoss::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void PoissonRegressionLoss::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("PoissonRegressionLoss not yet implemented for CUDA");
+#else
   const auto y = *pty;
   const auto z = lgamma(y + 1);
   const auto x = xs[0]->v[0];
   fx.v[0] = expf(x) + z - y * x;
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void PoissonRegressionLoss::backward(const vector<const Tensor*>& xs,
+void PoissonRegressionLoss::backward_impl(const vector<const Tensor*>& xs,
                           const Tensor& fx,
                           const Tensor& dEdf,
                           unsigned i,
                           Tensor& dEdxi) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("PoissonRegressionLoss not yet implemented for CUDA");
+#else
   const auto x = xs[0]->v[0];
   const auto y = *pty;
   auto& dEdx = dEdxi.v[0];
   dEdx += expf(x) - y;
+#endif
 }
 
-void SquaredEuclideanDistance::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void SquaredEuclideanDistance::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 2);
 #if HAVE_CUDA
   gpu::sqeucdist(xs[0]->d.size(), xs[0]->v, xs[1]->v, fx.v);
@@ -1097,9 +1943,10 @@ void SquaredEuclideanDistance::forward(const vector<const Tensor*>& xs, Tensor& 
   auto x2 = **xs[1];
   fx.v[0] = (x1 - x2).squaredNorm();
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void SquaredEuclideanDistance::backward(const vector<const Tensor*>& xs,
+void SquaredEuclideanDistance::backward_impl(const vector<const Tensor*>& xs,
                                  const Tensor& fx,
                                  const Tensor& dEdf,
                                  unsigned i,
@@ -1110,23 +1957,24 @@ void SquaredEuclideanDistance::backward(const vector<const Tensor*>& xs,
 #else
   auto x1 = **xs[0];
   auto x2 = **xs[1];
-  real scale = dEdf.v[0] * 2;
+  cnn::real scale = dEdf.v[0] * 2;
   if (i == 1) scale = -scale;
   *dEdxi += scale * (x1 - x2);
 #endif
 }
 
-void LogisticSigmoid::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void LogisticSigmoid::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 1);
 #if HAVE_CUDA
   gpu::vlogistic(fx.d.size(), xs[0]->v, fx.v);
 #else
   auto x = **xs[0];
-  *fx = x.unaryExpr(FLogisticSigmoid());
+  *fx = x.unaryExpr(scalar_logistic_sigmoid_op<cnn::real>());
 #endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void LogisticSigmoid::backward(const vector<const Tensor*>& xs,
+void LogisticSigmoid::backward_impl(const vector<const Tensor*>& xs,
                                  const Tensor& fx,
                                  const Tensor& dEdf,
                                  unsigned i,
@@ -1134,41 +1982,91 @@ void LogisticSigmoid::backward(const vector<const Tensor*>& xs,
 #if HAVE_CUDA
   gpu::vlogistic_backward(dEdf.d.size(), fx.v, dEdf.v, dEdxi.v);
 #else
-  *dEdxi += (*fx).binaryExpr(*dEdf, FLogisticSigmoidBackward());
+  *dEdxi += (*fx).binaryExpr(*dEdf, scalar_logistic_sigmoid_backward_op<cnn::real>());
 #endif
 }
 
-void SoftSign::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
+void SoftSign::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
   assert(xs.size() == 1);
+#ifdef HAVE_CUDA
+  throw std::runtime_error("SoftSign not yet implemented for CUDA");
+#else
   auto x = **xs[0];
   *fx = x.unaryExpr(FSoftSign());
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void SoftSign::backward(const vector<const Tensor*>& xs,
+void SoftSign::backward_impl(const vector<const Tensor*>& xs,
                         const Tensor& fx,
                         const Tensor& dEdf,
                         unsigned i,
                         Tensor& dEdxi) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("SoftSign not yet implemented for CUDA");
+#else
   *dEdxi += (*fx).binaryExpr(*dEdf, FSoftSignBackward());
+#endif
 }
 
-// you could do this with LogisticSigmoid, Softmax or a variety of other
-// functions, but this is often useful.
-// x_1 must be a scalar that is a value between 0 and 1
-// target_y is a value between 0 and 1
-// y = ty * log(x_1) + (1 - ty) * log(x_1)
-void BinaryLogLoss::forward(const vector<const Tensor*>& xs, Tensor& fx) const {
-  fx.v[0] = FBinaryLogLoss()(xs[0]->v[0], xs[1]->v[0]);
+void BinaryLogLoss::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+#ifdef HAVE_CUDA
+  throw std::runtime_error("BinaryLogLoss not yet implemented for CUDA");
+#else
+  auto x = *xs[0];
+  auto y = *xs[1];
+  FBinaryLogLoss bll;
+  const size_t s = x.d.size();
+  cnn::real dist = 0;
+  for (size_t i = 0; i < s; ++i)
+    dist += bll(x.v[i], y.v[i]);
+  fx.v[0] = dist;
+#endif
+  fx.m_device_id = xs[0]->m_device_id;
 }
 
-void BinaryLogLoss::backward(const vector<const Tensor*>& xs,
+void BinaryLogLoss::backward_impl(const vector<const Tensor*>& xs,
                   const Tensor& fx,
                   const Tensor& dEdf,
                   unsigned i,
                   Tensor& dEdxi) const {
-  const auto y_pred = xs[i]->v[0];
-  const auto ty = xs[1-i]->v[0];
-  dEdxi.v[0] += FBinaryLogLossBackward()(y_pred,ty,dEdf.v[0]);
+#ifdef HAVE_CUDA
+  throw std::runtime_error("BinaryLogLoss not yet implemented for CUDA");
+#else
+  *dEdxi += (**xs[i]).binaryExpr(**xs[1-i], FBinaryLogLossBackward(dEdf.v[0]));
+#endif
+}
+
+string Zeroes::as_string(const vector<string>& arg_names) const {
+  ostringstream s;
+  s << "zeroes(" << dim << ')';
+  return s.str();
+}
+
+Dim Zeroes::dim_forward(const vector<Dim>& xs) const {
+  return dim;
+}
+
+void Zeroes::forward_impl(const vector<const Tensor*>& xs, Tensor& fx) const {
+  assert(xs.size() == 0);
+  if (fx.m_device_id < 0)
+      memset(fx.v, 0, dim.size() * sizeof(cnn::real));
+  else{
+#if HAVE_CUDA
+      cudaMemsetAsync(fx.v, 0, dim.size() * sizeof(cnn::real));
+#else
+      memset(fx.v, 0, dim.size() * sizeof(cnn::real));
+#endif
+  }
+  fx.m_device_id = xs[0]->m_device_id;
+}
+
+void Zeroes::backward_impl(const vector<const Tensor*>& xs,
+                           const Tensor& fx,
+                           const Tensor& dEdf,
+                           unsigned i,
+                           Tensor& dEdxi) const {
+  throw std::runtime_error("Called backward() on an arity 0 node");
 }
 
 } // namespace cnn

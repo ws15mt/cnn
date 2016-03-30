@@ -16,9 +16,9 @@ using namespace cnn::expr;
 int main(int argc, char** argv) {
   cnn::Initialize(argc, argv);
 
-  unsigned CONTEXT = 3;
-  unsigned DIM = 100;
-  unsigned VOCAB_SIZE = 29;
+  long CONTEXT = 3;
+  long DIM = 100;
+  long VOCAB_SIZE = 29;
 
   // parameters
   Model model;
@@ -68,7 +68,7 @@ int main(int argc, char** argv) {
   // train the parameters
   for (unsigned iter = 0; iter < 100; ++iter) {
     Timer iteration("epoch completed in");
-    double loss = 0;
+    cnn::real loss = 0;
     unsigned n = 0;
     for (auto& ci : corpus) {
       copy(ci.begin(), ci.begin()+CONTEXT, in_c.begin());

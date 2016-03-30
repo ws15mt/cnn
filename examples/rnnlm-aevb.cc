@@ -25,7 +25,7 @@ unsigned HIDDEN_DIM2 = 32;
 unsigned VOCAB_SIZE = 0;
 unsigned LATENT_DIM = 2;
 unsigned L = 10;
-vector<vector<float>> eps(L, vector<float>(LATENT_DIM));
+vector<vector<cnn::real>> eps(L, vector<cnn::real>(LATENT_DIM));
 
 cnn::Dict d;
 int kSOS;
@@ -85,7 +85,7 @@ struct RNNLanguageModel {
     Expression h = tanh(i_H * ebuilder.back() + i_hb);
     Expression mu = parameter(cg, p_h2m) * h + parameter(cg, p_mb);
     if (flag) {
-      vector<float> v = as_vector(cg.get_value(mu.i));
+      vector<cnn::real> v = as_vector(cg.get_value(mu.i));
       for (unsigned i = 0; i < (slen-2); ++i) cout << d.Convert(sent[i+1]);
       cout << " |||";
       for (auto& x : v) cout << ' ' << x;
@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
      << "-pid" << getpid() << ".params";
   const string fname = os.str();
   cerr << "Parameters will be written to: " << fname << endl;
-  double best = 9e+99;
+  cnn::real best = 9e+99;
 
   Model model;
   bool use_momentum = false;
@@ -202,7 +202,7 @@ int main(int argc, char** argv) {
   unsigned lines = 0;
   while(1) {
     Timer iteration("completed in");
-    double loss = 0;
+    cnn::real loss = 0;
     unsigned chars = 0;
     for (unsigned i = 0; i < report_every_i; ++i) {
       if (si == training.size()) {
@@ -230,7 +230,7 @@ int main(int argc, char** argv) {
     report++;
     if (report % dev_every_i_reports == 0) {
       cout << endl;
-      double dloss = 0;
+      cnn::real dloss = 0;
       int dchars = 0;
       for (auto& sent : dev) {
         ComputationGraph cg;
@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
         boost::archive::text_oarchive oa(out);
         oa << model;
       }
-      cerr << "\n***DEV [epoch=" << (lines / (double)training.size()) << "] E = " << (dloss / dchars) << " ppl=" << exp(dloss / dchars) << ' ';
+      cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dloss / dchars) << " ppl=" << exp(dloss / dchars) << ' ';
     }
   }
   delete sgd;

@@ -3,6 +3,7 @@
 #include "cnn/training.h"
 #include "cnn/gpu-ops.h"
 #include "cnn/expr.h"
+#include "cnn/grad-check.h"
 #include <boost/archive/text_oarchive.hpp>
 #include <boost/archive/text_iarchive.hpp>
 
@@ -17,18 +18,18 @@ int main(int argc, char** argv) {
   cnn::Initialize(argc, argv);
 
   // parameters
-  const unsigned HIDDEN_SIZE = 8;
-  const unsigned ITERATIONS = 30;
+  const unsigned int HIDDEN_SIZE = 8;
+  const unsigned int ITERATIONS = 30;
   Model m;
   SimpleSGDTrainer sgd(&m);
   //MomentumSGDTrainer sgd(&m);
 
   ComputationGraph cg;
 
-  Expression W = parameter(cg, m.add_parameters({HIDDEN_SIZE, 2}));
-  Expression b = parameter(cg, m.add_parameters({HIDDEN_SIZE}));
-  Expression V = parameter(cg, m.add_parameters({1, HIDDEN_SIZE}));
-  Expression a = parameter(cg, m.add_parameters({1}));
+  Expression W = parameter(cg, m.add_parameters({HIDDEN_SIZE, 2}, 1.0, "W"));
+  Expression b = parameter(cg, m.add_parameters({HIDDEN_SIZE}, 0.0, "b"));
+  Expression V = parameter(cg, m.add_parameters({1, HIDDEN_SIZE}, 1.0, "V"));
+  Expression a = parameter(cg, m.add_parameters({1}, 0.0, "a"));
 
   vector<cnn::real> x_values(2);  // set x_values to change the inputs to the network
   Expression x = input(cg, {2}, &x_values);
@@ -49,7 +50,7 @@ int main(int argc, char** argv) {
 
   // train the parameters
   for (unsigned iter = 0; iter < ITERATIONS; ++iter) {
-    double loss = 0;
+    cnn::real loss = 0;
     for (unsigned mi = 0; mi < 4; ++mi) {
       bool x1 = mi % 2;
       bool x2 = (mi / 2) % 2;
@@ -57,6 +58,9 @@ int main(int argc, char** argv) {
       x_values[1] = x2 ? 1 : -1;
       y_value = (x1 != x2) ? 1 : -1;
       loss += as_scalar(cg.forward());
+
+//      CheckGrad(m, cg);
+
       cg.backward();
       sgd.update(1.0);
     }

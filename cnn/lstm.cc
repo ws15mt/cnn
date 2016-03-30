@@ -1,5 +1,5 @@
 #include "cnn/lstm.h"
-
+#include <boost/lexical_cast.hpp>
 #include <string>
 #include <cassert>
 #include <vector>
@@ -14,31 +14,70 @@ namespace cnn {
 
 enum { X2I, H2I, C2I, BI, X2O, H2O, C2O, BO, X2C, H2C, BC };
 
-LSTMBuilder::LSTMBuilder(unsigned layers,
-                         unsigned input_dim,
-                         unsigned hidden_dim,
-                         Model* model) : layers(layers) {
+LSTMBuilder::LSTMBuilder(unsigned ilayers,
+                         const vector<unsigned>& dims,
+                         Model* model,
+                         cnn::real iscale,
+                         string name)
+{
+  unsigned input_dim = dims[INPUT_LAYER];
+  unsigned hidden_dim = dims[HIDDEN_LAYER];
+  layers = ilayers;
+  string i_name;
   unsigned layer_input_dim = input_dim;
+  input_dims = vector<unsigned>(layers, layer_input_dim);
+
   for (unsigned i = 0; i < layers; ++i) {
+    input_dims[i] = layer_input_dim;
+    
     // i
-    Parameters* p_x2i = model->add_parameters({hidden_dim, layer_input_dim});
-    Parameters* p_h2i = model->add_parameters({hidden_dim, hidden_dim});
-    Parameters* p_c2i = model->add_parameters({hidden_dim, hidden_dim});
-    Parameters* p_bi = model->add_parameters({hidden_dim});
+    if (name.size() > 0)
+        i_name = name + "p_x2i" + boost::lexical_cast<string>(i);
+    Parameters* p_x2i = model->add_parameters({ hidden_dim, layer_input_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_h2i" + boost::lexical_cast<string>(i);
+    Parameters* p_h2i = model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_c2i" + boost::lexical_cast<string>(i);
+    Parameters* p_c2i = model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_bi" + boost::lexical_cast<string>(i);
+    Parameters* p_bi = model->add_parameters({ hidden_dim }, iscale, i_name);
     
     // o
-    Parameters* p_x2o = model->add_parameters({hidden_dim, layer_input_dim});
-    Parameters* p_h2o = model->add_parameters({hidden_dim, hidden_dim});
-    Parameters* p_c2o = model->add_parameters({hidden_dim, hidden_dim});
-    Parameters* p_bo = model->add_parameters({hidden_dim});
+    if (name.size() > 0)
+        i_name = name + "p_x2o" + boost::lexical_cast<string>(i);
+    Parameters* p_x2o = model->add_parameters({ hidden_dim, layer_input_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_h2o" + boost::lexical_cast<string>(i);
+    Parameters* p_h2o = model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_c2o" + boost::lexical_cast<string>(i);
+    Parameters* p_c2o = model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_bo" + boost::lexical_cast<string>(i);
+    Parameters* p_bo = model->add_parameters({ hidden_dim }, iscale, i_name);
 
     // c
-    Parameters* p_x2c = model->add_parameters({hidden_dim, layer_input_dim});
-    Parameters* p_h2c = model->add_parameters({hidden_dim, hidden_dim});
-    Parameters* p_bc = model->add_parameters({hidden_dim});
+    if (name.size() > 0)
+        i_name = name + "p_x2c" + boost::lexical_cast<string>(i);
+    Parameters* p_x2c = model->add_parameters({ hidden_dim, layer_input_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_h2c" + boost::lexical_cast<string>(i);
+    Parameters* p_h2c = model->add_parameters({ hidden_dim, hidden_dim }, iscale, i_name);
+    if (name.size() > 0)
+        i_name = name + "p_bc" + boost::lexical_cast<string>(i);
+    Parameters* p_bc = model->add_parameters({ hidden_dim }, iscale, i_name);
     layer_input_dim = hidden_dim;  // output (hidden) from 1st layer is input to next
 
     vector<Parameters*> ps = {p_x2i, p_h2i, p_c2i, p_bi, p_x2o, p_h2o, p_c2o, p_bo, p_x2c, p_h2c, p_bc};
+
+#ifdef DBG_MODEL
+    for (auto p : ps)
+    {
+        p->reset_to_zero();
+    }
+#endif
     params.push_back(ps);
   }  // layers
 }
@@ -66,9 +105,9 @@ void LSTMBuilder::new_graph_impl(ComputationGraph& cg){
 
     vector<Expression> vars = {i_x2i, i_h2i, i_c2i, i_bi, i_x2o, i_h2o, i_c2o, i_bo, i_x2c, i_h2c, i_bc};
     param_vars.push_back(vars);
-    
-    
+
   }
+  set_data_in_parallel(data_in_parallel());
 }
 
 // layout: 0..layers = c
@@ -88,14 +127,92 @@ void LSTMBuilder::start_new_sequence_impl(const vector<Expression>& hinit) {
   } else {
     has_initial_state = false;
   }
+
+  set_data_in_parallel(data_in_parallel());
 }
 
-Expression LSTMBuilder::add_input_impl(int prev, const Expression& x) {
+void LSTMBuilder::set_data_in_parallel(int n)
+{
+    RNNBuilder::set_data_in_parallel(n);
+
+    biases.clear();
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        Expression bimb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BI]));
+        Expression bcmb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BC]));
+        Expression bomb = concatenate_cols(vector<Expression>(data_in_parallel(), vars[BO]));
+        vector<Expression> b = { bimb, bcmb, bomb };
+        biases.push_back(b);
+    }
+}
+
+Expression LSTMBuilder::add_input_impl(const vector<Expression>& prev_history, const Expression &x)
+{
+    h.push_back(vector<Expression>(layers));
+    c.push_back(vector<Expression>(layers));
+    vector<Expression>& ht = h.back();
+    vector<Expression>& ct = c.back();
+    Expression in = x;
+
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        Expression i_h_tm1, i_c_tm1;
+        i_h_tm1 = prev_history[i+layers];
+        i_c_tm1 = prev_history[i];
+
+        // input
+        Expression i_ait;
+        Expression bimb = biases[i][0];
+        if (prev_history.size() > 0)
+            i_ait = affine_transform({ bimb, vars[X2I], in, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
+        else
+            i_ait = affine_transform({ bimb, vars[X2I], in});
+
+        Expression i_it = logistic(i_ait);
+        // forget
+        Expression i_ft = 1.f - i_it;
+
+        // write memory cell
+        Expression i_awt;
+        Expression bcmb = biases[i][1];
+        if (prev_history.size() > 0)
+            i_awt = affine_transform({ bcmb, vars[X2C], in, vars[H2C], i_h_tm1 });
+        else
+            i_awt = affine_transform({ bcmb, vars[X2C], in });
+
+        Expression i_wt = tanh(i_awt);
+        // output
+        Expression i_nwt = cwise_multiply(i_it, i_wt);
+        if (prev_history.size() > 0)
+        {
+            Expression i_crt = cwise_multiply(i_ft, i_c_tm1);
+            ct[i] = i_crt + i_nwt;
+        }
+        else
+            ct[i] = i_nwt;
+
+        Expression i_aot;
+        Expression bomb = biases[i][2];
+        if (prev_history.size() > 0)
+            i_aot = affine_transform({ bomb, vars[X2O], in, vars[C2O], ct[i] });
+        else
+            i_aot = affine_transform({ bomb, vars[X2O], in, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
+
+        Expression i_ot = logistic(i_aot);
+        Expression ph_t = tanh(ct[i]);
+        in = ht[i] = cwise_multiply(i_ot, ph_t);
+    }
+    return ht.back();
+}
+
+Expression LSTMBuilder::add_input_impl(int prev, const Expression& x)
+{
   h.push_back(vector<Expression>(layers));
   c.push_back(vector<Expression>(layers));
   vector<Expression>& ht = h.back();
   vector<Expression>& ct = c.back();
   Expression in = x;
+
   for (unsigned i = 0; i < layers; ++i) {
     const vector<Expression>& vars = param_vars[i];
     Expression i_h_tm1, i_c_tm1;
@@ -111,25 +228,29 @@ Expression LSTMBuilder::add_input_impl(int prev, const Expression& x) {
       i_h_tm1 = h[prev][i];
       i_c_tm1 = c[prev][i];
     }
+
     // input
     Expression i_ait;
+    Expression bimb = biases[i][0]; 
     if (has_prev_state)
 //      i_ait = vars[BI] + vars[X2I] * in + vars[H2I]*i_h_tm1 + vars[C2I] * i_c_tm1;
-      i_ait = affine_transform({vars[BI], vars[X2I], in, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1});
+      i_ait = affine_transform({bimb, vars[X2I], in, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1});
     else
 //      i_ait = vars[BI] + vars[X2I] * in;
-      i_ait = affine_transform({vars[BI], vars[X2I], in});
+      i_ait = affine_transform({ bimb, vars[X2I], in });
     Expression i_it = logistic(i_ait);
     // forget
     Expression i_ft = 1.f - i_it;
+
     // write memory cell
     Expression i_awt;
+    Expression bcmb = biases[i][1]; 
     if (has_prev_state)
 //      i_awt = vars[BC] + vars[X2C] * in + vars[H2C]*i_h_tm1;
-      i_awt = affine_transform({vars[BC], vars[X2C], in, vars[H2C], i_h_tm1});
+      i_awt = affine_transform({ bcmb, vars[X2C], in, vars[H2C], i_h_tm1 });
     else
 //      i_awt = vars[BC] + vars[X2C] * in;
-      i_awt = affine_transform({vars[BC], vars[X2C], in});
+      i_awt = affine_transform({ bcmb, vars[X2C], in });
     Expression i_wt = tanh(i_awt);
     // output
     if (has_prev_state) {
@@ -139,19 +260,104 @@ Expression LSTMBuilder::add_input_impl(int prev, const Expression& x) {
     } else {
       ct[i] = cwise_multiply(i_it,i_wt);
     }
- 
+
     Expression i_aot;
+    Expression bomb = biases[i][2]; 
     if (has_prev_state)
 //      i_aot = vars[BO] + vars[X2O] * in + vars[H2O] * i_h_tm1 + vars[C2O] * ct[i];
-      i_aot = affine_transform({vars[BO], vars[X2O], in, vars[H2O], i_h_tm1, vars[C2O], ct[i]});
+      i_aot = affine_transform({ bomb, vars[X2O], in, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
     else
-//      i_aot = vars[BO] + vars[X2O] * in;
-      i_aot = affine_transform({vars[BO], vars[X2O], in});
+      i_aot = affine_transform({ bomb, vars[X2O], in });
     Expression i_ot = logistic(i_aot);
     Expression ph_t = tanh(ct[i]);
     in = ht[i] = cwise_multiply(i_ot,ph_t);
   }
   return ht.back();
+}
+
+Expression LSTMBuilder::add_input_impl(int prev, const vector<Expression>& x)
+{
+    h.push_back(vector<Expression>(layers));
+    c.push_back(vector<Expression>(layers));
+    vector<Expression>& ht = h.back();
+    vector<Expression>& ct = c.back();
+
+    assert(x.size() == layers);
+    Expression in = x[0];
+
+    for (unsigned i = 0; i < layers; ++i) {
+        const vector<Expression>& vars = param_vars[i];
+        Expression i_h_tm1, i_c_tm1;
+        bool has_prev_state = (prev >= 0 || has_initial_state);
+        if (prev < 0) {
+            if (has_initial_state) {
+                // intial value for h and c at timestep 0 in layer i
+                // defaults to zero matrix input if not set in add_parameter_edges
+                i_h_tm1 = h0[i];
+                i_c_tm1 = c0[i];
+            }
+        }
+        else {  // t > 0
+            i_h_tm1 = h[prev][i];
+            i_c_tm1 = c[prev][i];
+        }
+
+        // input
+        Expression i_ait;
+        Expression bimb = biases[i][0];
+        if (has_prev_state)
+            //      i_ait = vars[BI] + vars[X2I] * in + vars[H2I]*i_h_tm1 + vars[C2I] * i_c_tm1;
+            i_ait = affine_transform({ bimb, vars[X2I], in, vars[H2I], i_h_tm1, vars[C2I], i_c_tm1 });
+        else
+            //      i_ait = vars[BI] + vars[X2I] * in;
+            i_ait = affine_transform({ bimb, vars[X2I], in });
+        Expression i_it = logistic(i_ait);
+        // forget
+        Expression i_ft = 1.f - i_it;
+
+        // write memory cell
+        Expression i_awt;
+        Expression bcmb = biases[i][1];
+        if (has_prev_state)
+            //      i_awt = vars[BC] + vars[X2C] * in + vars[H2C]*i_h_tm1;
+            i_awt = affine_transform({ bcmb, vars[X2C], in, vars[H2C], i_h_tm1 });
+        else
+            //      i_awt = vars[BC] + vars[X2C] * in;
+            i_awt = affine_transform({ bcmb, vars[X2C], in });
+        Expression i_wt = tanh(i_awt);
+        // output
+        if (has_prev_state) {
+            Expression i_nwt = cwise_multiply(i_it, i_wt);
+            Expression i_crt = cwise_multiply(i_ft, i_c_tm1);
+            ct[i] = i_crt + i_nwt;
+        }
+        else {
+            ct[i] = cwise_multiply(i_it, i_wt);
+        }
+
+        Expression i_aot;
+        Expression bomb = biases[i][2];
+        if (has_prev_state)
+            //      i_aot = vars[BO] + vars[X2O] * in + vars[H2O] * i_h_tm1 + vars[C2O] * ct[i];
+            i_aot = affine_transform({ bomb, vars[X2O], in, vars[H2O], i_h_tm1, vars[C2O], ct[i] });
+        else
+            i_aot = affine_transform({ bomb, vars[X2O], in });
+        Expression i_ot = logistic(i_aot);
+        Expression ph_t = tanh(ct[i]);
+
+        Expression z = cwise_multiply(i_ot, ph_t);
+        if (i > 0)
+            z = z + x[i];
+        in = ht[i] = z;
+    }
+    return ht.back();
+}
+void LSTMBuilder::copy(const RNNBuilder & rnn) {
+  const LSTMBuilder & rnn_lstm = (const LSTMBuilder&)rnn;
+  assert(params.size() == rnn_lstm.params.size());
+  for(size_t i = 0; i < params.size(); ++i)
+      for(size_t j = 0; j < params[i].size(); ++j)
+        params[i][j]->copy(*rnn_lstm.params[i][j]);
 }
 
 } // namespace cnn

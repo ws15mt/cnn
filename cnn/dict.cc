@@ -25,13 +25,39 @@ void ReadSentencePair(const std::string& line, std::vector<int>* s, Dict* sd, st
   std::string word;
   std::string sep = "|||";
   Dict* d = sd;
-  std::vector<int>* v = s; 
+  std::vector<int>* v = s;
   while(in) {
     in >> word;
     if (!in) break;
     if (word == sep) { d = td; v = t; continue; }
     v->push_back(d->Convert(word));
   }
+}
+
+std::vector<int> ReadSentence(const std::wstring& line, WDict* sd) {
+    std::wistringstream in(line);
+    std::wstring word;
+    std::vector<int> res;
+    while (in) {
+        in >> word;
+        if (!in || word.empty()) break;
+        res.push_back(sd->Convert(word));
+    }
+    return res;
+}
+
+void ReadSentencePair(const std::wstring& line, std::vector<int>* s, WDict* sd, std::vector<int>* t, WDict* td) {
+    std::wistringstream in(line);
+    std::wstring word;
+    std::wstring sep = L"|||";
+    WDict* d = sd;
+    std::vector<int>* v = s;
+    while (in) {
+        in >> word;
+        if (!in) break;
+        if (word == sep) { d = td; v = t; continue; }
+        v->push_back(d->Convert(word));
+    }
 }
 
 } // namespace cnn

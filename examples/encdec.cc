@@ -6,7 +6,8 @@
 #include "cnn/lstm.h"
 #include "cnn/dict.h"
 #include "cnn/expr.h"
-
+#include "cnn/cnn-helper.h"
+#include "cnn/grad-check.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -20,8 +21,8 @@ using namespace cnn::expr;
 
 //parameters
 unsigned LAYERS = 3;
-unsigned INPUT_DIM = 500;
-unsigned HIDDEN_DIM = 500;
+unsigned INPUT_DIM = 150;
+unsigned HIDDEN_DIM = 150;
 unsigned INPUT_VOCAB_SIZE = 0;
 unsigned OUTPUT_VOCAB_SIZE = 0;
 
@@ -31,27 +32,26 @@ int kEOS;
 
 template <class Builder>
 struct EncoderDecoder {
-  LookupParameters* p_c;
-  LookupParameters* p_ec;  // map input to embedding (used in fwd and rev models)
-  Parameters* p_ie2h;
-  Parameters* p_bie;
-  Parameters* p_h2oe;
-  Parameters* p_boe;
-  Parameters* p_R;
-  Parameters* p_bias;
-  Builder dec_builder;
-  Builder rev_enc_builder;
-  Builder fwd_enc_builder;
-  explicit EncoderDecoder(Model& model) :
-      dec_builder(LAYERS, INPUT_DIM, HIDDEN_DIM, &model),
-      rev_enc_builder(LAYERS, INPUT_DIM, HIDDEN_DIM, &model),
-      fwd_enc_builder(LAYERS, INPUT_DIM, HIDDEN_DIM, &model) {
+    LookupParameters* p_c;
+    LookupParameters* p_ec;  // map input to embedding (used in fwd and rev models)
+    Parameters* p_ie2h;
+    Parameters* p_bie;
+    Parameters* p_h2oe;
+    Parameters* p_boe;
+    Parameters* p_R;
+    Parameters* p_bias;
+    Builder dec_builder;
+    Builder rev_enc_builder;
+    Builder fwd_enc_builder;
+    explicit EncoderDecoder(Model& model) :
+        dec_builder(LAYERS, { INPUT_DIM, HIDDEN_DIM }, &model),
+        rev_enc_builder(LAYERS, { INPUT_DIM, HIDDEN_DIM }, &model),
+        fwd_enc_builder(LAYERS, {INPUT_DIM, HIDDEN_DIM}, &model) {
 
-
-    p_ie2h = model.add_parameters({long(HIDDEN_DIM * LAYERS * 1.5), long(HIDDEN_DIM * LAYERS * 2)});
-    p_bie = model.add_parameters({long(HIDDEN_DIM * LAYERS * 1.5)});
-    p_h2oe = model.add_parameters({long(HIDDEN_DIM * LAYERS), long(HIDDEN_DIM * LAYERS * 1.5)});
-    p_boe = model.add_parameters({long(HIDDEN_DIM * LAYERS)});
+    p_ie2h = model.add_parameters({(unsigned)(HIDDEN_DIM * LAYERS * 1.5), HIDDEN_DIM * LAYERS * 2});
+    p_bie = model.add_parameters({(unsigned)(HIDDEN_DIM * LAYERS * 1.5)});
+    p_h2oe = model.add_parameters({HIDDEN_DIM * LAYERS, (unsigned)(HIDDEN_DIM * LAYERS * 1.5)});
+    p_boe = model.add_parameters({HIDDEN_DIM * LAYERS});
     p_c = model.add_lookup_parameters(INPUT_VOCAB_SIZE, {INPUT_DIM}); 
     p_ec = model.add_lookup_parameters(INPUT_VOCAB_SIZE, {INPUT_DIM}); 
     p_R = model.add_parameters({OUTPUT_VOCAB_SIZE, HIDDEN_DIM});
@@ -121,8 +121,11 @@ struct EncoderDecoder {
 
 int main(int argc, char** argv) {
   cnn::Initialize(argc, argv);
-  if (argc != 3 && argc != 4) {
-    cerr << "Usage: " << argv[0] << " corpus.txt dev.txt [model.params]\n";
+  if (argc != 4 && argc != 5) {
+    cerr << "Usage: " << argv[0] << " <corpus.txt> <dev.txt> <grad_check> [model.params]\n";
+    cerr << " <corpus.txt> : training corpus. one line per sentence.\n";
+    cerr << " <dev.txt>    : dev set corpus. one line per sentence.\n";
+    cerr << " <grad_check> : 1 or 0. 1 for doing gradient check. 0 otherwise.\n";
     return 1;
   }
   kSOS = d.Convert("<s>");
@@ -176,7 +179,7 @@ int main(int argc, char** argv) {
      << "-pid" << getpid() << ".params";
   const string fname = os.str();
   cerr << "Parameters will be written to: " << fname << endl;
-  double best = 9e+99;
+  cnn::real best = 9e+99;
   
   Model model;
   bool use_momentum = false;
@@ -190,8 +193,8 @@ int main(int argc, char** argv) {
   //RNNBuilder rnn(LAYERS, INPUT_DIM, HIDDEN_DIM, &model);
   //EncoderDecoder<SimpleRNNBuilder> lm(model);
   EncoderDecoder<LSTMBuilder> lm(model);
-  if (argc == 4) {
-    string fname = argv[3];
+  if (argc == 5) {
+    string fname = argv[4];
     ifstream in(fname);
     boost::archive::text_iarchive ia(in);
     ia >> model;
@@ -207,7 +210,7 @@ int main(int argc, char** argv) {
   unsigned lines = 0;
   while(1) {
     Timer iteration("completed in");
-    double loss = 0;
+    cnn::real loss = 0;
     unsigned chars = 0;
     for (unsigned i = 0; i < report_every_i; ++i) {
       if (si == training.size()) {
@@ -225,6 +228,10 @@ int main(int argc, char** argv) {
       lm.BuildGraph(sent, sent, cg);
       //cg.PrintGraphviz();
       loss += as_scalar(cg.forward());
+
+      if (strcmp(argv[3], "1") == 0)
+          CheckGrad(model, cg);
+
       cg.backward();
       sgd->update();
       ++lines;
@@ -239,7 +246,7 @@ int main(int argc, char** argv) {
     // show score on dev data?
     report++;
     if (report % dev_every_i_reports == 0) {
-      double dloss = 0;
+      cnn::real dloss = 0;
       int dchars = 0;
       for (auto& sent : dev) {
 	ComputationGraph cg;
@@ -253,7 +260,11 @@ int main(int argc, char** argv) {
 	boost::archive::text_oarchive oa(out);
 	oa << model;
       }
-      cerr << "\n***DEV [epoch=" << (lines / (double)training.size()) << "] E = " << (dloss / dchars) << " ppl=" << exp(dloss / dchars) << ' ';
+      else{
+          /// reduce learning rate
+          sgd->eta *= 0.5;
+      }
+      cerr << "\n***DEV [epoch=" << (lines / (cnn::real)training.size()) << "] E = " << (dloss / dchars) << " ppl=" << exp(dloss / dchars) << ' ';
     }
   }
   delete sgd;

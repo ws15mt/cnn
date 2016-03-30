@@ -10,15 +10,59 @@ using namespace std;
 
 namespace cnn {
 
-float* kSCALAR_MINUSONE;
-float* kSCALAR_ONE;
-float* kSCALAR_ZERO;
+cnn::real* kSCALAR_MINUSONE;
+cnn::real* kSCALAR_ONE;
+cnn::real* kSCALAR_ZERO;
 int n_hgs = 0;
+int device_id = CPUDEVICE;
+
+/// some constants 
+/// [1/2,1/3,1/3, ..., 1/N]
+std::vector<cnn::real*> kSCALAR_ONE_OVER_INT;
+
 
 Node::~Node() {}
 size_t Node::aux_storage_size() const { return 0; }
 
-ComputationGraph::ComputationGraph() : last_node_evaluated(),
+// perform the forward/backward passes in one or multiple calls
+// TODO: This is a lot of code for something simple. Can it be shortened?
+void Node::forward(const std::vector<const Tensor*>& xs,
+                   Tensor& fx) const {
+  if(this->supports_multibatch() || fx.d.batch_elems() == 1) {
+    forward_impl(xs, fx);
+  } else {
+    for(unsigned b = 0; b < fx.d.batch_elems(); ++b) {
+      std::vector<Tensor>  xs_elems;
+      std::vector<const Tensor*> xs_ptrs;
+      for(size_t i = 0; i < xs.size(); ++i) xs_elems.push_back(xs[i]->batch_elem(b));
+      for(size_t i = 0; i < xs.size(); ++i) xs_ptrs.push_back(&xs_elems[i]);
+      Tensor fx_elem(fx.batch_elem(b));
+      forward_impl(xs_ptrs, fx_elem);
+    }
+  }
+}
+void Node::backward(const std::vector<const Tensor*>& xs,
+                    const Tensor& fx,
+                    const Tensor& dEdf,
+                    unsigned i,
+                    Tensor& dEdxi) const {
+  if(this->supports_multibatch() || fx.d.batch_elems() == 1) {
+    backward_impl(xs, fx, dEdf, i, dEdxi);
+  } else {
+    for(unsigned b = 0; b < fx.d.batch_elems(); ++b) {
+      std::vector<Tensor>  xs_elems;
+      std::vector<const Tensor*> xs_ptrs;
+      for(size_t i = 0; i < xs.size(); ++i) xs_elems.push_back(xs[i]->batch_elem(b));
+      for(size_t i = 0; i < xs.size(); ++i) xs_ptrs.push_back(&xs_elems[i]);
+      Tensor fx_elem(fx.batch_elem(b));
+      Tensor dEdf_elem(dEdf.batch_elem(b));
+      Tensor dEdxi_elem(dEdxi.batch_elem(b));
+      backward_impl(xs_ptrs, fx_elem, dEdf_elem, i, dEdxi_elem);
+    }
+  }
+}
+
+ComputationGraph::ComputationGraph() : 
   ee(new SimpleExecutionEngine(*this)) {
   ++n_hgs;
   if (n_hgs > 1) {
@@ -34,7 +78,6 @@ ComputationGraph::~ComputationGraph() {
 }
 
 void ComputationGraph::clear() {
-  last_node_evaluated = VariableIndex();
   parameter_nodes.clear();
   for (auto n : nodes) delete n;
   nodes.clear();
@@ -54,11 +97,25 @@ VariableIndex ComputationGraph::add_input(const real* ps) {
   return new_node_index;
 }
 
-VariableIndex ComputationGraph::add_input(const Dim& d, const vector<float>* pm) {
+VariableIndex ComputationGraph::add_input(const Dim& d, const vector<cnn::real>& pm) {
   VariableIndex new_node_index(nodes.size());
   nodes.push_back(new InputNode(d, pm));
   set_dim_for_new_node(new_node_index);
   return new_node_index;
+}
+
+VariableIndex ComputationGraph::add_input(const Dim& d, const vector<cnn::real>* pm) {
+  VariableIndex new_node_index(nodes.size());
+  nodes.push_back(new InputNode(d, pm));
+  set_dim_for_new_node(new_node_index);
+  return new_node_index;
+}
+
+VariableIndex ComputationGraph::add_reference(const Dim& d, const cnn::real* pm) {
+    VariableIndex new_node_index(nodes.size());
+    nodes.push_back(new ReferenceNode(d, pm));
+    set_dim_for_new_node(new_node_index);
+    return new_node_index;
 }
 
 VariableIndex ComputationGraph::add_parameters(Parameters* p) {
@@ -66,6 +123,14 @@ VariableIndex ComputationGraph::add_parameters(Parameters* p) {
   ParameterNode* new_node = new ParameterNode(p);
   nodes.push_back(new_node);
   parameter_nodes.push_back(new_node_index);
+  set_dim_for_new_node(new_node_index);
+  return new_node_index;
+}
+
+VariableIndex ComputationGraph::add_const_parameters(Parameters* p) {
+  VariableIndex new_node_index(nodes.size());
+  ConstParameterNode* new_node = new ConstParameterNode(p);
+  nodes.push_back(new_node);
   set_dim_for_new_node(new_node_index);
   return new_node_index;
 }
@@ -82,6 +147,24 @@ VariableIndex ComputationGraph::add_lookup(LookupParameters* p, const unsigned* 
 VariableIndex ComputationGraph::add_lookup(LookupParameters* p, unsigned index) {
   VariableIndex new_node_index(nodes.size());
   LookupNode* new_node = new LookupNode(p, index);
+  nodes.push_back(new_node);
+  parameter_nodes.push_back(new_node_index);
+  set_dim_for_new_node(new_node_index);
+  return new_node_index;
+}
+
+VariableIndex ComputationGraph::add_lookup(LookupParameters* p, const std::vector<unsigned>& indices) {
+  VariableIndex new_node_index(nodes.size());
+  LookupNode* new_node = new LookupNode(p, indices);
+  nodes.push_back(new_node);
+  parameter_nodes.push_back(new_node_index);
+  set_dim_for_new_node(new_node_index);
+  return new_node_index;
+}
+
+VariableIndex ComputationGraph::add_lookup(LookupParameters* p, const std::vector<unsigned>* indices) {
+  VariableIndex new_node_index(nodes.size());
+  LookupNode* new_node = new LookupNode(p, indices);
   nodes.push_back(new_node);
   parameter_nodes.push_back(new_node_index);
   set_dim_for_new_node(new_node_index);
@@ -106,6 +189,21 @@ VariableIndex ComputationGraph::add_const_lookup(LookupParameters* p, unsigned i
   return new_node_index;
 }
 
+VariableIndex ComputationGraph::add_const_lookup(LookupParameters* p, const std::vector<unsigned>& indices) {
+  VariableIndex new_node_index(nodes.size());
+  LookupNode* new_node = new LookupNode(p, indices);
+  nodes.push_back(new_node);
+  set_dim_for_new_node(new_node_index);
+  return new_node_index;
+}
+
+VariableIndex ComputationGraph::add_const_lookup(LookupParameters* p, const std::vector<unsigned>* indices) {
+  VariableIndex new_node_index(nodes.size());
+  LookupNode* new_node = new LookupNode(p, indices);
+  nodes.push_back(new_node);
+  set_dim_for_new_node(new_node_index);
+  return new_node_index;
+}
 // factory function should call this right after creating a new node object
 // to set its dimensions properly
 void ComputationGraph::set_dim_for_new_node(const VariableIndex& i) {
@@ -119,12 +217,19 @@ void ComputationGraph::set_dim_for_new_node(const VariableIndex& i) {
   node->dim = node->dim_forward(xds);
 }
 
+void ComputationGraph::set_last_node_evaluated(VariableIndex idx){
+    ee->set_last_node_evaluated(idx);
+}
 const Tensor& ComputationGraph::incremental_forward() { return ee->incremental_forward(); }
 const Tensor& ComputationGraph::forward() { return ee->forward(); }
+void  ComputationGraph::set_value(const Tensor& t, VariableIndex i) { ee->set_value(t, i); }
+void  ComputationGraph::set_value(const Tensor& t, expr::Expression& e) { ee->set_value(t, e.i); }
 const Tensor& ComputationGraph::get_value(VariableIndex i) { return ee->get_value(i); }
 const Tensor& ComputationGraph::get_value(const expr::Expression& e) { return this->get_value(e.i); }
+const Tensor& ComputationGraph::get_error(VariableIndex i) { return ee->get_error(i); }
 void ComputationGraph::invalidate() { ee->invalidate(); }
-void ComputationGraph::backward() { ee->backward(); }
+void ComputationGraph::backward(cnn::real * kInitError){ ee->backward(kInitError); }
+void ComputationGraph::backward(VariableIndex i) { ee->backward(i); }
 
 void ComputationGraph::PrintGraphviz() const {
   cerr << "digraph G {\n  rankdir=LR;\n  nodesep=.05;\n";

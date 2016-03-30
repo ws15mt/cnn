@@ -3,48 +3,54 @@ cmake_minimum_required(VERSION 2.8 FATAL_ERROR)
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
-# CNN uses Eigen which exploits modern CPU architectures. To get the
+# you may need t do some explicit settings for cygwin and win32
+if(WIN64 OR WIN32)
+set(BOOST_ROOT C:/local/boost_1_59_0)
+set(BOOST_LIBRARYDIR C:/local/boost_1_59_0/lib64-msvc-12.0)
+else()
+set(BOOST_ROOT /cygdrive/d/tools/boost_1_59_0/boost_1_59_0)
+set(BOOST_LIBRARYDIR /usr/local/lib)
+endif()
+
 # best possible performance, the following are recommended:
 #   1. use very recent versions of gcc or Clang to build
 #   2. use very recent versions of Eigen (ideally the dev version)
 #   3. try compiler options like -march=native or other architecture
 #      flags (the compiler does not always make the best configuration
 #      decisions without help)
+if (WIN32 OR WIN64)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -funroll-loops -Wall -std=c++11 -Ofast -g -DEIGEN_FAST_MATH -march=native /bigobj /openmp")
+else()
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -funroll-loops -Wall -std=c++11 -Ofast -g -DEIGEN_FAST_MATH -Wno-unused-local-typedefs -march=native")
+endif()
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /MT")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
 
 enable_testing()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}
                     ${PROJECT_SOURCE_DIR}/external/easyloggingpp/src)
 
-function(find_cudnn)
-  set(CUDNN_ROOT "" CACHE PATH "CUDNN root path")
-  find_path(CUDNN_INCLUDE_DIRS cudnn.h
-    PATHS ${CUDNN_ROOT}
-          ${CUDNN_ROOT}/include
-    DOC "CUDNN include path")
-  find_library(CUDNN_LIBRARIES NAMES libcudnn.so
-    PATHS ${CUDNN_ROOT}
-          ${CUDNN_ROOT}/lib
-          ${CUDNN_ROOT}/lib64
-    DOC "CUDNN library path")
-  if(CUDNN_INCLUDE_DIRS AND CUDNN_LIBRARIES)
-    set(CUDNN_FOUND TRUE PARENT_SCOPE)
-    message(STATUS "Found CUDNN (include: ${CUDNN_INCLUDE_DIRS}, library: ${CUDNN_LIBRARIES})")
-    mark_as_advanced(CUDNN_INCLUDE_DIRS CUDNN_LIBRARIES)
-  else()
-    MESSAGE(FATAL_ERROR "Failed to find CUDNN in path: ${CUDNN_ROOT} (Did you set CUDNN_ROOT properly?)")
-  endif()
-endfunction()
-
 # look for Boost
 if(DEFINED ENV{BOOST_ROOT})
   set(Boost_NO_SYSTEM_PATHS ON)
 endif()
+
+if (CYGWIN OR WIN32 OR WIN64)
+set(Boost_REALPATH OFF)
+else()
 set(Boost_REALPATH ON)
+endif()
+
+if (CYGWIN OR UNIX OR LINUX)
 find_package(Boost COMPONENTS program_options serialization REQUIRED)
-include_directories(${Boost_INCLUDE_DIR})
-set(LIBS ${LIBS} ${Boost_LIBRARIES})
+endif()
+include_directories(${BOOST_ROOT})
+set(LIBS ${LIBS} ${BOOST_LIBRARYDIR})
+if (WIN32 OR WIN64)
+find_package(Boost COMPONENTS program_options serialization REQUIRED)
+endif()
+
 # trouble shooting:
 # if boost library cannot be found, in addition to install boost library
 # check if environment variables are set
@@ -70,14 +76,26 @@ else()
   message(SEND_ERROR "BACKEND must be eigen or cuda")
 endif()
 
-if (WITH_CUDA_BACKEND)
+
+if(WITH_CUDA_BACKEND)
+  if(CUDA_ROOT)
+  message("CUDA root : ${CUDA_ROOT}")
+  else()
+  message("Need to define CUDA root by runing -DCUDA_ROOT")
+  endif()
+
   find_package(CUDA REQUIRED)
+
+  set(CUDA_INCLUDE_DIRS ${CUDA_ROOT}/include)
+  set(CUDA_LIBRARIES ${CUDA_ROOT}/lib/x64)
   set(CUDA_TOOLKIT_ROOT_DIR ${CUDA_ROOT})
+
   include_directories(SYSTEM ${CUDA_INCLUDE_DIRS})
   add_definitions(-DHAVE_CUDA)
   set(LIBS ${LIBS} ${CUDA_LIBRARIES})
-  #find_cudnn()
-  #include_directories(SYSTEM ${CUDNN_INCLUDE_DIRS})
+  link_directories(${CUDA_LIBRARIES})
+
+  set(CUDNN_LIB ${CUDA_LIBRARIES}/cudnn.lib)
 endif()
 
 # look for Eigen
@@ -85,7 +103,14 @@ find_package(Eigen3 REQUIRED)
 include_directories(${EIGEN3_INCLUDE_DIR})
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/config.h.cmake ${CMAKE_CURRENT_BINARY_DIR}/config.h)
+
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${CMAKE_CURRENT_BINARY_DIR}/../conversation/src/cnn)
+
+link_directories(${BOOST_LIBRARYDIR})
+
 
 add_subdirectory(cnn)
 add_subdirectory(examples)
+add_subdirectory(../conversation/src/cnn "${CMAKE_CURRENT_BINARY_DIR}/conversation/dev/src")
+
